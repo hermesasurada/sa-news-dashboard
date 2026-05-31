@@ -1,0 +1,34 @@
+# DB files
+*.db
+*.db-shm
+*.db-wal
+*.db.bak_*
+data.db
+
+# Secrets / credentials
+sa_cookies.json
+.env
+*.key
+
+# Playwright browser profile
+pw_profile/
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.Python
+
+# Logs
+*.log
+*.err
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+static/attach/

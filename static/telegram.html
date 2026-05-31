@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Feed - SA Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body { background-color: #e8e8e8; font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', 'Malgun Gothic', sans-serif; }
+        .feed-item:hover { background-color: #f8fafc; }
+        .feed-item { border-top: 1px solid #e5e5e5; border-bottom: 1px solid #e5e5e5; }
+        .feed-item-color-0 { border-left: 4px solid #93c5fd; border-right: 4px solid #60a5fa; }
+        .feed-item-color-1 { border-left: 4px solid #a78bfa; border-right: 4px solid #8b5cf6; }
+        .feed-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .modal { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .markdown-content { font-size: 0.95rem; line-height: 1.7; }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 { font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; font-size: 1.1em; }
+        .markdown-content p { margin-bottom: 0.65rem; }
+        .markdown-content ul, .markdown-content ol { margin-left: 1.15rem; margin-bottom: 0.65rem; }
+        .markdown-content code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.875em; }
+        .markdown-content pre { background: #1e2937; color: #e2e8f0; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.875em; }
+        .markdown-content a { color: #2563eb; text-decoration: underline; }
+        .fm-bullet li { display: flex; gap: 6px; }
+        .fm-bullet li::before { content: '·'; color: #93c5fd; font-weight: bold; flex-shrink: 0; }
+        @media (max-width: 640px) {
+            .feed-item { border-left-width: 3px; border-right-width: 3px; }
+            .feed-item { padding-left: 0.75rem; padding-right: 0.75rem; }
+            h1.text-3xl { font-size: 1.5rem; }
+            .modal-header-title { font-size: 1rem !important; }
+            .markdown-content { font-size: 0.875rem; }
+            .markdown-content pre { font-size: 0.75rem; }
+            .feed-tags { gap: 3px; }
+            .feed-tags span.text-\[10px\] { font-size: 9px; padding: 1px 4px; }
+        }
+    </style>
+</head>
+    <body>
+    <div class="max-w-6xl w-full mx-auto px-6 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-slate-900">Telegram Feed</h1>
+        </div>
+
+        <!-- Filters -->
+        <div class="mb-6">
+            <button onclick="toggleFilters()" id="filter-toggle" class="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 mb-3 transition-colors">
+                <svg id="filter-arrow" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                검색 조건
+            </button>
+            <div id="filter-panel" class="hidden bg-white border border-slate-200 rounded-2xl p-5">
+                <div class="flex flex-wrap gap-4">
+                    <div class="flex-1 min-w-0">
+                        <input id="search" type="text" placeholder="제목 또는 내용 검색..."
+                               class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-400">
+                    </div>
+                    <div>
+                        <input id="date" type="date" 
+                               class="px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none">
+                    </div>
+                    <button onclick="loadFeeds()" 
+                            class="px-6 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors">
+                        검색
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feed List -->
+        <div id="feed-list" class="space-y-3"></div>
+
+        <!-- Pagination -->
+        <div class="flex justify-center mt-8">
+            <button onclick="prevPage()" class="px-4 py-2 border border-slate-200 rounded-l-xl hover:bg-white">이전</button>
+            <button onclick="nextPage()" class="px-4 py-2 border border-slate-200 border-l-0 rounded-r-xl hover:bg-white">다음</button>
+        </div>
+    </div>
+
+    <!-- Original Modal -->
+    <div id="modal" class="hidden fixed inset-0 bg-gradient-to-br from-slate-900/70 to-purple-900/50 flex items-center justify-center z-50" onclick="closeModal()">
+        <div onclick="event.stopImmediatePropagation()"
+             class="bg-white w-full w-[95vw] max-w-5xl max-h-[90vh] rounded-2xl shadow-2xl mx-4 flex flex-col overflow-hidden">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white flex items-center justify-between">
+                <div>
+                    <div id="modal-date" class="text-sm text-blue-100"></div>
+                    <div id="modal-title" class="font-semibold text-lg modal-header-title break-words"></div>
+                </div>
+                <button onclick="closeModal()" class="text-white/80 hover:text-white text-2xl leading-none transition-colors">×</button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="flex-1 overflow-auto p-6">
+                <div id="modal-content" class="markdown-content prose prose-sm prose-slate max-w-none"></div>
+                
+                <!-- Images -->
+                <div id="modal-images" class="mt-8"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentOffset = 0;
+        const limit = 30;
+
+        async function loadFeeds(reset = true) {
+            if (reset) currentOffset = 0;
+
+            const q = document.getElementById('search').value;
+            const date = document.getElementById('date').value;
+
+            const params = new URLSearchParams({
+                q, date_from: date, date_to: date,
+                limit, offset: currentOffset
+            });
+
+            const res = await fetch(`/api/telegram_feeds?${params}`);
+            const data = await res.json();
+
+            const container = document.getElementById('feed-list');
+            container.innerHTML = '';
+
+            if (data.items.length === 0) {
+                container.innerHTML = `<div class="text-center py-12 text-slate-400">결과가 없습니다.</div>`;
+                return;
+            }
+
+            data.items.forEach(item => {
+                const dateParts = item.feed_date.split('-');
+                const shortDate = `${dateParts[1]}/${dateParts[2]}`;
+                const summaryHtml = item.summary
+                    ? `<div class="text-sm text-slate-700 line-clamp-3 break-words" style="white-space:pre-wrap">${item.summary}</div>`
+                    : '';
+                const metaHtml = (item.tags && item.tags !== '[]')
+                    ? `<div class="feed-tags mt-2" style="display:flex;flex-wrap:wrap;gap:4px;align-items:baseline"><span class="text-xs text-slate-400">${shortDate}</span>${JSON.parse(item.tags).map(t => `<span class="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded">${t}</span>`).join('')}</div>`
+                    : `<div class="mt-2 text-xs text-slate-400">${shortDate}</div>`;
+
+                const colorClass = `feed-item-color-${item.id % 2}`;
+                const el = document.createElement('div');
+                el.className = `feed-item bg-white rounded-xl px-4 py-3 ${colorClass} cursor-pointer`;
+                el.onclick = () => showOriginal(item.id, item.title, item.feed_date);
+                el.innerHTML = `
+                    ${summaryHtml}
+                    ${metaHtml}
+                `;
+                container.appendChild(el);
+            });
+        }
+
+        async function showOriginal(id, title, date) {
+            const modal = document.getElementById('modal');
+            const contentEl = document.getElementById('modal-content');
+            const imagesEl = document.getElementById('modal-images');
+            const titleEl = document.getElementById('modal-title');
+            const dateEl = document.getElementById('modal-date');
+
+            dateEl.textContent = date;
+            titleEl.textContent = title;
+            contentEl.innerHTML = `<div class="text-slate-400">불러오는 중...</div>`;
+            imagesEl.innerHTML = '';
+            modal.classList.remove('hidden');
+
+            const res = await fetch(`/api/telegram_feed/${id}/original`);
+            const data = await res.json();
+
+            if (data.error) {
+                contentEl.innerHTML = `<div class="text-red-500">${data.error}</div>`;
+                return;
+            }
+
+            // YAML frontmatter 파싱 — bullet point으로 변환
+            let markdown = data.content || '';
+            let frontmatterHtml = '';
+            const fmMatch = markdown.match(/^---\n([\s\S]*?)\n---\n?/);
+            if (fmMatch) {
+                const fmBlock = fmMatch[1];
+                const lines = fmBlock.split('\n');
+                let bulletItems = [];
+                let currentKey = '';
+                let currentValue = '';
+                let currentUrl = '';
+                for (const line of lines) {
+                    const kv = line.match(/^(\w+):\s*(.*)/);
+                    if (kv) {
+                        if (currentKey) {
+                            const val = currentValue.trim();
+                            if (val) {
+                                let displayVal = val;
+                                // source URL이면 도메인만 표시 + 링크
+                                if (currentKey === 'source' && val.match(/^https?:\/\//)) {
+                                    try {
+                                        const u = new URL(val);
+                                        displayVal = `<a href="${val}" target="_blank" class="text-blue-600 underline">${u.hostname}</a>`;
+                                    } catch(e) {}
+                                }
+                                bulletItems.push(`<li><span class="text-slate-400">${currentKey}</span>: ${displayVal}</li>`);
+                            }
+                        }
+                        currentKey = kv[1];
+                        currentValue = kv[2];
+                        currentUrl = kv[2].trim();
+                    } else if (line.trim().startsWith('- ')) {
+                        currentValue += (currentValue ? ' ' : '') + line.trim();
+                    } else if (line.trim() === '') {
+                        if (currentKey) {
+                            const val = currentValue.trim();
+                            if (val) {
+                                let displayVal = val;
+                                if (currentKey === 'source' && val.match(/^https?:\/\//)) {
+                                    try {
+                                        const u = new URL(val);
+                                        displayVal = `<a href="${val}" target="_blank" class="text-blue-600 underline">${u.hostname}</a>`;
+                                    } catch(e) {}
+                                }
+                                bulletItems.push(`<li><span class="text-slate-400">${currentKey}</span>: ${displayVal}</li>`);
+                            }
+                            currentKey = '';
+                            currentValue = '';
+                            currentUrl = '';
+                        }
+                    } else {
+                        currentValue += ' ' + line;
+                    }
+                }
+                if (currentKey) {
+                    const val = currentValue.trim();
+                    if (val) {
+                        let displayVal = val;
+                        if (currentKey === 'source' && val.match(/^https?:\/\//)) {
+                            try {
+                                const u = new URL(val);
+                                displayVal = `<a href="${val}" target="_blank" class="text-blue-600 underline">${u.hostname}</a>`;
+                            } catch(e) {}
+                        }
+                        bulletItems.push(`<li><span class="text-slate-400">${currentKey}</span>: ${displayVal}</li>`);
+                    }
+                }
+                if (bulletItems.length > 0) {
+                    frontmatterHtml = `<div class="mb-4 pb-3 border-b border-blue-100"><ul class="fm-bullet space-y-1 text-sm">${bulletItems.join('')}</ul></div>`;
+                }
+                markdown = markdown.substring(fmMatch[0].length);
+            }
+
+            // Markdown 렌더링 — 먼저 이미지 문법을 HTML로 변환한 후 marked.parse
+            // (marked가 ![[...]]를 unrecognized text로 처리하면 regex가 못 찾음)
+            let renderable = markdown || '';
+            renderable = renderable.replace(/!\[\[attach\/([^\]|]+)(?:\|[^\]]+)?\]\]/g, '<img src="/static/attach/$1" class="max-w-full rounded-xl border my-4" />');
+            renderable = renderable.replace(/!\[([^\]]*)\]\((?:\/static\/)?attach\/([^)|]+)(?:\|[^)]+)?\)/g, '<img src="/static/attach/$2" alt="$1" class="max-w-full rounded-xl border my-4" />');
+            let html = marked.parse(renderable);
+
+            contentEl.innerHTML = frontmatterHtml + html;
+
+            // 첨부 이미지 갤러리 표시 (data.images 활용)
+            if (data.images && data.images.length > 0) {
+                let gallery = `<div class="mt-8 pt-4 border-t border-purple-100"><div class="text-sm font-medium text-purple-600 mb-3">첨부 이미지 (${data.images.length}개)</div><div class="grid grid-cols-2 md:grid-cols-3 gap-3">`;
+                data.images.forEach(img => {
+                    gallery += `<div class="border-2 border-purple-200 rounded-xl overflow-hidden hover:border-purple-400 transition-colors">
+                        <img src="/static/attach/${img}" class="w-full h-auto object-cover" />
+                    </div>`;
+                });
+                gallery += `</div></div>`;
+                imagesEl.innerHTML = gallery;
+            } else {
+                imagesEl.innerHTML = '';
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.add('hidden');
+        }
+
+        function toggleFilters() {
+            const panel = document.getElementById('filter-panel');
+            const arrow = document.getElementById('filter-arrow');
+            panel.classList.toggle('hidden');
+            arrow.classList.toggle('rotate-180');
+        }
+
+        function nextPage() {
+            currentOffset += limit;
+            loadFeeds(false);
+        }
+
+        function prevPage() {
+            currentOffset = Math.max(0, currentOffset - limit);
+            loadFeeds(false);
+        }
+
+        // 초기 로드
+        window.onload = () => {
+            loadFeeds();
+            
+            // 엔터키 검색
+            document.getElementById('search').addEventListener('keyup', e => {
+                if (e.key === 'Enter') loadFeeds();
+            });
+            document.getElementById('date').addEventListener('keyup', e => {
+                if (e.key === 'Enter') loadFeeds();
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>SA Breaking News Dashboard</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { overflow-x: hidden; }
+body {
+  background: #f4f6f9;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  color: #374151;
+  line-height: 1.65;
+  padding: 16px;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* ── New Articles Banner ── */
+#new-articles-banner {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: #1d4ed8;
+  color: #fff;
+  text-align: center;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  letter-spacing: 0.01em;
+  margin: -16px -16px 16px;
+}
+#new-articles-banner:hover { background: #1e40af; }
+
+/* ── Header ── */
+.header {
+  max-width: 1400px;
+  margin: 0 auto 20px;
+}
+.header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 12px;
+}
+
+/* ── Search Bar ── */
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.search-bar input[type=text],
+.search-bar select,
+.search-bar input[type=date],
+.btn-search,
+.btn-reset,
+.btn-sort {
+  height: 38px;
+  box-sizing: border-box;
+}
+.search-bar input[type=text] {
+  flex: 1;
+  min-width: 180px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  background: #fff;
+}
+.search-bar input[type=text]:focus { border-color: #3b82f6; }
+.search-bar select {
+  padding: 0 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  cursor: pointer;
+  outline: none;
+}
+.search-bar input[type=date] {
+  padding: 0 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  outline: none;
+}
+.btn-search {
+  padding: 0 16px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-search:hover { background: #2563eb; }
+.btn-reset {
+  padding: 0 12px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-reset:hover { background: #e2e8f0; }
+
+/* ── 정렬 토글 버튼 ── */
+.btn-sort {
+  height: 38px;
+  padding: 0 12px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.btn-sort:hover { background: #e2e8f0; }
+.btn-sort.alt {
+  background: #ede9fe;
+  color: #5b21b6;
+  border-color: #c4b5fd;
+  font-weight: 600;
+}
+
+/* ── 미읽음 필터 토글 ── */
+.btn-unread {
+  height: 38px;
+  padding: 0 14px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.btn-unread:hover { background: #e2e8f0; }
+.btn-unread.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+  font-weight: 600;
+}
+
+/* ── 미읽음 카드 표시 ── */
+.card-unread {
+  border-left: 3px solid #3b82f6;
+}
+.unread-dot {
+  width: 8px; height: 8px;
+  background: #3b82f6;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+/* ── 읽음 버튼 ── */
+.read-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f9fafb;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.read-btn:hover { background: #dbeafe; border-color: #bfdbfe; color: #2563eb; }
+.read-btn.done { color: #d1d5db; border-color: #e5e7eb; }
+.read-btn.done:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+
+/* ── Stats ── */
+.stats {
+  max-width: 1400px;
+  margin: 12px auto 16px;
+  font-size: 13px;
+  color: #6b7280;
+}
+.pending-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* ── Layout ── */
+.container {
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+}
+@media (min-width: 768px) {
+  body { padding: 24px; }
+  #new-articles-banner { margin: -24px -24px 24px; }
+  .container {
+    max-width: 1400px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+}
+
+/* ── Card ── */
+.card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  overflow: visible;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  transition: box-shadow 0.2s, transform 0.2s;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.card-deleting {
+  opacity: 0.35;
+  pointer-events: none;
+  border-color: #fca5a5;
+  transform: scale(0.985);
+  transition: opacity 0.2s, transform 0.2s, border-color 0.2s;
+}
+@media (min-width: 768px) {
+  .card { margin-bottom: 0; }
+  .card:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    transform: translateY(-2px);
+  }
+  .card-deleting:hover { transform: scale(0.985); box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+}
+
+/* ── Card Title Row (제목 + 미읽음 dot) ── */
+.card-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-bottom: 3px;
+}
+.card-title-row .unread-dot {
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+.card-title-row .card-title {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+/* ── Ticker Row ── */
+.card-tickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+  margin-bottom: 0;
+  align-items: center;
+}
+
+/* ── Ticker Badge ── */
+.ticker-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: default;
+}
+.ticker-blue   { background: #dbeafe; color: #1e40af; }
+.ticker-green  { background: #d1fae5; color: #065f46; }
+.ticker-purple { background: #ede9fe; color: #5b21b6; }
+.ticker-orange { background: #ffedd5; color: #9a3412; }
+.ticker-yellow { background: #fef3c7; color: #92400e; }
+.ticker-red    { background: #fee2e2; color: #991b1b; }
+.ticker-gray   { background: #f1f5f9; color: #475569; }
+
+/* ── Ticker 커스텀 툴팁 ── */
+.ticker-badge[data-company] {
+  position: relative;
+}
+.ticker-badge[data-company]::after {
+  content: attr(data-company);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.92);
+  background: #1f2937;
+  color: #fff;
+  padding: 4px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  letter-spacing: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.08s ease, transform 0.08s ease;
+  z-index: 300;
+}
+.ticker-badge[data-company]:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+/* ── Tags (실제 색상 적용) ── */
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tag-blue   { background: #dbeafe; color: #1e40af; }
+.tag-green  { background: #d1fae5; color: #065f46; }
+.tag-red    { background: #fee2e2; color: #991b1b; }
+.tag-yellow { background: #fef3c7; color: #92400e; }
+.tag-orange { background: #ffedd5; color: #9a3412; }
+.tag-purple { background: #ede9fe; color: #5b21b6; }
+.tag-gray   { background: #f1f5f9; color: #475569; }
+
+/* ── Card Meta ── */
+.card-source {
+  font-size: 12px;
+  color: #9ca3af;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.card-time {
+  font-size: 11px;
+  color: #c4c9d4;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ── Card Meta (날짜 + 출처) ── */
+.card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+.card-date { white-space: nowrap; }
+.card-divider {
+  border: none;
+  border-top: 1px solid #f3f4f6;
+  margin: 10px 0 12px;
+}
+.card-origin a {
+  color: #9ca3af;
+  text-decoration: none;
+  font-weight: 500;
+}
+.card-origin a:hover { color: #3b82f6; text-decoration: underline; }
+
+/* ── Card Title ── */
+.card-title {
+  font-size: 16px;
+  color: #111827;
+  font-weight: 700;
+  margin-bottom: 3px;
+  line-height: 1.5;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+.card-orig-title {
+  font-size: 12px;
+  color: #9ca3af;
+  font-style: italic;
+  line-height: 1.4;
+  margin-bottom: 0;
+  word-break: break-word;
+}
+
+/* ── Summary / Details ── */
+.card-summary {
+  font-size: 14px;
+  color: #4b5563;
+  margin-bottom: 10px;
+  line-height: 1.7;
+}
+.card-summary strong { color: #111827; }
+.card-details {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.65;
+}
+.card-details strong { color: #374151; }
+.card-details ul {
+  padding-left: 16px;
+  margin-top: 4px;
+}
+.card-details li {
+  margin-bottom: 4px;
+  overflow-wrap: break-word;
+  word-break: keep-all;
+}
+
+/* ── Card Footer ── */
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid #f3f4f6;
+}
+.footer-left {
+  font-size: 10px;
+  color: #c4c9d4;
+  white-space: nowrap;
+}
+.footer-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Link Button (원문보기) ── */
+.link-btn {
+  font-size: 12px;
+  color: #2563eb;
+  text-decoration: none;
+  padding: 5px 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  background: #eff6ff;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.link-btn:hover {
+  background: #dbeafe;
+  border-color: #60a5fa;
+  transform: translateY(-1px);
+}
+
+/* ── Delete Button — icon only, desktop hover-show ── */
+.delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #dc2626;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s, opacity 0.15s;
+}
+.delete-btn:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+  transform: translateY(-1px);
+}
+
+/* ── Toast ── */
+#toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: #1f2937;
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  opacity: 0;
+  z-index: 1000;
+  white-space: nowrap;
+  pointer-events: none;
+}
+#toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.toast-action {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.4);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.toast-action:hover { background: rgba(255,255,255,0.15); }
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+  body { padding: 10px; }
+  .card { padding: 14px; }
+  .card-title { font-size: 15px; }
+}
+
+/* ── Pagination ── */
+.pagination {
+  max-width: 1400px;
+  margin: 24px auto 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.pagination button {
+  padding: 6px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pagination button:disabled { opacity: 0.4; cursor: default; }
+.pagination button.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.pagination .page-info { font-size: 13px; color: #6b7280; }
+
+/* ── Empty / Loading ── */
+.empty-state {
+  max-width: 1400px;
+  margin: 60px auto;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 15px;
+}
+</style>
+</head>
+<body>
+
+<div id="new-articles-banner" onclick="dismissBanner()"></div>
+<div id="toast"></div>
+
+<div class="header">
+  <h1>📰 SA Breaking News</h1>
+  <div class="search-bar">
+    <input type="text" id="q" placeholder="검색 (제목, 회사명, 티커, 요약...)" onkeydown="if(event.key==='Enter') search(0)" />
+    <select id="ticker-filter" onchange="search(0)"><option value="">전체 티커</option></select>
+    <input type="date" id="date-filter" title="날짜 (이메일 수신시각)" onchange="search(0)" />
+    <button class="btn-sort" id="sort-toggle" onclick="toggleSort()">
+      <span id="sort-label">이메일시간순</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
+    </button>
+    <button class="btn-search" onclick="search(0)">검색</button>
+    <button class="btn-reset" onclick="reset()">초기화</button>
+    <button class="btn-unread" id="unread-filter" onclick="toggleUnreadFilter()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      미읽음만
+    </button>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+<div class="container" id="cards"></div>
+<div class="pagination" id="pagination"></div>
+
+<script>
+const PAGE_SIZE = 15;
+let currentOffset = 0;
+let currentSort = 'email_time_et';
+
+/* ── SVG Icons ── */
+const SVG_EYE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const SVG_EYE_OFF = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+const SVG_TRASH = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>`;
+
+/* ── Filters ── */
+async function loadFilters() {
+  try {
+    const res = await fetch('/api/filters');
+    const data = await res.json();
+    const tickerSel = document.getElementById('ticker-filter');
+    data.tickers.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t; opt.textContent = t;
+      tickerSel.appendChild(opt);
+    });
+  } catch(e) { console.error('필터 로드 실패', e); }
+}
+
+/* ── Sort ── */
+function toggleSort() {
+  currentSort = currentSort === 'email_time_et' ? 'last_modified' : 'email_time_et';
+  const btn = document.getElementById('sort-toggle');
+  const label = document.getElementById('sort-label');
+  if (currentSort === 'last_modified') {
+    label.textContent = '수정시간순';
+    btn.classList.add('alt');
+  } else {
+    label.textContent = '이메일시간순';
+    btn.classList.remove('alt');
+  }
+  search(0);
+}
+
+/* ── Params ── */
+function getParams(offset) {
+  const p = new URLSearchParams();
+  const q = document.getElementById('q').value.trim();
+  const ticker = document.getElementById('ticker-filter').value;
+  const dateVal = document.getElementById('date-filter').value;
+  if (q) p.set('q', q);
+  if (ticker) p.set('ticker', ticker);
+  p.set('sort_by', currentSort);
+  if (dateVal) { p.set('date_from', dateVal); p.set('date_to', dateVal); }
+  if (document.getElementById('unread-filter').classList.contains('active'))
+    p.set('unread_only', 'true');
+  p.set('limit', PAGE_SIZE);
+  p.set('offset', offset);
+  return p;
+}
+
+function formatTime(et) {
+  if (!et) return '';
+  const m = et.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/);
+  if (!m) return et;
+  return `${m[2]}/${m[3]} ${m[4]}`;
+}
+
+function extractTickers(a) {
+  const map = new Map();
+  const rawTicker = (a.ticker || '').trim();
+  if (rawTicker && rawTicker.toUpperCase() !== 'NONE') {
+    const tks = rawTicker.split(/[,·\s]+/).map(t => t.trim()).filter(t => /^[A-Z0-9.]{1,6}$/.test(t));
+    const names = (a.company_name || '').split(/·/).map(n => n.trim()).filter(Boolean);
+    tks.forEach((t, i) => { if (t) map.set(t, names[i] || names[0] || ''); });
+  }
+  const text = [a.summary_core || '', ...(a.summary_details || [])].join(' ');
+  for (const m of text.matchAll(/\$([A-Z]{1,5})\b/g)) {
+    if (!map.has(m[1])) map.set(m[1], '');
+  }
+  return [...map.entries()].map(([ticker, name]) => ({ ticker, name }));
+}
+
+/* ── Card Render ── */
+function renderCard(a) {
+  const details = a.summary_details.map(d => `<li>${d}</li>`).join('');
+  const timeLabel = formatTime(a.email_time_et);
+  const emailIdLabel = a.email_id ? `ID:${a.email_id}` : '';
+  const footerMeta = [emailIdLabel, timeLabel].filter(Boolean).join(' · ');
+  const isRead = !!a.is_read;
+  const unreadDot = !isRead ? '<span class="unread-dot" title="미읽음"></span>' : '';
+  const readBtnClass = isRead ? 'read-btn done' : 'read-btn';
+  const readBtnTitle = isRead ? '읽음 취소' : '읽음 처리';
+  const hasOrig = !!a.original_title;
+  const originalTitle = hasOrig ? `<div class="card-orig-title">${a.original_title}</div>` : '';
+
+  const tickers = extractTickers(a);
+  const tickerBadges = tickers.map((t, i) => {
+    const color = i === 0 ? (a.ticker_color || 'blue') : 'gray';
+    const tip = t.name ? ` data-company="${t.name}"` : '';
+    return `<span class="ticker-badge ticker-${color}"${tip}>${t.ticker}</span>`;
+  }).join('');
+
+  // #1: tag badge — 실제 tag_color 적용
+  const tagHtml = a.tag
+    ? `<span class="tag tag-${a.tag_color || 'blue'}">${a.tag}</span>`
+    : '';
+  const combinedBadges = [tickerBadges, tagHtml].filter(Boolean).join('');
+
+  return `
+<div class="card${!isRead ? ' card-unread' : ''}" data-id="${a.id}" data-read="${isRead ? '1' : '0'}">
+  <div class="card-title-row">
+    ${unreadDot}
+    <h2 class="card-title">${a.headline}</h2>
+  </div>
+  ${originalTitle}
+  <hr class="card-divider">
+  <div class="card-summary"><strong>핵심</strong>&nbsp;${a.summary_core}</div>
+  <div class="card-details">
+    <strong>상세</strong>
+    <ul>${details}</ul>
+  </div>
+  ${combinedBadges ? `<div class="card-tickers">${combinedBadges}</div>` : ''}
+  <div class="card-footer">
+    <span class="footer-left">${footerMeta}</span>
+    <div class="footer-actions">
+      <button class="${readBtnClass}" onclick="toggleRead(${a.id}, this)" title="${readBtnTitle}">${isRead ? SVG_EYE_OFF : SVG_EYE}</button>
+      <a href="${a.article_url}" target="_blank" rel="noopener" class="link-btn">원문보기</a>
+      <button class="delete-btn" onclick="deleteCard(${a.id}, this)" title="삭제">${SVG_TRASH}</button>
+    </div>
+  </div>
+</div>`;
+}
+
+/* ── Read Toggle ── */
+async function toggleRead(id, btn) {
+  const card = btn.closest('.card');
+  const isCurrentlyRead = card.dataset.read === '1';
+  const newRead = !isCurrentlyRead;
+  try {
+    const res = await fetch(`/api/articles/${id}/read`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({is_read: newRead}),
+    });
+    if (!res.ok) return;
+    card.dataset.read = newRead ? '1' : '0';
+    if (newRead) {
+      card.classList.remove('card-unread');
+      const dot = card.querySelector('.unread-dot');
+      if (dot) dot.remove();
+      btn.className = 'read-btn done';
+      btn.title = '읽음 취소';
+      btn.innerHTML = SVG_EYE_OFF;
+      // #2: 미읽음 필터 활성 중이면 카드 즉시 제거
+      if (document.getElementById('unread-filter').classList.contains('active')) {
+        card.style.transition = 'opacity 0.3s';
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 300);
+      }
+    } else {
+      card.classList.add('card-unread');
+      const titleRow = card.querySelector('.card-title-row');
+      if (titleRow) titleRow.insertAdjacentHTML('afterbegin', '<span class="unread-dot" title="미읽음"></span>');
+      btn.className = 'read-btn';
+      btn.title = '읽음 처리';
+      btn.innerHTML = SVG_EYE;
+    }
+  } catch(e) { console.error('읽음 상태 변경 실패', e); }
+}
+
+/* ── #6: Delete with Undo Toast ── */
+const pendingDeletes = new Map(); // articleId → { card, timer }
+
+function deleteCard(articleId, element) {
+  const card = element.closest('.card');
+  if (pendingDeletes.has(articleId)) return;
+
+  card.classList.add('card-deleting');
+
+  showToast('삭제 예약됨', '되돌리기', () => {
+    card.classList.remove('card-deleting');
+    pendingDeletes.delete(articleId);
+  });
+
+  const timer = setTimeout(() => {
+    fetch(`/api/articles/${articleId}`, { method: 'DELETE' })
+      .then(res => {
+        if (res.ok) {
+          card.remove();
+        } else {
+          card.classList.remove('card-deleting');
+          showToast('삭제 실패', null, null);
+        }
+      })
+      .catch(() => {
+        card.classList.remove('card-deleting');
+        showToast('삭제 중 오류 발생', null, null);
+      });
+    pendingDeletes.delete(articleId);
+  }, 4000);
+
+  pendingDeletes.set(articleId, { card, timer });
+}
+
+/* ── Toast ── */
+let _toastTimer = null;
+let _toastUndoFn = null;
+
+function showToast(message, actionLabel, actionFn) {
+  const toast = document.getElementById('toast');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastUndoFn = actionFn;
+  toast.innerHTML = `<span>${message}</span>`
+    + (actionLabel ? `<button class="toast-action" onclick="toastAction()">${actionLabel}</button>` : '');
+  toast.classList.add('show');
+  _toastTimer = setTimeout(() => {
+    toast.classList.remove('show');
+    _toastUndoFn = null;
+  }, 4500);
+}
+
+function toastAction() {
+  if (_toastUndoFn) _toastUndoFn();
+  document.getElementById('toast').classList.remove('show');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastUndoFn = null;
+}
+
+/* ── Pagination ── */
+function renderPagination(total, offset) {
+  const pag = document.getElementById('pagination');
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const currentPage = Math.floor(offset / PAGE_SIZE);
+  if (totalPages <= 1) { pag.innerHTML = ''; return; }
+
+  let html = `<button onclick="search(${(currentPage-1)*PAGE_SIZE})" ${currentPage===0?'disabled':''}>◀ 이전</button>`;
+  const start = Math.max(0, currentPage - 5);
+  const end = Math.min(totalPages - 1, currentPage + 5);
+  for (let i = start; i <= end; i++) {
+    html += `<button class="${i===currentPage?'active':''}" onclick="search(${i*PAGE_SIZE})">${i+1}</button>`;
+  }
+  html += `<button onclick="search(${(currentPage+1)*PAGE_SIZE})" ${currentPage===totalPages-1?'disabled':''}>다음 ▶</button>`;
+  html += `<span class="page-info">${total}건 / ${totalPages}페이지</span>`;
+  pag.innerHTML = html;
+}
+
+/* ── #9: URL 상태 동기화 ── */
+function syncURL(params) {
+  const url = new URL(location.href);
+  url.search = params.toString();
+  history.replaceState(null, '', url.toString());
+}
+
+function restoreFromURL() {
+  const sp = new URLSearchParams(location.search);
+  if (sp.has('q'))           document.getElementById('q').value = sp.get('q');
+  if (sp.has('ticker'))      document.getElementById('ticker-filter').value = sp.get('ticker');
+  if (sp.has('date_from'))   document.getElementById('date-filter').value = sp.get('date_from');
+  if (sp.has('unread_only')) document.getElementById('unread-filter').classList.add('active');
+  if (sp.get('sort_by') === 'last_modified') {
+    currentSort = 'last_modified';
+    document.getElementById('sort-label').textContent = '수정시간순';
+    document.getElementById('sort-toggle').classList.add('alt');
+  }
+  return parseInt(sp.get('offset') || '0');
+}
+
+/* ── #7: 새 기사 알림 polling ── */
+let lastKnownTotal = 0;
+
+function showNewArticlesBanner(newCount) {
+  const banner = document.getElementById('new-articles-banner');
+  banner.textContent = `🆕 새 기사 ${newCount}건 도착 — 클릭해서 새로고침`;
+  banner.style.display = 'block';
+}
+
+function dismissBanner() {
+  document.getElementById('new-articles-banner').style.display = 'none';
+  lastKnownTotal = 0;
+  search(0);
+}
+
+function startNotificationPolling() {
+  setInterval(async () => {
+    if (lastKnownTotal === 0) return;
+    try {
+      const res = await fetch('/api/articles?limit=1&sort_by=last_modified');
+      const { total } = await res.json();
+      if (total > lastKnownTotal) {
+        showNewArticlesBanner(total - lastKnownTotal);
+      }
+    } catch(e) {}
+  }, 5 * 60 * 1000);
+}
+
+/* ── Search ── */
+async function search(offset = 0) {
+  // 대기 중인 삭제 취소 (검색 재렌더 시 카드 DOM이 교체되므로)
+  pendingDeletes.forEach(({ card, timer }) => {
+    clearTimeout(timer);
+    card.classList.remove('card-deleting');
+  });
+  pendingDeletes.clear();
+
+  currentOffset = offset;
+  const params = getParams(offset);
+
+  // #9: URL 동기화
+  syncURL(params);
+
+  const cardsEl = document.getElementById('cards');
+  const statsEl = document.getElementById('stats');
+  cardsEl.innerHTML = '<div class="empty-state">불러오는 중...</div>';
+
+  try {
+    const [res, qRes] = await Promise.all([
+      fetch('/api/articles?' + params.toString()),
+      fetch('/api/queue_stats'),
+    ]);
+    const data = await res.json();
+    const qData = await qRes.json();
+
+    const pendingBadge = qData.pending > 0
+      ? ` <span class="pending-badge">대기 ${qData.pending}건</span>`
+      : '';
+
+    if (data.items.length === 0) {
+      cardsEl.innerHTML = '';
+      document.getElementById('pagination').innerHTML = '';
+      statsEl.innerHTML = '검색 결과가 없습니다.' + pendingBadge;
+      return;
+    }
+
+    statsEl.innerHTML = `${data.total}건 (${offset+1}~${Math.min(offset+PAGE_SIZE, data.total)}번째)` + pendingBadge;
+    cardsEl.innerHTML = data.items.map(renderCard).join('');
+    renderPagination(data.total, offset);
+
+    // #7: 필터 없는 1페이지 결과로 기준 total 갱신
+    const qVal = document.getElementById('q').value.trim();
+    const tVal = document.getElementById('ticker-filter').value;
+    const dVal = document.getElementById('date-filter').value;
+    const uVal = document.getElementById('unread-filter').classList.contains('active');
+    if (!qVal && !tVal && !dVal && !uVal && offset === 0) {
+      lastKnownTotal = data.total;
+      document.getElementById('new-articles-banner').style.display = 'none';
+    }
+  } catch(e) {
+    cardsEl.innerHTML = '<div class="empty-state">데이터를 불러오지 못했습니다.</div>';
+    console.error(e);
+  }
+}
+
+/* ── Filter Controls ── */
+function toggleUnreadFilter() {
+  document.getElementById('unread-filter').classList.toggle('active');
+  search(0);
+}
+
+function reset() {
+  document.getElementById('q').value = '';
+  document.getElementById('ticker-filter').value = '';
+  currentSort = 'email_time_et';
+  document.getElementById('sort-label').textContent = '이메일시간순';
+  document.getElementById('sort-toggle').classList.remove('alt');
+  document.getElementById('date-filter').value = '';
+  document.getElementById('unread-filter').classList.remove('active');
+  search(0);
+}
+
+document.getElementById('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter') search(0);
+});
+
+/* ── Init ── */
+async function init() {
+  await loadFilters();             // 먼저 ticker 옵션 로드
+  const savedOffset = restoreFromURL(); // URL → 필터 복원 (ticker 옵션 있어야 선택 가능)
+  search(savedOffset);
+  startNotificationPolling();
+}
+init();
+</script>
+</body>
+</html>
