@@ -767,38 +767,28 @@ async function toggleRead(id, btn) {
   } catch(e) { console.error('읽음 상태 변경 실패', e); }
 }
 
-/* ── #6: Delete with Undo Toast ── */
-const pendingDeletes = new Map(); // articleId → { card, timer }
-
+/* ── #6: Delete (즉시 삭제) ── */
 function deleteCard(articleId, element) {
   const card = element.closest('.card');
-  if (pendingDeletes.has(articleId)) return;
-
+  if (card.dataset.deleting) return;
+  card.dataset.deleting = '1';
   card.classList.add('card-deleting');
 
-  showToast('삭제 예약됨', '되돌리기', () => {
-    card.classList.remove('card-deleting');
-    pendingDeletes.delete(articleId);
-  });
-
-  const timer = setTimeout(() => {
-    fetch(`/api/articles/${articleId}`, { method: 'DELETE' })
-      .then(res => {
-        if (res.ok) {
-          card.remove();
-        } else {
-          card.classList.remove('card-deleting');
-          showToast('삭제 실패', null, null);
-        }
-      })
-      .catch(() => {
+  fetch(`/api/articles/${articleId}`, { method: 'DELETE' })
+    .then(res => {
+      if (res.ok) {
+        card.remove();
+      } else {
         card.classList.remove('card-deleting');
-        showToast('삭제 중 오류 발생', null, null);
-      });
-    pendingDeletes.delete(articleId);
-  }, 4000);
-
-  pendingDeletes.set(articleId, { card, timer });
+        delete card.dataset.deleting;
+        showToast('삭제 실패', null, null);
+      }
+    })
+    .catch(() => {
+      card.classList.remove('card-deleting');
+      delete card.dataset.deleting;
+      showToast('삭제 중 오류 발생', null, null);
+    });
 }
 
 /* ── Toast ── */
@@ -894,13 +884,6 @@ function startNotificationPolling() {
 
 /* ── Search ── */
 async function search(offset = 0) {
-  // 대기 중인 삭제 취소 (검색 재렌더 시 카드 DOM이 교체되므로)
-  pendingDeletes.forEach(({ card, timer }) => {
-    clearTimeout(timer);
-    card.classList.remove('card-deleting');
-  });
-  pendingDeletes.clear();
-
   currentOffset = offset;
   const params = getParams(offset);
 
