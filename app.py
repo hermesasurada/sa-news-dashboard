@@ -53,7 +53,11 @@ def get_filters():
 @app.get("/api/queue_stats")
 def get_queue_stats():
     stats = db.get_queue_stats()
-    return {"pending": stats.get("pending", 0), "failed": stats.get("failed", 0)}
+    return {
+        "pending": stats.get("pending", 0),
+        "failed": stats.get("failed", 0),
+        "unread": stats.get("unread", 0),
+    }
 
 
 @app.get("/api/article/{article_id}")

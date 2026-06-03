@@ -480,12 +480,18 @@ def mark_attempt_failed(article_id: int, reason: str, max_retry: int = 5) -> dic
 
 
 def get_queue_stats() -> dict:
-    """발행 큐 통계 (어드민용). pub_status별 카운트 (deleted 포함 모든 상태)."""
+    """발행 큐 통계 (어드민용). pub_status별 카운트 (deleted 포함 모든 상태).
+    추가로 발행된 기사 중 미읽음 수를 'unread' 키로 포함."""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT pub_status, COUNT(*) FROM articles GROUP BY pub_status"
         ).fetchall()
-    return {r[0]: r[1] for r in rows}
+        stats = {r[0]: r[1] for r in rows}
+        unread = conn.execute(
+            "SELECT COUNT(*) FROM articles WHERE pub_status = 'published' AND is_read = 0"
+        ).fetchone()[0]
+    stats["unread"] = unread
+    return stats
 
 
 # ==================== Telegram Feed ====================

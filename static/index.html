@@ -211,6 +211,18 @@ body {
   font-weight: 600;
   vertical-align: middle;
 }
+.unread-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
 
 /* ── Layout ── */
 .container {
@@ -902,15 +914,19 @@ async function search(offset = 0) {
     const pendingBadge = qData.pending > 0
       ? ` <span class="pending-badge">대기 ${qData.pending}건</span>`
       : '';
+    const unreadBadge = qData.unread > 0
+      ? ` <span class="unread-badge">안읽음 ${qData.unread}건</span>`
+      : '';
+    const badges = pendingBadge + unreadBadge;
 
     if (data.items.length === 0) {
       cardsEl.innerHTML = '';
       document.getElementById('pagination').innerHTML = '';
-      statsEl.innerHTML = '검색 결과가 없습니다.' + pendingBadge;
+      statsEl.innerHTML = '검색 결과가 없습니다.' + badges;
       return;
     }
 
-    statsEl.innerHTML = `${data.total}건 (${offset+1}~${Math.min(offset+PAGE_SIZE, data.total)}번째)` + pendingBadge;
+    statsEl.innerHTML = `${data.total}건 (${offset+1}~${Math.min(offset+PAGE_SIZE, data.total)}번째)` + badges;
     cardsEl.innerHTML = data.items.map(renderCard).join('');
     renderPagination(data.total, offset);
 
