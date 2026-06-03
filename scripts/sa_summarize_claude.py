@@ -18,8 +18,9 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
-sys.path.insert(0, "/Users/yhandhs/Documents/sa-dashboard")
+sys.path.insert(0, str(REPO_ROOT))
 
 import db  # noqa: E402
 

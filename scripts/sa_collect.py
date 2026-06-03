@@ -20,11 +20,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-# extract_sa_urls는 동일 디렉토리
+# extract_sa_urls는 동일 디렉토리, db 모듈은 repo 루트(scripts의 상위)
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
-# sa-dashboard db 모듈
-sys.path.insert(0, '/Users/yhandhs/Documents/sa-dashboard')
+sys.path.insert(0, str(REPO_ROOT))
 import db  # noqa: E402
 
 TICKER_PREFIX = re.compile(r'^([A-Z0-9][A-Z0-9.,\s]{0,40}[A-Z0-9])\s*:\s')
@@ -44,7 +44,7 @@ def ticker_from_subject(subject: str) -> str:
 def run_extract() -> list[str]:
     """extract_sa_urls.py 실행 → stdout 줄 리스트."""
     result = subprocess.run(
-        ['python3', str(SCRIPT_DIR / 'extract_sa_urls.py')],
+        [sys.executable, str(SCRIPT_DIR / 'extract_sa_urls.py')],
         capture_output=True, text=True, timeout=120,
     )
     return result.stdout.splitlines()

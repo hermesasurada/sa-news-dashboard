@@ -18,13 +18,14 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 from typing import Optional, Dict, Any
 
 from curl_cffi import requests as curl_requests
 # playwright는 lazy import (parse_with_playwright_stealth 내부).
 # system python처럼 playwright 미설치 환경에서도 Jina/curl_cffi fallback이 동작하도록 모듈 로드를 막지 않음.
 
-PW_PROFILE_DIR = "/Users/yhandhs/Documents/sa-dashboard/pw_profile"
+PW_PROFILE_DIR = str(Path(__file__).resolve().parent / "pw_profile")
 
 STEALTH_INIT = """
 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});

@@ -18,9 +18,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from extract_sa_urls import parse_email_date_to_kst  # noqa: E402
+import db  # noqa: E402
 
-DB = '/Users/yhandhs/Documents/sa-dashboard/sa_news.db'
+DB = str(db.DB_PATH)
 
 
 def fetch_email_times():

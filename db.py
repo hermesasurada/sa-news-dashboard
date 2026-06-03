@@ -8,6 +8,10 @@ from typing import Optional
 
 DB_PATH = Path(__file__).parent / "sa_news.db"
 
+# Telegram 피드 원본(Obsidian vault) 루트. 환경변수로 재정의 가능.
+import os as _os
+ASURADA_DIR = Path(_os.environ.get("ASURADA_DIR", str(Path.home() / "Documents" / "Asurada")))
+
 CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS articles (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -559,7 +563,7 @@ def get_telegram_feed_original(feed_id: int) -> dict:
         return {"error": "Not found"}
 
     original_path = row[0]
-    full_path = Path("/Users/yhandhs/Documents/Asurada") / original_path
+    full_path = ASURADA_DIR / original_path
 
     if not full_path.exists():
         # .md 확장자 자동 추가 시도

@@ -2,6 +2,7 @@
 """
 Telegram FEED 파일들을 DB에 마이그레이션하는 스크립트
 """
+import os
 import re
 import json
 from pathlib import Path
@@ -9,7 +10,8 @@ from datetime import datetime, timezone, timedelta
 import sqlite3
 
 DB_PATH = Path(__file__).parent / "sa_news.db"
-TELEGRAM_ROOT = Path("/Users/yhandhs/Documents/Asurada/Telegram")
+ASURADA_DIR = Path(os.environ.get("ASURADA_DIR", str(Path.home() / "Documents" / "Asurada")))
+TELEGRAM_ROOT = ASURADA_DIR / "Telegram"
 
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
