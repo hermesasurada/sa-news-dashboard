@@ -155,50 +155,6 @@ def init_db():
     print(f"DB initialized: {DB_PATH}")
 
 
-def insert_article(
-    email_id: str = None,
-    ticker: str = "",
-    original_title: str = "",
-    company_name: str = "",
-    headline: str = "",
-    summary_core: str = "",
-    summary_details=None,
-    tag: str = "",
-    ticker_color: str = "blue",
-    tag_color: str = "blue",
-    article_url: str = "",
-    email_time_et: str = "",
-    last_modified: str = None,
-):
-    """기사 1건 삽입. email_id 중복이면 None 반환. pub_status는 'published' 고정 (legacy 단일-stage 호환용)."""
-    import datetime
-    if last_modified is None:
-        last_modified = datetime.datetime.now().strftime("%Y-%m-%d %H:%M KST")
-    with get_conn() as conn:
-        try:
-            cur = conn.execute(
-                """
-                INSERT INTO articles
-                  (email_id, ticker, original_title, company_name,
-                   headline, summary_core, summary_details,
-                   tag, ticker_color, tag_color, article_url,
-                   email_time_et, last_modified, pub_status)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    email_id,
-                    ticker, original_title, company_name,
-                    headline, summary_core,
-                    json.dumps(summary_details, ensure_ascii=False),
-                    tag, ticker_color, tag_color, article_url,
-                    email_time_et, last_modified, 'published',
-                ),
-            )
-            return cur.lastrowid
-        except sqlite3.IntegrityError:
-            return None  # 중복
-
-
 def query_articles(
     q: str = "",
     ticker: str = "",
