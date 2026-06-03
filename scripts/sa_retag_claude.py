@@ -17,37 +17,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, "/Users/yhandhs/Documents/sa-dashboard")
+SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
+sys.path.insert(0, str(SCRIPT_DIR.parent))
 import db  # noqa: E402
-
-
-def _version_key(path: Path):
-    for part in path.parts:
-        if re.fullmatch(r"\d+(?:\.\d+)+", part):
-            return tuple(int(x) for x in part.split("."))
-    return ()
-
-
-def resolve_claude_bin() -> str:
-    """Resolve Claude CLI path without pinning a versioned app bundle."""
-    env_bin = os.environ.get("CLAUDE_BIN") or os.environ.get("CLAUDE_CODE_BIN")
-    if env_bin:
-        return str(Path(env_bin).expanduser())
-
-    app_support = Path.home() / "Library/Application Support/Claude"
-    candidates = [
-        *app_support.glob("claude-code/*/claude.app/Contents/MacOS/claude"),
-        *app_support.glob("claude-code-vm/*/claude"),
-    ]
-    candidates = [p for p in candidates if p.is_file()]
-    if candidates:
-        return str(max(candidates, key=lambda p: (_version_key(p), "claude.app" in str(p))))
-
-    return "claude"
-
-
-CLAUDE_BIN = resolve_claude_bin()
-CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "sonnet")
+from sa_claude_cli import call_claude, extract_json  # noqa: E402
 
 _PROMPT_TMPL = """\
 다음은 한국어 금융 뉴스 요약 텍스트입니다.
@@ -68,58 +42,6 @@ _PROMPT_TMPL = """\
 === 텍스트 ===
 {text}
 """
-
-
-def call_claude(prompt: str) -> str | None:
-    try:
-        proc = subprocess.Popen(
-            [CLAUDE_BIN, "--output-format", "stream-json", "--verbose",
-             "--model", CLAUDE_MODEL, "-p", prompt],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, encoding="utf-8",
-        )
-        result_text = None
-        for line in proc.stdout:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                ev = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if ev.get("type") == "result" and ev.get("subtype") == "success":
-                result_text = ev.get("result", "")
-            elif ev.get("type") == "assistant" and result_text is None:
-                for blk in ev.get("message", {}).get("content", []):
-                    if blk.get("type") == "text":
-                        result_text = blk.get("text", "")
-        proc.wait(timeout=60)
-        if proc.returncode != 0:
-            err = proc.stderr.read(200)
-            print(f"     Claude CLI 오류: {err}", file=sys.stderr)
-            return None
-        return (result_text or "").strip() or None
-    except Exception as e:
-        print(f"     Claude CLI 실패: {e}", file=sys.stderr)
-        return None
-
-
-def extract_json(text: str) -> dict | None:
-    text = text.strip()
-    m = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-    if m:
-        text = m.group(1).strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    m2 = re.search(r"\{[\s\S]*\}", text)
-    if m2:
-        try:
-            return json.loads(m2.group())
-        except json.JSONDecodeError:
-            pass
-    return None
 
 
 def build_text(row: dict) -> str:
