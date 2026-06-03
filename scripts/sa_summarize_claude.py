@@ -24,6 +24,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import db  # noqa: E402
 from sa_claude_cli import call_claude, extract_json  # noqa: E402
+from sa_lock import single_instance  # noqa: E402
 
 # ── 프롬프트 ──────────────────────────────────────────────────────────────
 _PROMPT_TMPL = """\
@@ -191,7 +192,7 @@ def main() -> None:
     args = p.parse_args()
 
     if args.article_id:
-        # due 조건 무시하고 직접 조회
+        # due 조건 무시하고 직접 조회 (수동 단건 — 락 불필요)
         with db.get_conn() as conn:
             r = conn.execute(
                 "SELECT id, ticker, original_title, article_url, retry_count "
@@ -203,7 +204,12 @@ def main() -> None:
             sys.exit(1)
         process_article(dict(r))
     else:
-        run_batch(args.batch)
+        # cron 틱 겹침 방지 — 이전 배치가 아직 돌고 있으면 skip
+        with single_instance("sa-publish") as ok:
+            if not ok:
+                print("SA summarize (claude): 이전 배치 실행 중 — skip", file=sys.stderr)
+                return
+            run_batch(args.batch)
 
 
 if __name__ == "__main__":

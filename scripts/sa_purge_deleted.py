@@ -48,10 +48,9 @@ def main() -> None:
         return
 
     purged = db.purge_old_deleted(days=args.days)
+    # no_agent cron: 처리 건이 있을 때만 출력(=전달). 0건이면 무음.
     if purged:
         print(f"SA purge: {args.days}일 경과 영구삭제 {purged}건 (행 유지)")
-    else:
-        print(f"SA purge: {args.days}일 경과 영구삭제 대상 없음")
 
 
 if __name__ == "__main__":

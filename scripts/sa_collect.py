@@ -26,6 +26,7 @@ REPO_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 import db  # noqa: E402
+from sa_lock import single_instance  # noqa: E402
 
 TICKER_PREFIX = re.compile(r'^([A-Z0-9][A-Z0-9.,\s]{0,40}[A-Z0-9])\s*:\s')
 
@@ -112,4 +113,9 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # cron 틱 겹침 방지 (extract 지연 시 다음 사이클과 겹침 방지)
+    with single_instance("sa-collect") as ok:
+        if not ok:
+            print("SA collect: 이전 수집 실행 중 — skip", file=sys.stderr)
+        else:
+            main()
