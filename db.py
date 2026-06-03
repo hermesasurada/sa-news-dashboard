@@ -206,15 +206,18 @@ def query_articles(
     date_to: str = "",
     sort_by: str = "email_time_et",  # email_time_et | last_modified
     unread_only: bool = False,
+    deleted: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
-    """기사 목록 조회. pub_status='published'만 자동 노출 (pending/failed/deleted 제외).
+    """기사 목록 조회. 기본은 pub_status='published'만 노출.
+    deleted=True 이면 휴지통(pub_status='deleted')만 노출.
     정렬 기본: email_time_et DESC → email_id DESC.
     날짜 필터는 email_time_et 기준 (YYYY-MM-DD)."""
     params = []
     joins = ""
-    wheres = ["articles.pub_status = 'published'"]
+    wheres = ["articles.pub_status = 'deleted'"] if deleted \
+        else ["articles.pub_status = 'published'"]
 
     if q:
         joins = "JOIN articles_fts ON articles.id = articles_fts.rowid"
@@ -328,6 +331,16 @@ def delete_article(article_id: int) -> bool:
     with get_conn() as conn:
         cur = conn.execute(
             "UPDATE articles SET pub_status = 'deleted' WHERE id = ? AND pub_status != 'deleted'",
+            (article_id,),
+        )
+        return cur.rowcount > 0
+
+
+def restore_article(article_id: int) -> bool:
+    """휴지통 기사 복원 (pub_status='deleted' → 'published'). 삭제 상태가 아니면 False."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE articles SET pub_status = 'published' WHERE id = ? AND pub_status = 'deleted'",
             (article_id,),
         )
         return cur.rowcount > 0

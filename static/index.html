@@ -160,6 +160,43 @@ body {
   font-weight: 600;
 }
 
+/* ── 휴지통 보기 토글 ── */
+.btn-trash-view {
+  height: 38px;
+  width: 40px;
+  padding: 0;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+}
+.btn-trash-view:hover { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+.btn-trash-view.active {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #f87171;
+}
+
+/* ── 복원 버튼 (휴지통 카드) ── */
+.restore-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #059669;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 6px;
+}
+.restore-btn:hover { color: #047857; }
+
 /* ── 미읽음 카드 표시 ── */
 .card-unread {
   border-left: 3px solid #3b82f6;
@@ -595,7 +632,7 @@ body {
   <div class="search-bar">
     <input type="text" id="q" placeholder="검색 (제목, 회사명, 티커, 요약...)" onkeydown="if(event.key==='Enter') search(0)" />
     <select id="ticker-filter" onchange="search(0)"><option value="">전체 티커</option></select>
-    <input type="date" id="date-filter" title="날짜 (이메일 수신시각)" onchange="search(0)" />
+    <input type="date" id="date-filter" title="날짜 (이메일 수신시각)" onchange="search(0)" onclick="try{this.showPicker()}catch(e){}" />
     <button class="btn-sort" id="sort-toggle" onclick="toggleSort()">
       <span id="sort-label">이메일시간순</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
@@ -605,6 +642,9 @@ body {
     <button class="btn-unread" id="unread-filter" onclick="toggleUnreadFilter()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
       미읽음만
+    </button>
+    <button class="btn-trash-view" id="trash-view" onclick="toggleTrashView()" title="휴지통 (삭제된 기사)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
     </button>
   </div>
 </div>
@@ -617,11 +657,13 @@ body {
 const PAGE_SIZE = 15;
 let currentOffset = 0;
 let currentSort = 'email_time_et';
+let trashView = false;
 
 /* ── SVG Icons ── */
 const SVG_EYE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const SVG_EYE_OFF = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
 const SVG_TRASH = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>`;
+const SVG_RESTORE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`;
 
 /* ── Filters ── */
 async function loadFilters() {
@@ -664,6 +706,7 @@ function getParams(offset) {
   if (dateVal) { p.set('date_from', dateVal); p.set('date_to', dateVal); }
   if (document.getElementById('unread-filter').classList.contains('active'))
     p.set('unread_only', 'true');
+  if (trashView) p.set('deleted', 'true');
   p.set('limit', PAGE_SIZE);
   p.set('offset', offset);
   return p;
@@ -731,9 +774,11 @@ function renderCard(a) {
   <div class="card-footer">
     <span class="footer-left">${footerMeta}</span>
     <div class="footer-actions">
-      <button class="${readBtnClass}" onclick="toggleRead(${a.id}, this)" title="${readBtnTitle}">${isRead ? SVG_EYE_OFF : SVG_EYE}</button>
       <a href="${a.article_url}" target="_blank" rel="noopener" class="link-btn">원문보기</a>
-      <button class="delete-btn" onclick="deleteCard(${a.id}, this)" title="삭제">${SVG_TRASH}</button>
+      ${trashView
+        ? `<button class="restore-btn" onclick="restoreCard(${a.id}, this)" title="복원">${SVG_RESTORE}복원</button>`
+        : `<button class="${readBtnClass}" onclick="toggleRead(${a.id}, this)" title="${readBtnTitle}">${isRead ? SVG_EYE_OFF : SVG_EYE}</button>
+      <button class="delete-btn" onclick="deleteCard(${a.id}, this)" title="삭제">${SVG_TRASH}</button>`}
     </div>
   </div>
 </div>`;
@@ -917,16 +962,17 @@ async function search(offset = 0) {
     const unreadBadge = qData.unread > 0
       ? ` <span class="unread-badge">안읽음 ${qData.unread}건</span>`
       : '';
-    const badges = pendingBadge + unreadBadge;
+    const badges = trashView ? '' : (pendingBadge + unreadBadge);
+    const trashLabel = trashView ? '🗑 휴지통 · ' : '';
 
     if (data.items.length === 0) {
       cardsEl.innerHTML = '';
       document.getElementById('pagination').innerHTML = '';
-      statsEl.innerHTML = '검색 결과가 없습니다.' + badges;
+      statsEl.innerHTML = (trashView ? '🗑 휴지통이 비어있습니다.' : '검색 결과가 없습니다.') + badges;
       return;
     }
 
-    statsEl.innerHTML = `${data.total}건 (${offset+1}~${Math.min(offset+PAGE_SIZE, data.total)}번째)` + badges;
+    statsEl.innerHTML = trashLabel + `${data.total}건 (${offset+1}~${Math.min(offset+PAGE_SIZE, data.total)}번째)` + badges;
     cardsEl.innerHTML = data.items.map(renderCard).join('');
     renderPagination(data.total, offset);
 
@@ -951,6 +997,14 @@ function toggleUnreadFilter() {
   search(0);
 }
 
+function toggleTrashView() {
+  trashView = !trashView;
+  document.getElementById('trash-view').classList.toggle('active', trashView);
+  // 휴지통 보기에서는 미읽음 필터 해제 (혼동 방지)
+  if (trashView) document.getElementById('unread-filter').classList.remove('active');
+  search(0);
+}
+
 function reset() {
   document.getElementById('q').value = '';
   document.getElementById('ticker-filter').value = '';
@@ -959,7 +1013,33 @@ function reset() {
   document.getElementById('sort-toggle').classList.remove('alt');
   document.getElementById('date-filter').value = '';
   document.getElementById('unread-filter').classList.remove('active');
+  trashView = false;
+  document.getElementById('trash-view').classList.remove('active');
   search(0);
+}
+
+/* ── 휴지통 카드 복원 ── */
+function restoreCard(articleId, element) {
+  const card = element.closest('.card');
+  if (card.dataset.restoring) return;
+  card.dataset.restoring = '1';
+  card.classList.add('card-deleting');
+
+  fetch(`/api/articles/${articleId}/restore`, { method: 'POST' })
+    .then(res => {
+      if (res.ok) {
+        card.remove();
+      } else {
+        card.classList.remove('card-deleting');
+        delete card.dataset.restoring;
+        showToast('복원 실패', null, null);
+      }
+    })
+    .catch(() => {
+      card.classList.remove('card-deleting');
+      delete card.dataset.restoring;
+      showToast('복원 중 오류 발생', null, null);
+    });
 }
 
 document.getElementById('q').addEventListener('keydown', e => {

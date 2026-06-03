@@ -33,6 +33,7 @@ def get_articles(
     date_to: str = Query("", description="종료 날짜 YYYY-MM-DD (email_time_et 기준)"),
     sort_by: str = Query("email_time_et", description="정렬 기준: email_time_et | last_modified"),
     unread_only: bool = Query(False, description="미읽음만 보기"),
+    deleted: bool = Query(False, description="휴지통(삭제됨)만 보기"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
@@ -41,6 +42,7 @@ def get_articles(
         date_from=date_from, date_to=date_to,
         sort_by=sort_by,
         unread_only=unread_only,
+        deleted=deleted,
         limit=limit, offset=offset,
     )
 
@@ -105,6 +107,16 @@ def delete_article_endpoint(article_id: int):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Article not found")
     return {"status": "deleted", "id": article_id}
+
+
+@app.post("/api/articles/{article_id}/restore")
+def restore_article_endpoint(article_id: int):
+    """휴지통 기사 복원."""
+    success = db.restore_article(article_id)
+    if not success:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Article not found or not deleted")
+    return {"status": "restored", "id": article_id}
 
 
 # ==================== Telegram Feed API ====================
