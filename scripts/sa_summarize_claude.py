@@ -273,6 +273,14 @@ def process_article(row: dict) -> bool:
 # ── 배치 실행 ──────────────────────────────────────────────────────────────
 
 def run_batch(batch_size: int) -> None:
+    # 휴지통 30일 경과분 영구삭제 (세부 텍스트 비우고 행만 유지)
+    try:
+        purged = db.purge_old_deleted(days=30)
+        if purged:
+            print(f"SA summarize (claude): 30일 경과 영구삭제 {purged}건 (행 유지)")
+    except Exception as e:
+        print(f"SA summarize (claude): purge 실패 — {e}", file=sys.stderr)
+
     rows = db.get_pending_due(batch_size=batch_size)
     if not rows:
         print("SA summarize (claude): pending 없음")

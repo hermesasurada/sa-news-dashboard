@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS articles (
     article_url     TEXT NOT NULL,
     email_time_et   TEXT,
     last_modified   TEXT,
-    pub_status      TEXT NOT NULL DEFAULT 'pending',  -- 'pending'|'published'|'failed'|'deleted'
+    pub_status      TEXT NOT NULL DEFAULT 'pending',  -- 'pending'|'published'|'failed'|'deleted'|'purged'(30일경과 영구삭제,행만유지)
     retry_count     INTEGER NOT NULL DEFAULT 0,
     last_attempt    TEXT,
     fail_reason     TEXT
@@ -327,13 +327,44 @@ def mark_article_read(article_id: int, is_read: bool = True) -> bool:
 
 
 def delete_article(article_id: int) -> bool:
-    """기사 소프트 삭제 (pub_status='deleted'). 이미 삭제된 레코드면 False."""
+    """기사 소프트 삭제 (pub_status='deleted'). 이미 삭제된 레코드면 False.
+    last_modified를 삭제 시각으로 갱신 → 30일 경과 영구삭제(purge) 기준이 됨."""
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE articles SET pub_status = 'deleted' WHERE id = ? AND pub_status != 'deleted'",
-            (article_id,),
+            "UPDATE articles SET pub_status = 'deleted', last_modified = ? "
+            "WHERE id = ? AND pub_status != 'deleted'",
+            (_now_kst(), article_id),
         )
         return cur.rowcount > 0
+
+
+def purge_old_deleted(days: int = 30) -> int:
+    """삭제(deleted) 후 N일 경과한 행의 세부 텍스트를 영구삭제하여 저장공간 회수.
+    - row 자체는 유지(email_id UNIQUE 보존 → 재수집/재처리 방지)
+    - pub_status='purged'로 전환 → 휴지통(pub_status='deleted')에서도 조회되지 않음
+    - 재처리는 pub_status='pending'만 대상이므로 'purged'는 안전
+    삭제 시점(last_modified)의 날짜 기준으로 경과 여부 판단. DB 컬럼 추가 없음.
+    반환: 영구삭제 처리된 행 수."""
+    cutoff = (_dt.datetime.now() - _dt.timedelta(days=days)).strftime("%Y-%m-%d")
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE articles
+               SET original_title  = '',
+                   company_name    = '',
+                   headline        = '',
+                   summary_core    = '',
+                   summary_details = '[]',
+                   tag             = '',
+                   fail_reason     = NULL,
+                   pub_status      = 'purged'
+             WHERE pub_status = 'deleted'
+               AND last_modified IS NOT NULL
+               AND substr(last_modified, 1, 10) < ?
+            """,
+            (cutoff,),
+        )
+        return cur.rowcount
 
 
 def restore_article(article_id: int) -> bool:
