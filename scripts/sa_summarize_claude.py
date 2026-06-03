@@ -57,7 +57,7 @@ _PROMPT_TMPL = """\
 아래 JSON 형식으로만 응답하세요. JSON 외의 텍스트·설명·마크다운 코드블럭은 절대 출력하지 마세요.
 
 출력 형식 (한 줄, key 순서 고정):
-{{"ticker":"AAPL, MSFT","company_name":"Apple·Microsoft","headline":"한국어제목","summary_core":"핵심2~3문장","summary_details":["포인트1","포인트2","포인트3","포인트4"],"tag":"테마","ticker_color":"blue","tag_color":"blue"}}
+{{"ticker":"AAPL, MSFT","company_name":"Apple·Microsoft","headline":"한국어제목","summary_details":["포인트1","포인트2","포인트3","포인트4"],"ticker_color":"blue"}}
 
 규칙:
 - ticker: 기사에 명시적으로 언급된 기업들의 거래소 티커 심볼. 쉼표+공백으로 구분 (예: "NVDA, AMD").
@@ -67,10 +67,9 @@ _PROMPT_TMPL = """\
   한국어 번역·음차 절대 금지. 티커 기호(AAPL 등) 포함 금지.
 - headline: 티커 prefix 금지. 구체적이고 정보량 있는 한국어 제목. 핵심 수치·방향·이벤트 포함.
   예) 'TSLA: 테슬라 가격 인상' ✗ → 'Tesla, 2년 만에 첫 모델 Y 가격 인상' ✓
-- summary_core: 핵심 2~3문장. 분석가 이름·목표주가·수치·날짜 반드시 포함.
 - summary_details: 4~6개 배열. 각 항목 완결 문장. '분석가 X는 Y라고 전망했다' 형식 선호.
-- tag: 기사 핵심 테마 1개 단어/구. # 기호 없이. 이모지 금지. (예: 실적, 목표주가, 등급변경, M&A)
-- ticker_color / tag_color: blue|green|red|orange|yellow|purple|gray 중 1개.
+  분석가 이름·목표주가·수치·날짜 등 핵심 정보를 반드시 포함.
+- ticker_color: blue|green|red|orange|yellow|purple|gray 중 1개.
   상승·긍정=green, 하락·부정=red, 중립·기타=blue
 - 외국 기업·인명·약품명 = 영문 원어 유지. 한국 기업만 한국어 유지.
   음차 금지 예: 앤티로픽→Anthropic, 파란티어→Palantir, 애플→Apple, 테슬라→Tesla, 엔비디아→Nvidia
@@ -172,17 +171,16 @@ def validate(d: dict) -> dict:
     d["ticker"] = ", ".join(valid_tickers)
     d["company_name"] = str(d.get("company_name") or "").strip()
     d["headline"] = str(d.get("headline") or "").strip()
-    d["summary_core"] = str(d.get("summary_core") or "").strip()
+    # summary_core / tag 는 더 이상 생성하지 않음 — 빈 값으로 고정
+    d["summary_core"] = ""
     details = d.get("summary_details") or []
     if not isinstance(details, list):
         details = [str(details)]
     d["summary_details"] = [str(x).strip() for x in details if str(x).strip()][:6]
-    tag = str(d.get("tag") or "").strip().lstrip("#")
-    d["tag"] = tag
+    d["tag"] = ""
     tc = str(d.get("ticker_color") or "blue").lower()
     d["ticker_color"] = tc if tc in _VALID_COLORS else "blue"
-    tgc = str(d.get("tag_color") or "blue").lower()
-    d["tag_color"] = tgc if tgc in _VALID_COLORS else "blue"
+    d["tag_color"] = "blue"
     return d
 
 
@@ -246,8 +244,8 @@ def process_article(row: dict) -> bool:
         return False
 
     data = validate(data)
-    if not data["headline"] or not data["summary_core"]:
-        reason = f"필수 필드 누락: headline={bool(data['headline'])} summary_core={bool(data['summary_core'])}"
+    if not data["headline"] or not data["summary_details"]:
+        reason = f"필수 필드 누락: headline={bool(data['headline'])} summary_details={bool(data['summary_details'])}"
         print(f"     {reason}", file=sys.stderr)
         db.mark_attempt_failed(article_id, reason[:200])
         return False

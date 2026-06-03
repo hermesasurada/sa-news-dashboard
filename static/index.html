@@ -710,9 +710,9 @@ function renderCard(a) {
   </div>
   ${originalTitle}
   <hr class="card-divider">
-  <div class="card-summary"><strong>핵심</strong>&nbsp;${a.summary_core}</div>
+  ${a.summary_core ? `<div class="card-summary"><strong>핵심</strong>&nbsp;${a.summary_core}</div>` : ''}
   <div class="card-details">
-    <strong>상세</strong>
+    ${a.summary_core ? '<strong>상세</strong>' : ''}
     <ul>${details}</ul>
   </div>
   ${combinedBadges ? `<div class="card-tickers">${combinedBadges}</div>` : ''}
