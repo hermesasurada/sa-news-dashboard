@@ -877,8 +877,10 @@ function renderPagination(total, offset) {
   if (totalPages <= 1) { pag.innerHTML = ''; return; }
 
   let html = `<button onclick="search(${(currentPage-1)*PAGE_SIZE})" ${currentPage===0?'disabled':''}>◀ 이전</button>`;
-  const start = Math.max(0, currentPage - 5);
-  const end = Math.min(totalPages - 1, currentPage + 5);
+  // 한 번에 최대 10개씩 블록 단위로 노출 (1~10, 11~20 …)
+  const BLOCK = 10;
+  const start = Math.floor(currentPage / BLOCK) * BLOCK;
+  const end = Math.min(totalPages - 1, start + BLOCK - 1);
   for (let i = start; i <= end; i++) {
     html += `<button class="${i===currentPage?'active':''}" onclick="search(${i*PAGE_SIZE})">${i+1}</button>`;
   }
