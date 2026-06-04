@@ -364,8 +364,10 @@ body {
   content: attr(data-company);
   position: absolute;
   bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%) scale(0.92);
+  /* 배지 왼쪽 모서리 기준으로 오른쪽으로 펼침 → 좌측 끝 배지에서도 화면 밖으로 안 나감 */
+  left: 0;
+  transform: scale(0.92);
+  transform-origin: bottom left;
   background: #1f2937;
   color: #fff;
   padding: 4px 9px;
@@ -373,6 +375,9 @@ body {
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
+  max-width: 80vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
   letter-spacing: 0;
   pointer-events: none;
   opacity: 0;
@@ -381,7 +386,7 @@ body {
 }
 .ticker-badge[data-company]:hover::after {
   opacity: 1;
-  transform: translateX(-50%) scale(1);
+  transform: scale(1);
 }
 
 /* ── Card Meta ── */
@@ -474,7 +479,6 @@ body {
   align-items: center;
   margin-top: auto;
   padding-top: 10px;
-  border-top: 1px solid #f3f4f6;
 }
 .footer-left {
   font-size: 10px;
