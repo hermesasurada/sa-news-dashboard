@@ -498,6 +498,78 @@ def get_queue_stats() -> dict:
     return stats
 
 
+def get_dashboard_stats() -> dict:
+    """대시보드 통계 — pub_status='published'(삭제/대기/실패 제외)를 모수로 집계.
+    기업별·일별·시간대별·감정(색상)·읽음 분포 반환."""
+    from collections import Counter
+
+    with get_conn() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM articles WHERE pub_status='published'"
+        ).fetchone()[0]
+        unread = conn.execute(
+            "SELECT COUNT(*) FROM articles WHERE pub_status='published' AND is_read=0"
+        ).fetchone()[0]
+
+        # 일별 (email_time_et = 'YYYY-MM-DD HH:MM KST' → 앞 10자 = 날짜)
+        daily = conn.execute(
+            """SELECT substr(email_time_et,1,10) AS d, COUNT(*)
+               FROM articles
+               WHERE pub_status='published' AND email_time_et IS NOT NULL AND email_time_et != ''
+               GROUP BY d ORDER BY d"""
+        ).fetchall()
+
+        # 시간대별 (12~13번째 글자 = 시)
+        hourly = conn.execute(
+            """SELECT substr(email_time_et,12,2) AS h, COUNT(*)
+               FROM articles
+               WHERE pub_status='published' AND length(email_time_et) >= 16
+               GROUP BY h ORDER BY h"""
+        ).fetchall()
+
+        # 감정(ticker_color) 분포
+        sentiment = dict(conn.execute(
+            "SELECT ticker_color, COUNT(*) FROM articles WHERE pub_status='published' GROUP BY ticker_color"
+        ).fetchall())
+
+        # 기업별 — 다중 ticker 행 분리 위해 원본 fetch
+        rows = conn.execute(
+            "SELECT ticker, company_name FROM articles WHERE pub_status='published'"
+        ).fetchall()
+
+    counts: Counter = Counter()
+    names: dict[str, str] = {}
+    for ticker, company in rows:
+        if not ticker:
+            continue
+        tks = [t.strip() for t in str(ticker).split(",")]
+        cos = [c.strip() for c in str(company or "").split("·")]
+        for i, t in enumerate(tks):
+            if not t or t.upper() == "NONE":
+                continue
+            counts[t] += 1
+            if t not in names:
+                names[t] = cos[i] if i < len(cos) else (cos[0] if cos else "")
+
+    companies = [
+        {"ticker": t, "name": names.get(t, ""), "count": c}
+        for t, c in counts.most_common(20)
+    ]
+
+    return {
+        "total": total,
+        "read": total - unread,
+        "unread": unread,
+        "company_count": len(counts),
+        "first_date": daily[0][0] if daily else None,
+        "last_date": daily[-1][0] if daily else None,
+        "daily": [{"date": d, "count": c} for d, c in daily],
+        "hourly": [{"hour": h, "count": c} for h, c in hourly],
+        "sentiment": sentiment,
+        "companies": companies,
+    }
+
+
 # ==================== Telegram Feed ====================
 
 def query_telegram_feeds(

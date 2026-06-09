@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📊 SA News 통계</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", sans-serif;
+    background: #f7f8fa;
+    color: #1f2937;
+    padding: 16px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .topbar h1 { font-size: 20px; font-weight: 800; }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 36px; padding: 0 14px;
+    background: #fff; color: #374151;
+    border: 1px solid #d1d5db; border-radius: 8px;
+    text-decoration: none; font-size: 13px; font-weight: 600;
+    white-space: nowrap;
+  }
+  .back-link:hover { background: #f1f5f9; }
+
+  /* ── Summary cards ── */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .stat-card {
+    background: #fff;
+    border: 1px solid #eef0f3;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+  .stat-card .label { font-size: 11px; color: #8b94a3; font-weight: 600; margin-bottom: 5px; }
+  .stat-card .value { font-size: 24px; font-weight: 800; line-height: 1.1; }
+  .stat-card .sub   { font-size: 11px; color: #9aa3b2; margin-top: 4px; }
+
+  /* ── Chart grid ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid #eef0f3;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    min-width: 0;
+  }
+  .panel.full { grid-column: 1 / -1; }
+  .panel h2 {
+    font-size: 13px; font-weight: 700; color: #374151;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .chart-wrap { position: relative; height: 260px; }
+  .chart-wrap.tall { height: 380px; }
+
+  /* ── Company table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #f1f3f5; }
+  th { font-size: 11px; color: #8b94a3; font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+  .tkr { font-weight: 700; color: #1e40af; }
+  .rank { color: #b6bdc9; width: 28px; }
+
+  .loading { text-align: center; color: #9aa3b2; padding: 60px 0; }
+
+  @media (max-width: 720px) {
+    .summary { grid-template-columns: repeat(2, 1fr); }
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>📊 뉴스 통계</h1>
+  <a class="back-link" href="/">← 대시보드로</a>
+</div>
+
+<div id="content"><div class="loading">불러오는 중…</div></div>
+
+<script>
+const PALETTE = {
+  blue:'#3b82f6', green:'#10b981', red:'#ef4444',
+  orange:'#f59e0b', yellow:'#eab308', purple:'#8b5cf6', gray:'#94a3b8'
+};
+
+async function load() {
+  let d;
+  try {
+    const res = await fetch('/api/stats');
+    d = await res.json();
+  } catch(e) {
+    document.getElementById('content').innerHTML = '<div class="loading">통계를 불러오지 못했습니다.</div>';
+    return;
+  }
+  render(d);
+}
+
+function render(d) {
+  const period = (d.first_date && d.last_date) ? `${d.first_date} ~ ${d.last_date}` : '-';
+  const days = d.daily.length || 1;
+  const avg = (d.total / days).toFixed(1);
+
+  document.getElementById('content').innerHTML = `
+    <div class="summary">
+      <div class="stat-card"><div class="label">총 기사</div><div class="value">${d.total.toLocaleString()}</div><div class="sub">삭제 제외</div></div>
+      <div class="stat-card"><div class="label">추적 기업</div><div class="value">${d.company_count.toLocaleString()}</div><div class="sub">티커 기준</div></div>
+      <div class="stat-card"><div class="label">수집 기간</div><div class="value" style="font-size:15px;padding-top:5px">${period}</div><div class="sub">${days}일 · 일평균 ${avg}건</div></div>
+      <div class="stat-card"><div class="label">안읽음</div><div class="value">${d.unread.toLocaleString()}</div><div class="sub">읽음 ${d.read.toLocaleString()}</div></div>
+    </div>
+
+    <div class="grid">
+      <div class="panel full">
+        <h2>📅 일별 기사 수</h2>
+        <div class="chart-wrap"><canvas id="dailyChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h2>🏢 기업별 Top 15</h2>
+        <div class="chart-wrap tall"><canvas id="companyChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h2>📈 감정 분포</h2>
+        <div class="chart-wrap"><canvas id="sentChart"></canvas></div>
+        <h2 style="margin-top:18px">⏰ 시간대별 분포 (KST)</h2>
+        <div class="chart-wrap" style="height:150px"><canvas id="hourChart"></canvas></div>
+      </div>
+      <div class="panel full">
+        <h2>🏢 기업별 기사 수 Top 20</h2>
+        <table>
+          <thead><tr><th class="rank">#</th><th>티커</th><th>기업명</th><th class="num">기사 수</th></tr></thead>
+          <tbody>
+            ${d.companies.map((c,i)=>`<tr><td class="rank">${i+1}</td><td class="tkr">${c.ticker}</td><td>${c.name||'-'}</td><td class="num">${c.count}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  drawCharts(d);
+}
+
+function drawCharts(d) {
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.color = '#6b7280';
+
+  // 일별
+  new Chart(document.getElementById('dailyChart'), {
+    type: 'bar',
+    data: {
+      labels: d.daily.map(x => x.date.slice(5)),
+      datasets: [{ label: '기사 수', data: d.daily.map(x => x.count),
+        backgroundColor: '#3b82f6', borderRadius: 3, maxBarThickness: 22 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{ y:{beginAtZero:true, grid:{color:'#f1f3f5'}}, x:{grid:{display:false}} } }
+  });
+
+  // 기업별 Top 15 (가로 막대)
+  const top = d.companies.slice(0, 15);
+  new Chart(document.getElementById('companyChart'), {
+    type: 'bar',
+    data: {
+      labels: top.map(c => c.ticker),
+      datasets: [{ label:'기사 수', data: top.map(c => c.count),
+        backgroundColor: '#6366f1', borderRadius: 3 }]
+    },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:(ctx)=>` ${top[ctx.dataIndex].name||top[ctx.dataIndex].ticker}: ${ctx.parsed.x}건`}}},
+      scales:{ x:{beginAtZero:true, grid:{color:'#f1f3f5'}}, y:{grid:{display:false}} } }
+  });
+
+  // 감정 분포 (긍정/부정/중립·기타)
+  const s = d.sentiment || {};
+  const pos = s.green || 0;
+  const neg = s.red || 0;
+  const neu = d.total - pos - neg;
+  new Chart(document.getElementById('sentChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['긍정', '부정', '중립·기타'],
+      datasets: [{ data:[pos, neg, neu],
+        backgroundColor:['#10b981','#ef4444','#94a3b8'], borderWidth:2, borderColor:'#fff' }]
+    },
+    options: { responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{legend:{position:'bottom', labels:{boxWidth:12, padding:12}}} }
+  });
+
+  // 시간대별 (0~23h, 누락시간 0채움)
+  const hmap = {}; (d.hourly||[]).forEach(x => hmap[parseInt(x.hour,10)] = x.count);
+  const hours = Array.from({length:24}, (_,h)=>h);
+  new Chart(document.getElementById('hourChart'), {
+    type: 'bar',
+    data: {
+      labels: hours.map(h => h),
+      datasets: [{ label:'기사 수', data: hours.map(h => hmap[h]||0),
+        backgroundColor:'#0ea5e9', borderRadius:2, maxBarThickness:14 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip:{callbacks:{title:(t)=>`${t[0].label}시`}}},
+      scales:{ y:{beginAtZero:true, grid:{color:'#f1f3f5'}, ticks:{maxTicksLimit:4}}, x:{grid:{display:false}, ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:12}} } }
+  });
+}
+
+load();
+</script>
+</body>
+</html>

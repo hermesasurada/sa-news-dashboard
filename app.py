@@ -52,6 +52,16 @@ def get_filters():
     return db.get_filter_options()
 
 
+@app.get("/api/stats")
+def get_stats():
+    return db.get_dashboard_stats()
+
+
+@app.get("/stats")
+def stats_page():
+    return FileResponse(BASE_DIR / "static" / "stats.html")
+
+
 @app.get("/api/queue_stats")
 def get_queue_stats():
     stats = db.get_queue_stats()
