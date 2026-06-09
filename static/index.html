@@ -729,17 +729,22 @@ function formatTime(et) {
   return `${m[2]}/${m[3]} ${m[4]}`;
 }
 
+// 사실상 같은 종목(클래스 차이)을 대표 티커로 병합 (db.TICKER_ALIASES와 동기 유지)
+const TICKER_ALIASES = { GOOGL:'GOOG', FOXA:'FOX', NWSA:'NWS', UAA:'UA' };
+const canonTicker = (t) => TICKER_ALIASES[t.toUpperCase()] || t;
+
 function extractTickers(a) {
   const map = new Map();
   const rawTicker = (a.ticker || '').trim();
   if (rawTicker && rawTicker.toUpperCase() !== 'NONE') {
     const tks = rawTicker.split(/[,·\s]+/).map(t => t.trim()).filter(t => /^[A-Z0-9.]{1,6}$/.test(t));
     const names = (a.company_name || '').split(/·/).map(n => n.trim()).filter(Boolean);
-    tks.forEach((t, i) => { if (t) map.set(t, names[i] || names[0] || ''); });
+    tks.forEach((t, i) => { const c = canonTicker(t); if (c && !map.has(c)) map.set(c, names[i] || names[0] || ''); });
   }
   const text = [a.summary_core || '', ...(a.summary_details || [])].join(' ');
   for (const m of text.matchAll(/\$([A-Z]{1,5})\b/g)) {
-    if (!map.has(m[1])) map.set(m[1], '');
+    const c = canonTicker(m[1]);
+    if (!map.has(c)) map.set(c, '');
   }
   return [...map.entries()].map(([ticker, name]) => ({ ticker, name }));
 }

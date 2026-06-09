@@ -85,6 +85,8 @@ def process(row: dict, dry_run: bool) -> bool:
 
     new_ticker = ", ".join(c["ticker"] for c in companies)
     new_company = "·".join(c["name"] for c in companies if c.get("name"))
+    # 동일 종목(GOOGL=GOOG 등) 티커 병합
+    new_ticker, new_company = db.canonicalize_tickers(new_ticker, new_company)
 
     print(f"     → ticker: {new_ticker}")
     print(f"     → company: {new_company}")

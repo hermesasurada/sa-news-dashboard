@@ -12,6 +12,35 @@ DB_PATH = Path(__file__).parent / "sa_news.db"
 import os as _os
 ASURADA_DIR = Path(_os.environ.get("ASURADA_DIR", str(Path.home() / "Documents" / "Asurada")))
 
+# 사실상 같은 종목(주식 클래스 차이 등)을 하나의 대표 티커로 병합.
+#   key(별칭, 대문자) → value(대표 티커). 필요 시 항목 추가.
+TICKER_ALIASES = {
+    "GOOGL": "GOOG",   # Alphabet Class A → Class C
+    "FOXA": "FOX",     # Fox Class A → Class B
+    "NWSA": "NWS",     # News Corp Class A → Class B
+    "UAA": "UA",       # Under Armour Class A → Class C
+}
+
+
+def canonicalize_tickers(ticker_str: str, company_str: str = "") -> tuple:
+    """다중 ticker 문자열에서 동일 종목(클래스 차이)을 대표 티커로 병합하고 중복 제거.
+    'GOOGL, GOOG' → 'GOOG'. company_name도 ticker 순서에 맞춰 정렬·중복 제거.
+    반환: (정규화 ticker_str, 정규화 company_str)."""
+    tks = [t.strip() for t in str(ticker_str or "").split(",") if t.strip()]
+    cos = [c.strip() for c in str(company_str or "").split("·")]
+    out_t, out_c, seen = [], [], set()
+    for i, t in enumerate(tks):
+        canon = TICKER_ALIASES.get(t.upper(), t)
+        if canon in seen:
+            continue  # 이미 대표 티커로 들어온 중복(클래스 별칭) 제거
+        seen.add(canon)
+        out_t.append(canon)
+        out_c.append(cos[i] if i < len(cos) else "")
+    new_ticker = ", ".join(out_t)
+    # company가 원래 비어있었으면 그대로 빈 값 유지
+    new_company = "·".join(out_c) if any(out_c) else company_str
+    return new_ticker, new_company
+
 CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS articles (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -268,7 +297,7 @@ def get_filter_options() -> dict:
             t = t.strip()
             if not t or t.upper() == 'NONE':
                 continue
-            tickers.add(t)
+            tickers.add(TICKER_ALIASES.get(t.upper(), t))  # GOOGL=GOOG 병합
     return {"tickers": sorted(tickers)}
 
 
@@ -422,6 +451,9 @@ def publish_article(
     last_modified=now, fail_reason=NULL.
     이미 published 아닌 row만 영향 (실패 → 발행 전환 포함)."""
     last_modified = _now_kst()
+    if ticker is not None:
+        # 동일 종목(GOOGL=GOOG 등) 티커 병합
+        ticker, company_name = canonicalize_tickers(ticker, company_name)
     with get_conn() as conn:
         if ticker is not None:
             cur = conn.execute(
@@ -560,11 +592,15 @@ def _split_ticker_counts(rows) -> tuple:
     for ticker, company in rows:
         if not ticker:
             continue
+        # 동일 종목(GOOGL=GOOG 등) 병합 후 집계 — 과거 데이터도 합산
+        ticker, company = canonicalize_tickers(ticker, company)
         tks = [t.strip() for t in str(ticker).split(",")]
         cos = [c.strip() for c in str(company or "").split("·")]
+        seen_row = set()
         for i, t in enumerate(tks):
-            if not t or t.upper() == "NONE":
+            if not t or t.upper() == "NONE" or t in seen_row:
                 continue
+            seen_row.add(t)  # 한 기사에서 같은 티커 중복 카운트 방지
             counts[t] += 1
             if t not in names:
                 names[t] = cos[i] if i < len(cos) else (cos[0] if cos else "")
