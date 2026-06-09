@@ -527,30 +527,12 @@ def get_dashboard_stats() -> dict:
                GROUP BY h ORDER BY h"""
         ).fetchall()
 
-        # 감정(ticker_color) 분포
-        sentiment = dict(conn.execute(
-            "SELECT ticker_color, COUNT(*) FROM articles WHERE pub_status='published' GROUP BY ticker_color"
-        ).fetchall())
-
         # 기업별 — 다중 ticker 행 분리 위해 원본 fetch
         rows = conn.execute(
             "SELECT ticker, company_name FROM articles WHERE pub_status='published'"
         ).fetchall()
 
-    counts: Counter = Counter()
-    names: dict[str, str] = {}
-    for ticker, company in rows:
-        if not ticker:
-            continue
-        tks = [t.strip() for t in str(ticker).split(",")]
-        cos = [c.strip() for c in str(company or "").split("·")]
-        for i, t in enumerate(tks):
-            if not t or t.upper() == "NONE":
-                continue
-            counts[t] += 1
-            if t not in names:
-                names[t] = cos[i] if i < len(cos) else (cos[0] if cos else "")
-
+    counts, names = _split_ticker_counts(rows)
     companies = [
         {"ticker": t, "name": names.get(t, ""), "count": c}
         for t, c in counts.most_common(20)
@@ -565,9 +547,87 @@ def get_dashboard_stats() -> dict:
         "last_date": daily[-1][0] if daily else None,
         "daily": [{"date": d, "count": c} for d, c in daily],
         "hourly": [{"hour": h, "count": c} for h, c in hourly],
-        "sentiment": sentiment,
         "companies": companies,
+        "weekly": get_weekly_rankings(weeks=4, top_n=8),
     }
+
+
+def _split_ticker_counts(rows) -> tuple:
+    """(ticker, company_name) 행 목록 → (Counter, {ticker:name}). 다중 ticker 분리."""
+    from collections import Counter
+    counts: Counter = Counter()
+    names: dict[str, str] = {}
+    for ticker, company in rows:
+        if not ticker:
+            continue
+        tks = [t.strip() for t in str(ticker).split(",")]
+        cos = [c.strip() for c in str(company or "").split("·")]
+        for i, t in enumerate(tks):
+            if not t or t.upper() == "NONE":
+                continue
+            counts[t] += 1
+            if t not in names:
+                names[t] = cos[i] if i < len(cos) else (cos[0] if cos else "")
+    return counts, names
+
+
+def get_weekly_rankings(weeks: int = 4, top_n: int = 8) -> dict:
+    """최근 N주(주=7일 버킷) 주차별 기업 기사수 랭킹. 순위 변동(bump chart)용.
+    오늘 기준 [오늘-6..오늘]이 최신 주. 각 주의 top_n 합집합을 series로 반환,
+    ranks[i]는 i번째 주 순위(top_n 밖이면 null), counts[i]는 해당 주 기사수."""
+    import datetime as dt
+
+    today = dt.date.today()
+    buckets = []  # 오래된→최신
+    for k in range(weeks - 1, -1, -1):
+        end = today - dt.timedelta(days=7 * k)
+        start = end - dt.timedelta(days=6)
+        buckets.append((start, end))
+
+    week_counts = []
+    names: dict[str, str] = {}
+    with get_conn() as conn:
+        for start, end in buckets:
+            rows = conn.execute(
+                """SELECT ticker, company_name FROM articles
+                   WHERE pub_status='published'
+                     AND substr(email_time_et,1,10) BETWEEN ? AND ?""",
+                (start.isoformat(), end.isoformat()),
+            ).fetchall()
+            c, nm = _split_ticker_counts(rows)
+            week_counts.append(c)
+            for t, n in nm.items():
+                names.setdefault(t, n)
+
+    # 주차별 순위(1-based, 기사수 desc → 동수는 ticker abc)
+    week_rank = []
+    for c in week_counts:
+        ordered = sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))
+        week_rank.append({t: i + 1 for i, (t, _) in enumerate(ordered)})
+
+    # 표시 대상: 4주 합계 상위 top_n 기업 (라인 수를 top_n개로 고정 → 가독성)
+    from collections import Counter
+    total_counts: Counter = Counter()
+    for c in week_counts:
+        total_counts.update(c)
+    selected = [t for t, _ in total_counts.most_common(top_n)]
+
+    series = []
+    for t in selected:
+        ranks, cnts = [], []
+        for i in range(len(buckets)):
+            r = week_rank[i].get(t)
+            ranks.append(r if (r is not None and r <= top_n) else None)
+            cnts.append(week_counts[i].get(t, 0))
+        best = min([r for r in ranks if r is not None], default=999)
+        series.append({
+            "ticker": t, "name": names.get(t, ""),
+            "ranks": ranks, "counts": cnts, "best": best,
+        })
+    series.sort(key=lambda s: (s["best"], s["ticker"]))
+
+    week_labels = [f"{s.month}/{s.day}~{e.month}/{e.day}" for s, e in buckets]
+    return {"top_n": top_n, "weeks": week_labels, "series": series}
 
 
 # ==================== Telegram Feed ====================

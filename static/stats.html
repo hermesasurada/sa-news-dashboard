@@ -34,7 +34,6 @@
   }
   .back-link:hover { background: #f1f5f9; }
 
-  /* ── Summary cards ── */
   .summary {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -52,7 +51,6 @@
   .stat-card .value { font-size: 24px; font-weight: 800; line-height: 1.1; }
   .stat-card .sub   { font-size: 11px; color: #9aa3b2; margin-top: 4px; }
 
-  /* ── Chart grid ── */
   .grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -69,25 +67,20 @@
   .panel.full { grid-column: 1 / -1; }
   .panel h2 {
     font-size: 13px; font-weight: 700; color: #374151;
-    margin-bottom: 12px;
+    margin-bottom: 4px;
     display: flex; align-items: center; gap: 6px;
   }
+  .panel .desc { font-size: 11px; color: #9aa3b2; margin-bottom: 12px; }
   .chart-wrap { position: relative; height: 260px; }
-  .chart-wrap.tall { height: 380px; }
-
-  /* ── Company table ── */
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #f1f3f5; }
-  th { font-size: 11px; color: #8b94a3; font-weight: 600; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
-  .tkr { font-weight: 700; color: #1e40af; }
-  .rank { color: #b6bdc9; width: 28px; }
+  .chart-wrap.tall { height: 360px; }
+  .chart-wrap.bump { height: 420px; }
 
   .loading { text-align: center; color: #9aa3b2; padding: 60px 0; }
 
   @media (max-width: 720px) {
     .summary { grid-template-columns: repeat(2, 1fr); }
     .grid { grid-template-columns: 1fr; }
+    .chart-wrap.bump { height: 360px; }
   }
 </style>
 </head>
@@ -101,20 +94,19 @@
 <div id="content"><div class="loading">불러오는 중…</div></div>
 
 <script>
-const PALETTE = {
-  blue:'#3b82f6', green:'#10b981', red:'#ef4444',
-  orange:'#f59e0b', yellow:'#eab308', purple:'#8b5cf6', gray:'#94a3b8'
-};
+const WD = ['일','월','화','수','목','금','토'];
+// 순위 라인용 8색 (뚜렷이 구분되는 팔레트)
+const LINE_COLORS = ['#ef4444','#3b82f6','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#64748b'];
+
+function weekdayLabel(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${dateStr.slice(5)} (${WD[d.getDay()]})`;
+}
 
 async function load() {
   let d;
-  try {
-    const res = await fetch('/api/stats');
-    d = await res.json();
-  } catch(e) {
-    document.getElementById('content').innerHTML = '<div class="loading">통계를 불러오지 못했습니다.</div>';
-    return;
-  }
+  try { d = await (await fetch('/api/stats')).json(); }
+  catch(e) { document.getElementById('content').innerHTML = '<div class="loading">통계를 불러오지 못했습니다.</div>'; return; }
   render(d);
 }
 
@@ -138,22 +130,18 @@ function render(d) {
       </div>
       <div class="panel">
         <h2>🏢 기업별 Top 15</h2>
+        <div class="desc">전체 기간 누적</div>
         <div class="chart-wrap tall"><canvas id="companyChart"></canvas></div>
       </div>
       <div class="panel">
-        <h2>📈 감정 분포</h2>
-        <div class="chart-wrap"><canvas id="sentChart"></canvas></div>
-        <h2 style="margin-top:18px">⏰ 시간대별 분포 (KST)</h2>
-        <div class="chart-wrap" style="height:150px"><canvas id="hourChart"></canvas></div>
+        <h2>⏰ 시간대별 분포 (KST)</h2>
+        <div class="desc">이메일 수신 시각 기준</div>
+        <div class="chart-wrap tall"><canvas id="hourChart"></canvas></div>
       </div>
       <div class="panel full">
-        <h2>🏢 기업별 기사 수 Top 20</h2>
-        <table>
-          <thead><tr><th class="rank">#</th><th>티커</th><th>기업명</th><th class="num">기사 수</th></tr></thead>
-          <tbody>
-            ${d.companies.map((c,i)=>`<tr><td class="rank">${i+1}</td><td class="tkr">${c.ticker}</td><td>${c.name||'-'}</td><td class="num">${c.count}</td></tr>`).join('')}
-          </tbody>
-        </table>
+        <h2>🏆 최근 4주 기업 순위 변동</h2>
+        <div class="desc">주차별 기사 수 순위 (위쪽이 1위) · 4주 합계 상위 ${d.weekly.top_n}개 기업</div>
+        <div class="chart-wrap bump"><canvas id="bumpChart"></canvas></div>
       </div>
     </div>
   `;
@@ -165,63 +153,119 @@ function drawCharts(d) {
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
   Chart.defaults.color = '#6b7280';
 
-  // 일별
+  // 일별 (요일 포함)
   new Chart(document.getElementById('dailyChart'), {
     type: 'bar',
     data: {
-      labels: d.daily.map(x => x.date.slice(5)),
-      datasets: [{ label: '기사 수', data: d.daily.map(x => x.count),
-        backgroundColor: '#3b82f6', borderRadius: 3, maxBarThickness: 22 }]
+      labels: d.daily.map(x => weekdayLabel(x.date)),
+      datasets: [{ label:'기사 수', data: d.daily.map(x => x.count),
+        backgroundColor: d.daily.map(x => {
+          const wd = new Date(x.date+'T00:00:00').getDay();
+          return (wd === 0 || wd === 6) ? '#cbd5e1' : '#3b82f6'; // 주말 회색
+        }), borderRadius: 3, maxBarThickness: 22 }]
     },
     options: { responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
-      scales:{ y:{beginAtZero:true, grid:{color:'#f1f3f5'}}, x:{grid:{display:false}} } }
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{title:(t)=>t[0].label}}},
+      scales:{ y:{beginAtZero:true, grid:{color:'#f1f3f5'}},
+               x:{grid:{display:false}, ticks:{maxRotation:60, minRotation:45, autoSkip:true, maxTicksLimit:16}} } }
   });
 
-  // 기업별 Top 15 (가로 막대)
+  // 기업별 Top 15
   const top = d.companies.slice(0, 15);
   new Chart(document.getElementById('companyChart'), {
     type: 'bar',
-    data: {
-      labels: top.map(c => c.ticker),
-      datasets: [{ label:'기사 수', data: top.map(c => c.count),
-        backgroundColor: '#6366f1', borderRadius: 3 }]
-    },
+    data: { labels: top.map(c => c.ticker),
+      datasets: [{ data: top.map(c => c.count), backgroundColor:'#6366f1', borderRadius:3 }] },
     options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false},
         tooltip:{callbacks:{label:(ctx)=>` ${top[ctx.dataIndex].name||top[ctx.dataIndex].ticker}: ${ctx.parsed.x}건`}}},
       scales:{ x:{beginAtZero:true, grid:{color:'#f1f3f5'}}, y:{grid:{display:false}} } }
   });
 
-  // 감정 분포 (긍정/부정/중립·기타)
-  const s = d.sentiment || {};
-  const pos = s.green || 0;
-  const neg = s.red || 0;
-  const neu = d.total - pos - neg;
-  new Chart(document.getElementById('sentChart'), {
-    type: 'doughnut',
-    data: {
-      labels: ['긍정', '부정', '중립·기타'],
-      datasets: [{ data:[pos, neg, neu],
-        backgroundColor:['#10b981','#ef4444','#94a3b8'], borderWidth:2, borderColor:'#fff' }]
-    },
-    options: { responsive:true, maintainAspectRatio:false, cutout:'62%',
-      plugins:{legend:{position:'bottom', labels:{boxWidth:12, padding:12}}} }
-  });
-
-  // 시간대별 (0~23h, 누락시간 0채움)
+  // 시간대별
   const hmap = {}; (d.hourly||[]).forEach(x => hmap[parseInt(x.hour,10)] = x.count);
   const hours = Array.from({length:24}, (_,h)=>h);
   new Chart(document.getElementById('hourChart'), {
     type: 'bar',
-    data: {
-      labels: hours.map(h => h),
-      datasets: [{ label:'기사 수', data: hours.map(h => hmap[h]||0),
-        backgroundColor:'#0ea5e9', borderRadius:2, maxBarThickness:14 }]
-    },
+    data: { labels: hours,
+      datasets: [{ data: hours.map(h => hmap[h]||0), backgroundColor:'#0ea5e9', borderRadius:2, maxBarThickness:16 }] },
     options: { responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false}, tooltip:{callbacks:{title:(t)=>`${t[0].label}시`}}},
-      scales:{ y:{beginAtZero:true, grid:{color:'#f1f3f5'}, ticks:{maxTicksLimit:4}}, x:{grid:{display:false}, ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:12}} } }
+      scales:{ y:{beginAtZero:true, grid:{color:'#f1f3f5'}},
+               x:{grid:{display:false}, ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:12}} } }
+  });
+
+  drawBump(d.weekly);
+}
+
+// 순위 라인 끝에 티커 라벨 표시 (bump chart 가독성)
+const endLabelPlugin = {
+  id: 'endLabel',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    chart.data.datasets.forEach((ds, di) => {
+      const meta = chart.getDatasetMeta(di);
+      if (meta.hidden) return;
+      let firstPt = null, lastPt = null;
+      ds.data.forEach((v, idx) => {
+        if (v != null && meta.data[idx]) { if (!firstPt) firstPt = meta.data[idx]; lastPt = meta.data[idx]; }
+      });
+      ctx.save();
+      ctx.font = '700 11px ' + Chart.defaults.font.family;
+      ctx.fillStyle = ds.borderColor;
+      ctx.textBaseline = 'middle';
+      if (lastPt)  { ctx.textAlign = 'left';  ctx.fillText(ds.label, lastPt.x + 8, lastPt.y); }
+      if (firstPt && firstPt !== lastPt) { ctx.textAlign = 'right'; ctx.fillText(ds.label, firstPt.x - 8, firstPt.y); }
+      ctx.restore();
+    });
+  }
+};
+
+function drawBump(w) {
+  const topN = w.top_n;
+  const datasets = w.series.map((s, i) => ({
+    label: s.ticker,
+    data: s.ranks,
+    _name: s.name, _counts: s.counts,
+    borderColor: LINE_COLORS[i % LINE_COLORS.length],
+    backgroundColor: LINE_COLORS[i % LINE_COLORS.length],
+    borderWidth: 3,
+    pointRadius: 5,
+    pointHoverRadius: 8,
+    tension: 0.3,
+    spanGaps: false,
+  }));
+
+  new Chart(document.getElementById('bumpChart'), {
+    type: 'line',
+    data: { labels: w.weeks, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { left: 8, right: 64, top: 10, bottom: 4 } },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            title: (t) => `${t[0].label}`,
+            label: (ctx) => {
+              const ds = ctx.dataset;
+              const r = ctx.parsed.y;
+              const cnt = ds._counts[ctx.dataIndex];
+              return r == null ? ` ${ds.label}: 8위권 밖 (${cnt}건)` : ` ${ds.label} ${ds._name?'('+ds._name+')':''}: ${r}위 · ${cnt}건`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: { reverse: true, min: 1, max: topN, offset: true,
+             title: { display: true, text: '순위' },
+             ticks: { stepSize: 1, precision: 0, callback: (v) => v + '위' },
+             grid: { color: '#f1f3f5' } },
+        x: { grid: { display: false }, ticks: { font: { weight: '600' } } }
+      }
+    },
+    plugins: [endLabelPlugin]
   });
 }
 
