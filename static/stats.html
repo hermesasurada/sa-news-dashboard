@@ -73,14 +73,14 @@
   .panel .desc { font-size: 11px; color: #9aa3b2; margin-bottom: 12px; }
   .chart-wrap { position: relative; height: 260px; }
   .chart-wrap.tall { height: 360px; }
-  .chart-wrap.bump { height: 420px; }
+  .chart-wrap.bump { height: 620px; }
 
   .loading { text-align: center; color: #9aa3b2; padding: 60px 0; }
 
   @media (max-width: 720px) {
     .summary { grid-template-columns: repeat(2, 1fr); }
     .grid { grid-template-columns: 1fr; }
-    .chart-wrap.bump { height: 360px; }
+    .chart-wrap.bump { height: 560px; }
   }
 </style>
 </head>
@@ -95,8 +95,8 @@
 
 <script>
 const WD = ['일','월','화','수','목','금','토'];
-// 순위 라인용 8색 (뚜렷이 구분되는 팔레트)
-const LINE_COLORS = ['#ef4444','#3b82f6','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#64748b'];
+// 순위 라인용 색 — N개 기업을 색상환에서 균등 분배해 구분
+function bumpColor(i, n) { return `hsl(${Math.round(360 * i / Math.max(n,1))} 65% 50%)`; }
 
 function weekdayLabel(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
@@ -199,24 +199,27 @@ function drawCharts(d) {
   drawBump(d.weekly);
 }
 
-// 순위 라인 끝에 티커 라벨 표시 (bump chart 가독성)
+// 각 라인의 '마지막 표시 지점' 오른쪽에 티커 라벨 (우측 여백에 표기 → 차트선과 겹치지 않음)
 const endLabelPlugin = {
   id: 'endLabel',
   afterDatasetsDraw(chart) {
-    const { ctx } = chart;
+    const { ctx, chartArea } = chart;
     chart.data.datasets.forEach((ds, di) => {
       const meta = chart.getDatasetMeta(di);
       if (meta.hidden) return;
-      let firstPt = null, lastPt = null;
-      ds.data.forEach((v, idx) => {
-        if (v != null && meta.data[idx]) { if (!firstPt) firstPt = meta.data[idx]; lastPt = meta.data[idx]; }
-      });
+      let lastIdx = -1;
+      ds.data.forEach((v, idx) => { if (v != null && meta.data[idx]) lastIdx = idx; });
+      if (lastIdx < 0) return;
+      const pt = meta.data[lastIdx];
+      // 마지막 주(맨 오른쪽)에서 끝나면 우측 여백에, 중간에서 끊기면 해당 지점 바로 옆에
+      const atRightEdge = lastIdx === ds.data.length - 1;
+      const x = atRightEdge ? chartArea.right + 8 : pt.x + 8;
       ctx.save();
       ctx.font = '700 11px ' + Chart.defaults.font.family;
       ctx.fillStyle = ds.borderColor;
       ctx.textBaseline = 'middle';
-      if (lastPt)  { ctx.textAlign = 'left';  ctx.fillText(ds.label, lastPt.x + 8, lastPt.y); }
-      if (firstPt && firstPt !== lastPt) { ctx.textAlign = 'right'; ctx.fillText(ds.label, firstPt.x - 8, firstPt.y); }
+      ctx.textAlign = 'left';
+      ctx.fillText(ds.label, x, pt.y);
       ctx.restore();
     });
   }
@@ -224,27 +227,31 @@ const endLabelPlugin = {
 
 function drawBump(w) {
   const topN = w.top_n;
-  const datasets = w.series.map((s, i) => ({
-    label: s.ticker,
-    data: s.ranks,
-    _name: s.name, _counts: s.counts,
-    borderColor: LINE_COLORS[i % LINE_COLORS.length],
-    backgroundColor: LINE_COLORS[i % LINE_COLORS.length],
-    borderWidth: 3,
-    pointRadius: 5,
-    pointHoverRadius: 8,
-    tension: 0.3,
-    spanGaps: false,
-  }));
+  const n = w.series.length;
+  const datasets = w.series.map((s, i) => {
+    const col = bumpColor(i, n);
+    return {
+      label: s.ticker,
+      data: s.ranks,
+      _name: s.name, _counts: s.counts,
+      borderColor: col,
+      backgroundColor: col,
+      borderWidth: 2.5,
+      pointRadius: 3.5,
+      pointHoverRadius: 7,
+      tension: 0.3,
+      spanGaps: false,
+    };
+  });
 
   new Chart(document.getElementById('bumpChart'), {
     type: 'line',
     data: { labels: w.weeks, datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { left: 8, right: 64, top: 10, bottom: 4 } },
+      layout: { padding: { left: 6, right: 70, top: 10, bottom: 4 } },
       plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10, usePointStyle: true } },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             title: (t) => `${t[0].label}`,
@@ -252,7 +259,7 @@ function drawBump(w) {
               const ds = ctx.dataset;
               const r = ctx.parsed.y;
               const cnt = ds._counts[ctx.dataIndex];
-              return r == null ? ` ${ds.label}: 8위권 밖 (${cnt}건)` : ` ${ds.label} ${ds._name?'('+ds._name+')':''}: ${r}위 · ${cnt}건`;
+              return r == null ? ` ${ds.label}: ${topN}위권 밖 (${cnt}건)` : ` ${ds.label} ${ds._name?'('+ds._name+')':''}: ${r}위 · ${cnt}건`;
             }
           }
         }

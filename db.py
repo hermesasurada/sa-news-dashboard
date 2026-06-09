@@ -548,7 +548,7 @@ def get_dashboard_stats() -> dict:
         "daily": [{"date": d, "count": c} for d, c in daily],
         "hourly": [{"hour": h, "count": c} for h, c in hourly],
         "companies": companies,
-        "weekly": get_weekly_rankings(weeks=4, top_n=8),
+        "weekly": get_weekly_rankings(weeks=4, top_n=20),
     }
 
 
