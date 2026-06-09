@@ -535,7 +535,7 @@ def get_dashboard_stats() -> dict:
     counts, names = _split_ticker_counts(rows)
     companies = [
         {"ticker": t, "name": names.get(t, ""), "count": c}
-        for t, c in counts.most_common(20)
+        for t, c in counts.most_common(30)
     ]
 
     return {

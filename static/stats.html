@@ -128,15 +128,10 @@ function render(d) {
         <h2>📅 일별 기사 수</h2>
         <div class="chart-wrap"><canvas id="dailyChart"></canvas></div>
       </div>
-      <div class="panel">
-        <h2>🏢 기업별 Top 15</h2>
+      <div class="panel full">
+        <h2>🏢 기업별 기사 수 Top ${d.companies.length}</h2>
         <div class="desc">전체 기간 누적</div>
         <div class="chart-wrap tall"><canvas id="companyChart"></canvas></div>
-      </div>
-      <div class="panel">
-        <h2>⏰ 시간대별 분포 (KST)</h2>
-        <div class="desc">이메일 수신 시각 기준</div>
-        <div class="chart-wrap tall"><canvas id="hourChart"></canvas></div>
       </div>
       <div class="panel full">
         <h2>🏆 최근 4주 기업 순위 변동</h2>
@@ -171,29 +166,19 @@ function drawCharts(d) {
                x:{grid:{display:false}, ticks:{maxRotation:60, minRotation:45, autoSkip:true, maxTicksLimit:16}} } }
   });
 
-  // 기업별 Top 15
-  const top = d.companies.slice(0, 15);
+  // 기업별 (세로 막대, 가능한 많이)
+  const top = d.companies;
   new Chart(document.getElementById('companyChart'), {
     type: 'bar',
     data: { labels: top.map(c => c.ticker),
-      datasets: [{ data: top.map(c => c.count), backgroundColor:'#6366f1', borderRadius:3 }] },
-    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false},
-        tooltip:{callbacks:{label:(ctx)=>` ${top[ctx.dataIndex].name||top[ctx.dataIndex].ticker}: ${ctx.parsed.x}건`}}},
-      scales:{ x:{beginAtZero:true, grid:{color:'#f1f3f5'}}, y:{grid:{display:false}} } }
-  });
-
-  // 시간대별
-  const hmap = {}; (d.hourly||[]).forEach(x => hmap[parseInt(x.hour,10)] = x.count);
-  const hours = Array.from({length:24}, (_,h)=>h);
-  new Chart(document.getElementById('hourChart'), {
-    type: 'bar',
-    data: { labels: hours,
-      datasets: [{ data: hours.map(h => hmap[h]||0), backgroundColor:'#0ea5e9', borderRadius:2, maxBarThickness:16 }] },
+      datasets: [{ data: top.map(c => c.count), backgroundColor:'#6366f1', borderRadius:3, maxBarThickness:26 }] },
     options: { responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{title:(t)=>`${t[0].label}시`}}},
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{
+          title:(t)=>` ${top[t[0].dataIndex].name||top[t[0].dataIndex].ticker}`,
+          label:(ctx)=>` ${ctx.parsed.y}건`}}},
       scales:{ y:{beginAtZero:true, grid:{color:'#f1f3f5'}},
-               x:{grid:{display:false}, ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:12}} } }
+               x:{grid:{display:false}, ticks:{maxRotation:90, minRotation:90, font:{weight:'600'}, autoSkip:false}} } }
   });
 
   drawBump(d.weekly);
