@@ -71,9 +71,11 @@
     display: flex; align-items: center; gap: 6px;
   }
   .panel .desc { font-size: 11px; color: #9aa3b2; margin-bottom: 12px; }
-  .chart-wrap { position: relative; height: 260px; }
+  .chart-wrap { position: relative; height: 260px; width: 100%; }
   .chart-wrap.tall { height: 360px; }
   .chart-wrap.bump { height: 620px; }
+  /* 가로 스크롤 래퍼 (모바일에서 차트 폭 확보) */
+  .chart-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
   .loading { text-align: center; color: #9aa3b2; padding: 60px 0; }
 
@@ -81,6 +83,9 @@
     .summary { grid-template-columns: repeat(2, 1fr); }
     .grid { grid-template-columns: 1fr; }
     .chart-wrap.bump { height: 560px; }
+    /* 모바일: 충분한 폭 확보 후 가로 스크롤 */
+    .chart-scroll .chart-wrap.companies { min-width: 660px; }
+    .chart-scroll .chart-wrap.bump { min-width: 620px; }
   }
 </style>
 </head>
@@ -130,13 +135,13 @@ function render(d) {
       </div>
       <div class="panel full">
         <h2>🏢 기업별 기사 수 Top ${d.companies.length}</h2>
-        <div class="desc">전체 기간 누적</div>
-        <div class="chart-wrap tall"><canvas id="companyChart"></canvas></div>
+        <div class="desc">전체 기간 누적 · 모바일에서는 좌우로 스크롤하세요</div>
+        <div class="chart-scroll"><div class="chart-wrap tall companies"><canvas id="companyChart"></canvas></div></div>
       </div>
       <div class="panel full">
         <h2>🏆 최근 4주 기업 순위 변동</h2>
-        <div class="desc">주차별 기사 수 순위 (위쪽이 1위) · 4주 합계 상위 ${d.weekly.top_n}개 기업</div>
-        <div class="chart-wrap bump"><canvas id="bumpChart"></canvas></div>
+        <div class="desc">주차별 기사 수 순위 (위쪽이 1위) · 4주 합계 상위 ${d.weekly.top_n}개 기업 · 모바일에서는 좌우로 스크롤하세요</div>
+        <div class="chart-scroll"><div class="chart-wrap bump"><canvas id="bumpChart"></canvas></div></div>
       </div>
     </div>
   `;
