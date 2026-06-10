@@ -16,6 +16,7 @@ LLM·SA page 접속 없이 동작 → 차단·지연 위험 없음.
 import datetime
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -56,14 +57,34 @@ def run_extract():
         except subprocess.TimeoutExpired:
             last_err = "timeout(180s)"
             print(f'SA collect: extract 타임아웃 (attempt {attempt})', file=sys.stderr)
+            _forensic_log(attempt, "TIMEOUT(180s)", "", "")
             continue
         # 성공: rc==0 이고 stdout이 비어있지 않음 (NO_UNREAD_SA_EMAILS 도 비어있지 않음)
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.splitlines()
         last_err = f"rc={result.returncode} stderr={(result.stderr or '').strip()[-300:]}"
         print(f'SA collect: extract 실패 (attempt {attempt}) {last_err}', file=sys.stderr)
+        # 포렌식: 실제 cron 실패의 rc/stderr/stdout 전체를 파일로 보존
+        _forensic_log(attempt, f"rc={result.returncode}", result.stderr or "", result.stdout or "")
     print(f'SA collect: extract 최종 실패 — {last_err}', file=sys.stderr)
     return None
+
+
+def _forensic_log(attempt, summary, stderr_text, stdout_text):
+    """extract 실패 시 환경(PATH/LANG)과 rc/stderr/stdout 전체를 로그파일로 보존."""
+    try:
+        log = Path.home() / '.hermes' / 'logs' / 'sa_collect_extract_fail.log'
+        log.parent.mkdir(parents=True, exist_ok=True)
+        ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(log, 'a') as f:
+            f.write(f"\n===== {ts} attempt={attempt} {summary} =====\n")
+            f.write(f"PATH={os.environ.get('PATH','')}\n")
+            f.write(f"LANG={os.environ.get('LANG','')} LC_ALL={os.environ.get('LC_ALL','')} HOME={os.environ.get('HOME','')}\n")
+            f.write(f"--- which himalaya ---\n{shutil.which('himalaya')}\n")
+            f.write(f"--- extract STDERR ---\n{stderr_text[-3000:]}\n")
+            f.write(f"--- extract STDOUT ---\n{stdout_text[-1000:]}\n")
+    except Exception:
+        pass
 
 
 def mark_seen(email_ids: list[str]) -> None:
