@@ -733,6 +733,52 @@ function formatTime(et) {
 const TICKER_ALIASES = { GOOGL:'GOOG', FOXA:'FOX', NWSA:'NWS', UAA:'UA' };
 const canonTicker = (t) => TICKER_ALIASES[t.toUpperCase()] || t;
 
+// 미국 메인거래소(나스닥/NYSE) 미상장 — OTC ADR/해외상장 티커를 자국 시장 티커로 매핑.
+//   kr:true  → 한글명 배지 + 마우스오버 티커 (한국 기업)
+//   kr:false → 자국 티커 배지 + 마우스오버 영문 기업명 (그 외 외국 기업)
+const FOREIGN_LISTINGS = {
+  // 🇰🇷 한국
+  SSNLF:{home:'005930.KS', name:'삼성전자', kr:true},
+  HXSCL:{home:'000660.KS', name:'SK하이닉스', kr:true},
+  LGEIY:{home:'066570.KS', name:'LG전자', kr:true},
+  NHNCF:{home:'035420.KS', name:'네이버', kr:true},
+  // 🇪🇺 유럽
+  EADSY:{home:'AIR.PA', name:'Airbus'}, EADSF:{home:'AIR.PA', name:'Airbus'},
+  ADDYY:{home:'ADS.DE', name:'Adidas'},
+  BMWKY:{home:'BMW.DE', name:'BMW'},
+  VWAGY:{home:'VOW3.DE', name:'Volkswagen'},
+  SIEGY:{home:'SIE.DE', name:'Siemens'},
+  DLAKF:{home:'LHA.DE', name:'Lufthansa'}, DLAKY:{home:'LHA.DE', name:'Lufthansa'},
+  DHER:{home:'DHER.DE', name:'Delivery Hero'},
+  SAFRF:{home:'SAF.PA', name:'Safran'}, SAFRY:{home:'SAF.PA', name:'Safran'},
+  DUAVF:{home:'AM.PA', name:'Dassault Aviation'},
+  ENI:{home:'ENI.MI', name:'Eni'},
+  NTOIY:{home:'NESTE.HE', name:'Neste'},
+  IBDRY:{home:'IBE.MC', name:'Iberdrola'}, IBDSF:{home:'IBE.MC', name:'Iberdrola'},
+  CAMRF:{home:'CAMX.ST', name:'Camurus'},
+  SAABF:{home:'SAAB-B.ST', name:'Saab'}, SAABY:{home:'SAAB-B.ST', name:'Saab'},
+  RYCEY:{home:'RR.L', name:'Rolls-Royce'}, RYCEF:{home:'RR.L', name:'Rolls-Royce'},
+  BAESY:{home:'BA.L', name:'BAE Systems'},
+  HEINY:{home:'HEIA.AS', name:'Heineken'},
+  // 🇯🇵 일본
+  NTDOY:{home:'7974.T', name:'Nintendo'}, NTDOF:{home:'7974.T', name:'Nintendo'},
+  SFTBY:{home:'9984.T', name:'SoftBank Group'}, SFTBF:{home:'9984.T', name:'SoftBank Group'},
+  NINOY:{home:'7731.T', name:'Nikon'},
+  HTHIY:{home:'6501.T', name:'Hitachi'}, HTHIF:{home:'6501.T', name:'Hitachi'},
+  // 🇨🇳🇹🇼🇭🇰
+  BYDDY:{home:'1211.HK', name:'BYD'}, BYDDF:{home:'1211.HK', name:'BYD'},
+  HNHPF:{home:'2317.TW', name:'Hon Hai (Foxconn)'},
+  FXCOF:{home:'2354.TW', name:'Foxconn Technology'},
+  IVBIY:{home:'1801.HK', name:'Innovent Biologics'}, IVBXF:{home:'1801.HK', name:'Innovent Biologics'},
+  // 🌏 기타
+  QABSY:{home:'QAN.AX', name:'Qantas'},
+  SYAAF:{home:'SYR.AX', name:'Syrah Resources'}, SRHYY:{home:'SYR.AX', name:'Syrah Resources'},
+  DBSDY:{home:'D05.SI', name:'DBS Group'},
+  BDRBF:{home:'BBD-B.TO', name:'Bombardier'}, BDRAF:{home:'BBD-B.TO', name:'Bombardier'}, BOMBF:{home:'BBD-B.TO', name:'Bombardier'},
+  KRKNF:{home:'PNG.V', name:'Kraken Robotics'},
+  TAKOF:{home:'FLT.V', name:'Volatus Aerospace'},
+};
+
 function extractTickers(a) {
   const map = new Map();
   const rawTicker = (a.ticker || '').trim();
@@ -765,8 +811,13 @@ function renderCard(a) {
   const tickers = extractTickers(a);
   const tickerBadges = tickers.map((t, i) => {
     const color = i === 0 ? (a.ticker_color || 'blue') : 'gray';
-    const tip = t.name ? ` data-company="${t.name}"` : '';
-    return `<span class="ticker-badge ticker-${color}"${tip}>${t.ticker}</span>`;
+    const fl = FOREIGN_LISTINGS[t.ticker];
+    let label, tipText;
+    if (fl && fl.kr)   { label = fl.name; tipText = fl.home; }  // 한국: 한글명 + 티커 툴팁
+    else if (fl)       { label = fl.home; tipText = fl.name; }  // 외국: 자국티커 + 영문명 툴팁
+    else               { label = t.ticker; tipText = t.name; }  // 미국상장: 티커 + 회사명
+    const tip = tipText ? ` data-company="${tipText}"` : '';
+    return `<span class="ticker-badge ticker-${color}"${tip}>${label}</span>`;
   }).join('');
 
   // 키워드 태그는 표시하지 않음 — 티커 배지만 사용
