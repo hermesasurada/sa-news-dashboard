@@ -42,13 +42,28 @@ def ticker_from_subject(subject: str) -> str:
     return re.sub(r'\s+', '', m.group(1))
 
 
-def run_extract() -> list[str]:
-    """extract_sa_urls.py 실행 → stdout 줄 리스트."""
-    result = subprocess.run(
-        [sys.executable, str(SCRIPT_DIR / 'extract_sa_urls.py')],
-        capture_output=True, text=True, timeout=120,
-    )
-    return result.stdout.splitlines()
+def run_extract():
+    """extract_sa_urls.py 실행 → stdout 줄 리스트.
+    himalaya/IMAP 간헐 실패 대비: rc!=0 또는 빈 출력이면 최대 2회 시도.
+    최종 실패 시 None 반환(호출측이 '0건'으로 오인하지 않도록 구분)."""
+    last_err = ""
+    for attempt in (1, 2):
+        try:
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT_DIR / 'extract_sa_urls.py')],
+                capture_output=True, text=True, timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            last_err = "timeout(180s)"
+            print(f'SA collect: extract 타임아웃 (attempt {attempt})', file=sys.stderr)
+            continue
+        # 성공: rc==0 이고 stdout이 비어있지 않음 (NO_UNREAD_SA_EMAILS 도 비어있지 않음)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.splitlines()
+        last_err = f"rc={result.returncode} stderr={(result.stderr or '').strip()[-300:]}"
+        print(f'SA collect: extract 실패 (attempt {attempt}) {last_err}', file=sys.stderr)
+    print(f'SA collect: extract 최종 실패 — {last_err}', file=sys.stderr)
+    return None
 
 
 def mark_seen(email_ids: list[str]) -> None:
@@ -62,6 +77,10 @@ def mark_seen(email_ids: list[str]) -> None:
 
 def main():
     lines = run_extract()
+    if lines is None:
+        # 진짜 실패(himalaya/IMAP 오류 등) — '미읽음 없음'과 구분해 명확히 표면화
+        print(f'SA collect: ⚠️ extract 실패 — 수집 건너뜀 / {datetime.datetime.now().strftime("%H:%M")}')
+        return
     if not lines:
         print('SA collect: 0건 (no output)')
         return
