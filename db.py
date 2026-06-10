@@ -608,16 +608,20 @@ def _split_ticker_counts(rows) -> tuple:
 
 
 def get_weekly_rankings(weeks: int = 4, top_n: int = 8) -> dict:
-    """최근 N주(주=7일 버킷) 주차별 기업 기사수 랭킹. 순위 변동(bump chart)용.
-    오늘 기준 [오늘-6..오늘]이 최신 주. 각 주의 top_n 합집합을 series로 반환,
+    """최근 N주 주차별 기업 기사수 랭킹. 순위 변동(bump chart)용.
+    주 구간은 일요일~토요일 고정 달력주(오늘이 포함된 주가 최신, 진행 중일 수 있음).
+    각 주의 top_n 합집합을 series로 반환,
     ranks[i]는 i번째 주 순위(top_n 밖이면 null), counts[i]는 해당 주 기사수."""
     import datetime as dt
 
     today = dt.date.today()
-    buckets = []  # 오래된→최신
+    # 이번 주 일요일 찾기 (weekday: Mon=0..Sun=6 → 일요일까지 지난 일수)
+    days_since_sunday = (today.weekday() + 1) % 7
+    this_sunday = today - dt.timedelta(days=days_since_sunday)
+    buckets = []  # 오래된→최신, 각 (일요일, 토요일)
     for k in range(weeks - 1, -1, -1):
-        end = today - dt.timedelta(days=7 * k)
-        start = end - dt.timedelta(days=6)
+        start = this_sunday - dt.timedelta(days=7 * k)
+        end = start + dt.timedelta(days=6)
         buckets.append((start, end))
 
     week_counts = []
