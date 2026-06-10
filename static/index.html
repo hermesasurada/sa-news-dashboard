@@ -626,6 +626,58 @@ body {
   color: #9ca3af;
   font-size: 15px;
 }
+
+/* ── 티커 선택 버튼 ── */
+.btn-ticker {
+  height: 38px; padding: 0 13px;
+  background: #fff; color: #374151;
+  border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; white-space: nowrap; max-width: 170px;
+}
+.btn-ticker:hover { background: #f8fafc; }
+.btn-ticker.active { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; font-weight: 600; }
+.btn-ticker span { overflow: hidden; text-overflow: ellipsis; }
+
+/* ── 모달 ── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(15,23,42,0.45);
+  z-index: 2000; align-items: flex-start; justify-content: center;
+  padding: 56px 16px;
+}
+.modal-overlay.show { display: flex; }
+.modal-box {
+  background: #fff; border-radius: 14px;
+  width: 100%; max-width: 580px; max-height: 76vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.28); overflow: hidden;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; }
+.modal-head h3 { font-size: 16px; font-weight: 800; }
+.modal-close { background: none; border: none; font-size: 17px; color: #94a3b8; cursor: pointer; line-height: 1; padding: 4px; }
+.modal-close:hover { color: #475569; }
+#ticker-search {
+  margin: 0 18px 12px; height: 40px; padding: 0 14px;
+  border: 1px solid #d1d5db; border-radius: 9px; font-size: 14px; outline: none;
+}
+#ticker-search:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
+.ticker-grid {
+  overflow-y: auto; padding: 2px 18px 18px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start;
+}
+.tk-chip {
+  padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 8px;
+  background: #f8fafc; font-size: 13px; font-weight: 600; color: #334155;
+  cursor: pointer; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 5px;
+}
+.tk-chip:hover { background: #eef2ff; border-color: #c7d2fe; }
+.tk-chip.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.tk-chip.all { background: #fff; border-style: dashed; }
+.tk-chip.all.active { background: #3b82f6; color: #fff; border-style: solid; }
+.tk-chip .sub { font-weight: 400; font-size: 11px; color: #94a3b8; }
+.tk-chip.active .sub { color: #dbeafe; }
+.tk-empty { color: #94a3b8; font-size: 13px; padding: 24px; text-align: center; width: 100%; }
 </style>
 </head>
 <body>
@@ -637,13 +689,16 @@ body {
   <h1>📰 SA Breaking News</h1>
   <div class="search-bar">
     <input type="text" id="q" placeholder="검색 (제목, 회사명, 티커, 요약...)" onkeydown="if(event.key==='Enter') search(0)" />
-    <select id="ticker-filter" onchange="search(0)"><option value="">전체 티커</option></select>
-    <input type="date" id="date-filter" title="날짜 (이메일 수신시각)" onchange="search(0)" onclick="try{this.showPicker()}catch(e){}" />
+    <button class="btn-search" onclick="search(0)">검색</button>
+    <input type="hidden" id="ticker-filter">
+    <button type="button" class="btn-ticker" id="ticker-btn" onclick="openTickerModal()" title="티커 선택">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      <span id="ticker-btn-label">전체 티커</span>
+    </button>
     <button class="btn-sort" id="sort-toggle" onclick="toggleSort()">
       <span id="sort-label">이메일시간순</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
     </button>
-    <button class="btn-search" onclick="search(0)">검색</button>
     <button class="btn-reset" onclick="reset()">초기화</button>
     <button class="btn-unread" id="unread-filter" onclick="toggleUnreadFilter()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -656,6 +711,18 @@ body {
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       통계
     </a>
+  </div>
+</div>
+
+<!-- 티커 선택 모달 -->
+<div id="ticker-modal" class="modal-overlay" onclick="if(event.target===this)closeTickerModal()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>🏷️ 티커 선택</h3>
+      <button class="modal-close" onclick="closeTickerModal()" aria-label="닫기">✕</button>
+    </div>
+    <input type="text" id="ticker-search" placeholder="티커 검색 (예: NVDA, 삼성, AIR.PA)" oninput="renderTickerList()" autocomplete="off" />
+    <div id="ticker-list" class="ticker-grid"></div>
   </div>
 </div>
 
@@ -676,17 +743,64 @@ const SVG_TRASH = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" s
 const SVG_RESTORE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`;
 
 /* ── Filters ── */
+let allTickers = [];
+
 async function loadFilters() {
   try {
     const res = await fetch('/api/filters');
     const data = await res.json();
-    const tickerSel = document.getElementById('ticker-filter');
-    data.tickers.forEach(t => {
-      const opt = document.createElement('option');
-      opt.value = t; opt.textContent = t;
-      tickerSel.appendChild(opt);
-    });
+    allTickers = data.tickers || [];
   } catch(e) { console.error('필터 로드 실패', e); }
+}
+
+/* ── 티커 선택 모달 ── */
+// 해외상장 티커는 자국 표기(삼성전자 / AIR.PA)로 보여 가독성↑
+function tickerDisplay(raw) {
+  const fl = FOREIGN_LISTINGS[raw];
+  return fl ? (fl.kr ? fl.name : fl.home) : raw;
+}
+function updateTickerLabel() {
+  const val = document.getElementById('ticker-filter').value;
+  const btn = document.getElementById('ticker-btn');
+  const lbl = document.getElementById('ticker-btn-label');
+  if (val) { lbl.textContent = tickerDisplay(val); btn.classList.add('active'); }
+  else     { lbl.textContent = '전체 티커'; btn.classList.remove('active'); }
+}
+function openTickerModal() {
+  document.getElementById('ticker-search').value = '';
+  document.getElementById('ticker-modal').classList.add('show');
+  renderTickerList();
+  setTimeout(() => document.getElementById('ticker-search').focus(), 30);
+}
+function closeTickerModal() {
+  document.getElementById('ticker-modal').classList.remove('show');
+}
+function setTicker(val) {
+  document.getElementById('ticker-filter').value = val;
+  updateTickerLabel();
+  closeTickerModal();
+  search(0);
+}
+function renderTickerList() {
+  const q = document.getElementById('ticker-search').value.trim().toLowerCase();
+  const cur = document.getElementById('ticker-filter').value;
+  const matched = allTickers.filter(t => {
+    if (!q) return true;
+    const fl = FOREIGN_LISTINGS[t];
+    const hay = (t + ' ' + (fl ? fl.home + ' ' + fl.name : '')).toLowerCase();
+    return hay.includes(q);
+  });
+  const allChip = `<div class="tk-chip all ${!cur ? 'active' : ''}" onclick="setTicker('')">전체</div>`;
+  if (matched.length === 0) {
+    document.getElementById('ticker-list').innerHTML = allChip + '<div class="tk-empty">일치하는 티커가 없습니다</div>';
+    return;
+  }
+  const chips = matched.map(t => {
+    const fl = FOREIGN_LISTINGS[t];
+    const sub = fl ? `<span class="sub">${fl.kr ? fl.name : fl.home}</span>` : '';
+    return `<div class="tk-chip ${t === cur ? 'active' : ''}" onclick="setTicker('${t}')">${t}${sub}</div>`;
+  }).join('');
+  document.getElementById('ticker-list').innerHTML = allChip + chips;
 }
 
 /* ── Sort ── */
@@ -709,11 +823,9 @@ function getParams(offset) {
   const p = new URLSearchParams();
   const q = document.getElementById('q').value.trim();
   const ticker = document.getElementById('ticker-filter').value;
-  const dateVal = document.getElementById('date-filter').value;
   if (q) p.set('q', q);
   if (ticker) p.set('ticker', ticker);
   p.set('sort_by', currentSort);
-  if (dateVal) { p.set('date_from', dateVal); p.set('date_to', dateVal); }
   if (document.getElementById('unread-filter').classList.contains('active'))
     p.set('unread_only', 'true');
   if (trashView) p.set('deleted', 'true');
@@ -982,8 +1094,7 @@ function syncURL(params) {
 function restoreFromURL() {
   const sp = new URLSearchParams(location.search);
   if (sp.has('q'))           document.getElementById('q').value = sp.get('q');
-  if (sp.has('ticker'))      document.getElementById('ticker-filter').value = sp.get('ticker');
-  if (sp.has('date_from'))   document.getElementById('date-filter').value = sp.get('date_from');
+  if (sp.has('ticker'))    { document.getElementById('ticker-filter').value = sp.get('ticker'); updateTickerLabel(); }
   if (sp.has('unread_only')) document.getElementById('unread-filter').classList.add('active');
   if (sp.get('sort_by') === 'last_modified') {
     currentSort = 'last_modified';
@@ -1064,9 +1175,8 @@ async function search(offset = 0) {
     // #7: 필터 없는 1페이지 결과로 기준 total 갱신
     const qVal = document.getElementById('q').value.trim();
     const tVal = document.getElementById('ticker-filter').value;
-    const dVal = document.getElementById('date-filter').value;
     const uVal = document.getElementById('unread-filter').classList.contains('active');
-    if (!qVal && !tVal && !dVal && !uVal && offset === 0) {
+    if (!qVal && !tVal && !uVal && offset === 0) {
       lastKnownTotal = data.total;
       document.getElementById('new-articles-banner').style.display = 'none';
     }
@@ -1093,10 +1203,10 @@ function toggleTrashView() {
 function reset() {
   document.getElementById('q').value = '';
   document.getElementById('ticker-filter').value = '';
+  updateTickerLabel();
   currentSort = 'email_time_et';
   document.getElementById('sort-label').textContent = '이메일시간순';
   document.getElementById('sort-toggle').classList.remove('alt');
-  document.getElementById('date-filter').value = '';
   document.getElementById('unread-filter').classList.remove('active');
   trashView = false;
   document.getElementById('trash-view').classList.remove('active');
@@ -1129,6 +1239,10 @@ function restoreCard(articleId, element) {
 
 document.getElementById('q').addEventListener('keydown', e => {
   if (e.key === 'Enter') search(0);
+});
+// Esc로 티커 모달 닫기
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeTickerModal();
 });
 
 /* ── Init ── */
