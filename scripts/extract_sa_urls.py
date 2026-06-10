@@ -26,8 +26,14 @@ import datetime
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+
+# himalaya 절대경로 resolve — hermes Desktop 앱이 cron 틱을 잡으면 PATH가
+# launchd 기본값(/usr/bin:/bin:...)이라 /opt/homebrew/bin을 못 봐 FileNotFoundError.
+# (2026-06-10 수집 장애 근본원인. 게이트웨이/데스크톱 어느 쪽이 돌려도 동작하도록 고정)
+HIMALAYA = shutil.which("himalaya") or "/opt/homebrew/bin/himalaya"
 
 
 def decode_b64(s: str) -> str:
@@ -101,8 +107,8 @@ def get_unread_sa_emails():
     """
     # -w 500: prevent SUBJECT column truncation (default 140-char width clips long SA titles)
     result = subprocess.run(
-        ['himalaya', 'envelope', 'list', '-s', '200', '-w', '500'],
-        capture_output=True, text=True
+        [HIMALAYA, 'envelope', 'list', '-s', '200', '-w', '500'],
+        capture_output=True, text=True, timeout=60
     )
     output = result.stdout
 
@@ -187,8 +193,8 @@ def extract_urls(email_id: int, subject: str = '') -> dict:
       - subject_mismatch: subject ticker는 있었지만 매칭 URL을 못 찾은 경우 True
     """
     result = subprocess.run(
-        ['himalaya', 'message', 'read', str(email_id)],
-        capture_output=True, text=True
+        [HIMALAYA, 'message', 'read', str(email_id)],
+        capture_output=True, text=True, timeout=60
     )
     content = result.stdout
 

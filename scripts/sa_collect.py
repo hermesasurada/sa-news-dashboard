@@ -90,7 +90,9 @@ def _forensic_log(attempt, summary, stderr_text, stdout_text):
 def mark_seen(email_ids: list[str]) -> None:
     if not email_ids:
         return
-    cmd = ['himalaya', 'flag', 'add']
+    # 절대경로 — Desktop 앱이 cron 틱을 잡으면 PATH에 /opt/homebrew/bin이 없음
+    himalaya = shutil.which('himalaya') or '/opt/homebrew/bin/himalaya'
+    cmd = [himalaya, 'flag', 'add']
     for eid in email_ids:
         cmd.extend([str(eid), 'seen'])
     subprocess.run(cmd, capture_output=True, text=True, timeout=60)

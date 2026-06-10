@@ -12,6 +12,7 @@ Strategy:
   - email_id로 매칭 후 UPDATE (last_modified도 함께 갱신 — 수정시간순 정렬 누락 방지)
 """
 import datetime
+import shutil
 import subprocess
 import sqlite3
 import sys
@@ -28,7 +29,8 @@ DB = str(db.DB_PATH)
 def fetch_email_times():
     """email_id (str) -> KST string"""
     result = subprocess.run(
-        ['himalaya', 'envelope', 'list', '-s', '1000'],
+        [shutil.which('himalaya') or '/opt/homebrew/bin/himalaya',
+         'envelope', 'list', '-s', '1000'],
         capture_output=True, text=True, timeout=60
     )
     out = {}
