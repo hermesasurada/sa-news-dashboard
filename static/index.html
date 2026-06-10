@@ -847,6 +847,8 @@ function deleteCard(articleId, element) {
     .then(res => {
       if (res.ok) {
         card.remove();
+        // 즉시 삭제 완료 → 3초간 '취소' 버튼 노출
+        showToast('기사를 삭제했습니다', '취소', () => undoDelete(articleId), 3000);
       } else {
         card.classList.remove('card-deleting');
         delete card.dataset.deleting;
@@ -860,11 +862,24 @@ function deleteCard(articleId, element) {
     });
 }
 
+/* ── 삭제 취소(복원) ── */
+function undoDelete(articleId) {
+  fetch(`/api/articles/${articleId}/restore`, { method: 'POST' })
+    .then(res => {
+      if (res.ok) {
+        search(currentOffset);  // 목록 새로고침 → 복원된 기사 다시 표시
+      } else {
+        showToast('취소 실패', null, null);
+      }
+    })
+    .catch(() => showToast('취소 중 오류 발생', null, null));
+}
+
 /* ── Toast ── */
 let _toastTimer = null;
 let _toastUndoFn = null;
 
-function showToast(message, actionLabel, actionFn) {
+function showToast(message, actionLabel, actionFn, duration = 4500) {
   const toast = document.getElementById('toast');
   if (_toastTimer) clearTimeout(_toastTimer);
   _toastUndoFn = actionFn;
@@ -874,7 +889,7 @@ function showToast(message, actionLabel, actionFn) {
   _toastTimer = setTimeout(() => {
     toast.classList.remove('show');
     _toastUndoFn = null;
-  }, 4500);
+  }, duration);
 }
 
 function toastAction() {
