@@ -139,8 +139,8 @@ function render(d) {
         <div class="chart-scroll"><div class="chart-wrap tall companies"><canvas id="companyChart"></canvas></div></div>
       </div>
       <div class="panel full">
-        <h2>🏆 최근 4주 기업 순위 변동</h2>
-        <div class="desc">주차별 기사 수 순위 (위쪽이 1위) · 4주 합계 상위 ${d.weekly.top_n}개 기업 · 모바일에서는 좌우로 스크롤하세요</div>
+        <h2>🏆 최근 ${d.weekly.weeks.length}주 기업 순위 변동</h2>
+        <div class="desc">주차별 기사 수 순위 (위쪽이 1위) · ${d.weekly.weeks.length}주 합계 상위 ${d.weekly.top_n}개 기업 · 모바일에서는 좌우로 스크롤하세요</div>
         <div class="chart-scroll"><div class="chart-wrap bump"><canvas id="bumpChart"></canvas></div></div>
       </div>
     </div>
