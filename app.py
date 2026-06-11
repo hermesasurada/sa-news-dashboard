@@ -1,13 +1,14 @@
 """
 SA News Dashboard — FastAPI 앱
 """
-from fastapi import FastAPI, Query, Body
+from fastapi import FastAPI, Query, Body, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
+import ast
+import json
+import sqlite3
 import db
-import os
-import sys
 
 BASE_DIR = Path(__file__).parent
 
@@ -74,20 +75,17 @@ def get_queue_stats():
 
 @app.get("/api/article/{article_id}")
 def get_article(article_id: int):
-    import sqlite3, json
     with db.get_conn() as conn:
         row = conn.execute(
             "SELECT * FROM articles WHERE id = ? AND pub_status != 'deleted'", (article_id,)
         ).fetchone()
     if not row:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Not found")
     d = dict(row)
     sd = d["summary_details"]
     try:
         d["summary_details"] = json.loads(sd)
     except (json.JSONDecodeError, TypeError):
-        import ast
         try:
             parsed = ast.literal_eval(sd)
             d["summary_details"] = parsed if isinstance(parsed, list) else []
@@ -104,17 +102,14 @@ def mark_article_read_endpoint(
     """읽음/안읽음 토글."""
     success = db.mark_article_read(article_id, is_read)
     if not success:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Article not found")
     return {"id": article_id, "is_read": is_read}
 
 
 @app.delete("/api/articles/{article_id}")
 def delete_article_endpoint(article_id: int):
-    import db
     success = db.delete_article(article_id)
     if not success:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Article not found")
     return {"status": "deleted", "id": article_id}
 
@@ -124,7 +119,6 @@ def restore_article_endpoint(article_id: int):
     """휴지통 기사 복원."""
     success = db.restore_article(article_id)
     if not success:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Article not found or not deleted")
     return {"status": "restored", "id": article_id}
 
@@ -149,7 +143,6 @@ def get_telegram_feeds(
 def get_telegram_feed_original(feed_id: int):
     result = db.get_telegram_feed_original(feed_id)
     if "error" in result:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=result["error"])
     return result
 

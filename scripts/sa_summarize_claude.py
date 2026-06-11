@@ -72,16 +72,12 @@ def validate(d: dict) -> dict:
     d["ticker"] = ", ".join(valid_tickers)
     d["company_name"] = str(d.get("company_name") or "").strip()
     d["headline"] = str(d.get("headline") or "").strip()
-    # summary_core / tag 는 더 이상 생성하지 않음 — 빈 값으로 고정
-    d["summary_core"] = ""
     details = d.get("summary_details") or []
     if not isinstance(details, list):
         details = [str(details)]
     d["summary_details"] = [str(x).strip() for x in details if str(x).strip()][:6]
-    d["tag"] = ""
     tc = str(d.get("ticker_color") or "blue").lower()
     d["ticker_color"] = tc if tc in _VALID_COLORS else "blue"
-    d["tag_color"] = "blue"
     return d
 
 
@@ -158,11 +154,8 @@ def process_article(row: dict) -> bool:
         ticker=new_ticker if new_ticker else None,
         company_name=data["company_name"],
         headline=data["headline"],
-        summary_core=data["summary_core"],
         summary_details=data["summary_details"],
-        tag=data["tag"],
         ticker_color=data["ticker_color"],
-        tag_color=data["tag_color"],
     )
     if ok:
         print(f"     ✓ published: {data['headline'][:70]}")

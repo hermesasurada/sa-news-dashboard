@@ -711,6 +711,10 @@ body {
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       통계
     </a>
+    <a class="btn-stats" href="/telegram" title="텔레그램 피드">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      텔레그램
+    </a>
   </div>
 </div>
 
@@ -750,6 +754,7 @@ async function loadFilters() {
     const res = await fetch('/api/filters');
     const data = await res.json();
     allTickers = data.tickers || [];
+    TICKER_ALIASES = data.aliases || {};   // db가 단일 소스
   } catch(e) { console.error('필터 로드 실패', e); }
 }
 
@@ -841,8 +846,9 @@ function formatTime(et) {
   return `${m[2]}/${m[3]} ${m[4]}`;
 }
 
-// 사실상 같은 종목(클래스 차이)을 대표 티커로 병합 (db.TICKER_ALIASES와 동기 유지)
-const TICKER_ALIASES = { GOOGL:'GOOG', FOXA:'FOX', NWSA:'NWS', UAA:'UA' };
+// 동일 종목(클래스 차이) 병합 규칙 — 단일 소스는 db.TICKER_ALIASES.
+// loadFilters()가 /api/filters에서 받아와 채움 (실패 시 빈 맵 = 병합 없이 원본 유지).
+let TICKER_ALIASES = {};
 const canonTicker = (t) => TICKER_ALIASES[t.toUpperCase()] || t;
 
 // 미국 메인거래소(나스닥/NYSE) 미상장 — OTC ADR/해외상장 티커를 자국 시장 티커로 매핑.

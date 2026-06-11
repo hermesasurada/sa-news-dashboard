@@ -298,7 +298,8 @@ def get_filter_options() -> dict:
             if not t or t.upper() == 'NONE':
                 continue
             tickers.add(TICKER_ALIASES.get(t.upper(), t))  # GOOGL=GOOG 병합
-    return {"tickers": sorted(tickers)}
+    # aliases도 함께 내려 프런트가 동일 병합 규칙을 공유 (단일 소스: db.TICKER_ALIASES)
+    return {"tickers": sorted(tickers), "aliases": TICKER_ALIASES}
 
 
 if __name__ == "__main__":
@@ -440,15 +441,13 @@ def publish_article(
     ticker: Optional[str] = None,
     company_name: str,
     headline: str,
-    summary_core: str,
     summary_details,
-    tag: str,
     ticker_color: str = "blue",
-    tag_color: str = "blue",
 ) -> bool:
-    """작업 2 성공 — 한국어 요약 등 UPDATE + pub_status='published'.
+    """작업 2 성공 — 한국어 요약 UPDATE + pub_status='published'.
     ticker가 None이 아닌 경우 ticker 컬럼도 함께 업데이트.
     last_modified=now, fail_reason=NULL.
+    (summary_core/tag/tag_color는 더 이상 생성하지 않아 건드리지 않음 — 기존 값 유지)
     이미 published 아닌 row만 영향 (실패 → 발행 전환 포함)."""
     last_modified = _now_kst()
     if ticker is not None:
@@ -459,34 +458,30 @@ def publish_article(
             cur = conn.execute(
                 """
                 UPDATE articles SET
-                  ticker = ?, company_name = ?, headline = ?, summary_core = ?,
-                  summary_details = ?, tag = ?,
-                  ticker_color = ?, tag_color = ?,
-                  pub_status = 'published', last_modified = ?,
-                  fail_reason = NULL
+                  ticker = ?, company_name = ?, headline = ?,
+                  summary_details = ?, ticker_color = ?,
+                  pub_status = 'published', last_modified = ?, fail_reason = NULL
                 WHERE id = ? AND pub_status != 'deleted'
                 """,
                 (
-                    ticker, company_name, headline, summary_core,
+                    ticker, company_name, headline,
                     json.dumps(summary_details, ensure_ascii=False),
-                    tag, ticker_color, tag_color, last_modified, article_id,
+                    ticker_color, last_modified, article_id,
                 ),
             )
         else:
             cur = conn.execute(
                 """
                 UPDATE articles SET
-                  company_name = ?, headline = ?, summary_core = ?,
-                  summary_details = ?, tag = ?,
-                  ticker_color = ?, tag_color = ?,
-                  pub_status = 'published', last_modified = ?,
-                  fail_reason = NULL
+                  company_name = ?, headline = ?,
+                  summary_details = ?, ticker_color = ?,
+                  pub_status = 'published', last_modified = ?, fail_reason = NULL
                 WHERE id = ? AND pub_status != 'deleted'
                 """,
                 (
-                    company_name, headline, summary_core,
+                    company_name, headline,
                     json.dumps(summary_details, ensure_ascii=False),
-                    tag, ticker_color, tag_color, last_modified, article_id,
+                    ticker_color, last_modified, article_id,
                 ),
             )
         return cur.rowcount > 0
