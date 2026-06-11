@@ -604,6 +604,7 @@ def _split_ticker_counts(rows) -> tuple:
 
 def get_weekly_rankings(weeks: int = 4, top_n: int = 8) -> dict:
     """최근 N주 주차별 기업 기사수 랭킹. 순위 변동(bump chart)용.
+    삭제(deleted)·영구삭제(purged) 기사도 포함해 실제 수집 볼륨을 반영.
     주 구간은 일요일~토요일 고정 달력주(오늘이 포함된 주가 최신, 진행 중일 수 있음).
     각 주의 top_n 합집합을 series로 반환,
     ranks[i]는 i번째 주 순위(top_n 밖이면 null), counts[i]는 해당 주 기사수."""
@@ -623,9 +624,11 @@ def get_weekly_rankings(weeks: int = 4, top_n: int = 8) -> dict:
     names: dict[str, str] = {}
     with get_conn() as conn:
         for start, end in buckets:
+            # 주차별 랭킹은 삭제된 기사도 포함 (수집된 뉴스 볼륨 반영).
+            # purged(30일 경과 영구삭제)도 ticker는 보존되므로 포함.
             rows = conn.execute(
                 """SELECT ticker, company_name FROM articles
-                   WHERE pub_status='published'
+                   WHERE pub_status IN ('published','deleted','purged')
                      AND substr(email_time_et,1,10) BETWEEN ? AND ?""",
                 (start.isoformat(), end.isoformat()),
             ).fetchall()
