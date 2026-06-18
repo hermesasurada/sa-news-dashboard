@@ -218,6 +218,11 @@ const endLabelPlugin = {
 function drawBump(w) {
   const topN = w.top_n;
   const n = w.series.length;
+  const many = n > 30;
+  // 라인 수에 맞춰 차트 높이 동적 조정 (top50도 순위가 안 뭉치게)
+  const wrap = document.querySelector('.chart-wrap.bump');
+  if (wrap) wrap.style.height = Math.max(620, n * 19 + 90) + 'px';
+  const yStep = topN > 25 ? 5 : 1;
   const datasets = w.series.map((s, i) => {
     const col = bumpColor(i, n);
     return {
@@ -226,8 +231,8 @@ function drawBump(w) {
       _name: s.name, _counts: s.counts,
       borderColor: col,
       backgroundColor: col,
-      borderWidth: 2.5,
-      pointRadius: 3.5,
+      borderWidth: many ? 2 : 2.5,
+      pointRadius: many ? 2.5 : 3.5,
       pointHoverRadius: 7,
       tension: 0.3,
       spanGaps: false,
@@ -257,7 +262,7 @@ function drawBump(w) {
       scales: {
         y: { reverse: true, min: 1, max: topN, offset: true,
              title: { display: true, text: '순위' },
-             ticks: { stepSize: 1, precision: 0, callback: (v) => v + '위' },
+             ticks: { stepSize: yStep, precision: 0, callback: (v) => v + '위' },
              grid: { color: '#f1f3f5' } },
         x: { grid: { display: false }, ticks: { font: { weight: '600' } } }
       }
