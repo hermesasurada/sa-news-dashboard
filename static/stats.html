@@ -189,11 +189,30 @@ function drawCharts(d) {
   drawBump(d.weekly);
 }
 
-// 각 라인의 '마지막 표시 지점' 오른쪽에 티커 라벨 (우측 여백에 표기 → 차트선과 겹치지 않음)
+// 하이라이트 상태(chart._hi = 강조할 dataset index)에 따라 비강조 라인을 흐리게
+const highlightPlugin = {
+  id: 'highlight',
+  beforeDatasetDraw(chart, args) {
+    if (chart._hi == null) return;
+    chart.ctx.save();
+    chart.ctx.globalAlpha = args.index === chart._hi ? 1 : 0.08;
+  },
+  afterDatasetDraw(chart) {
+    if (chart._hi == null) return;
+    chart.ctx.restore();
+  }
+};
+
+// 각 라인의 '마지막 표시 지점' 오른쪽에 티커 라벨 + 라벨 히트박스 기록(마우스오버 강조용)
 const endLabelPlugin = {
   id: 'endLabel',
   afterDatasetsDraw(chart) {
     const { ctx, chartArea } = chart;
+    chart._labelBoxes = [];
+    ctx.save();
+    ctx.font = '700 11px ' + Chart.defaults.font.family;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
     chart.data.datasets.forEach((ds, di) => {
       const meta = chart.getDatasetMeta(di);
       if (meta.hidden) return;
@@ -204,14 +223,13 @@ const endLabelPlugin = {
       // 마지막 주(맨 오른쪽)에서 끝나면 우측 여백에, 중간에서 끊기면 해당 지점 바로 옆에
       const atRightEdge = lastIdx === ds.data.length - 1;
       const x = atRightEdge ? chartArea.right + 8 : pt.x + 8;
-      ctx.save();
-      ctx.font = '700 11px ' + Chart.defaults.font.family;
+      ctx.globalAlpha = (chart._hi == null || chart._hi === di) ? 1 : 0.12;
       ctx.fillStyle = ds.borderColor;
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'left';
       ctx.fillText(ds.label, x, pt.y);
-      ctx.restore();
+      const w = ctx.measureText(ds.label).width;
+      chart._labelBoxes.push({ di, x: x - 2, y: pt.y, w: w + 6, h: 16 });
     });
+    ctx.restore();
   }
 };
 
@@ -239,7 +257,7 @@ function drawBump(w) {
     };
   });
 
-  new Chart(document.getElementById('bumpChart'), {
+  const chart = new Chart(document.getElementById('bumpChart'), {
     type: 'line',
     data: { labels: w.weeks, datasets },
     options: {
@@ -267,7 +285,23 @@ function drawBump(w) {
         x: { grid: { display: false }, ticks: { font: { weight: '600' } } }
       }
     },
-    plugins: [endLabelPlugin]
+    plugins: [highlightPlugin, endLabelPlugin]
+  });
+
+  // 우측 끝 티커 라벨에 마우스 오버 → 해당 라인만 강조, 나머지 흐리게
+  const cv = chart.canvas;
+  cv.addEventListener('mousemove', (e) => {
+    const rect = cv.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    let hit = null;
+    for (const b of (chart._labelBoxes || [])) {
+      if (mx >= b.x && mx <= b.x + b.w && my >= b.y - b.h / 2 && my <= b.y + b.h / 2) { hit = b.di; break; }
+    }
+    cv.style.cursor = hit != null ? 'pointer' : 'default';
+    if (hit !== chart._hi) { chart._hi = hit; chart.update('none'); }
+  });
+  cv.addEventListener('mouseleave', () => {
+    if (chart._hi != null) { chart._hi = null; chart.update('none'); }
   });
 }
 
