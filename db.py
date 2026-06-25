@@ -459,6 +459,17 @@ def publish_article(
         # 동일 종목(GOOGL=GOOG 등) 티커 병합
         ticker, company_name = canonicalize_tickers(ticker, company_name)
     with get_conn() as conn:
+        # company_name 빈 슬롯을 티커 정식명으로 백필 (매크로/라운드업 기사 영구 해결).
+        # ticker가 None이면(=Claude 빈 반환, Stage-1 프리픽스 유지) 현재 저장된 ticker 기준.
+        try:
+            import ticker_names
+            eff_ticker = ticker
+            if eff_ticker is None:
+                _r = conn.execute("SELECT ticker FROM articles WHERE id = ?", (article_id,)).fetchone()
+                eff_ticker = _r[0] if _r else ""
+            company_name = ticker_names.fill_company(eff_ticker, company_name)
+        except Exception:
+            pass
         if ticker is not None:
             cur = conn.execute(
                 """
