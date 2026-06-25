@@ -32,14 +32,19 @@ _PROMPT_TMPL = """\
 아래 JSON 형식으로만 응답하세요. JSON 외의 텍스트·설명·마크다운 코드블럭은 절대 출력하지 마세요.
 
 출력 형식 (한 줄, key 순서 고정):
-{{"ticker":"AAPL, MSFT","company_name":"Apple·Microsoft","headline":"한국어제목","summary_details":["포인트1","포인트2","포인트3","포인트4"],"ticker_color":"blue"}}
+{{"ticker":"AVGO, NVDA, GOOG, META","company_name":"Broadcom·Nvidia·Alphabet·Meta Platforms","headline":"한국어제목","summary_details":["포인트1","포인트2","포인트3","포인트4"],"ticker_color":"blue"}}
 
 규칙:
-- ticker: 기사에 명시적으로 언급된 기업들의 거래소 티커 심볼. 쉼표+공백으로 구분 (예: "NVDA, AMD").
-  기사 맥락상 가장 주요한 기업을 첫 번째로. 티커를 확신할 수 없거나 상장사가 아닌
-  기관(연준·ECB·규제당국 등)은 제외. 기사에 티커 없으면 빈 문자열 "".
-- company_name: ticker 순서와 동일하게 정식 영문 기업명을 · 로 연결 (예: "Nvidia·AMD").
-  한국어 번역·음차 절대 금지. 티커 기호(AAPL 등) 포함 금지.
+- ticker: 기사 본문에 명시적으로 언급된 **상장 기업을 빠짐없이 모두** 추출해 거래소 티커 심볼로.
+  쉼표+공백으로 구분 (예: "AVGO, NVDA, GOOG, META"). 기사 맥락상 가장 주요한 기업을 첫 번째로.
+  ⚠️ 대표 기업 1개만 넣고 끝내지 말 것 — 경쟁사·고객사·파트너사·비교대상이라도
+     본문에 실제로 언급되고 미국 등 거래소에 상장돼 있으면 **전부 포함**한다.
+     (예: Broadcom 기사에 Nvidia·Google·Meta가 언급되면 AVGO 외에 NVDA·GOOG·META도 모두 포함)
+  제외 대상: 티커를 확신할 수 없는 경우, 비상장 기업(OpenAI·Anthropic 등),
+     상장사 아닌 기관(연준·ECB·규제당국 등), 본문에 등장하지 않는 종목.
+  기사에 상장 기업이 없으면 빈 문자열 "".
+- company_name: ticker 순서·개수와 **정확히 동일하게** 정식 영문 기업명을 · 로 연결 (예: "Nvidia·AMD").
+  ticker를 N개 넣었으면 company_name도 N개. 한국어 번역·음차 절대 금지. 티커 기호(AAPL 등) 포함 금지.
 - headline: 티커 prefix 금지. 구체적이고 정보량 있는 한국어 제목. 핵심 수치·방향·이벤트 포함.
   예) 'TSLA: 테슬라 가격 인상' ✗ → 'Tesla, 2년 만에 첫 모델 Y 가격 인상' ✓
 - summary_details: 4~6개 배열. 각 항목 완결 문장. '분석가 X는 Y라고 전망했다' 형식 선호.
