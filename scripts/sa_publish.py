@@ -47,6 +47,8 @@ def cmd_parse(article_id: int):
         print(f'PARSE_FAIL: {r.get("error", "unknown")}', file=sys.stderr)
         sys.exit(1)
     content = r.get('content', '')
+    # 어떤 파서가 쓰였는지 stderr로 전달 (호출측이 DB 기록)
+    print(f'PARSE_METHOD: {r.get("method", "")}', file=sys.stderr)
     print(content)
 
 

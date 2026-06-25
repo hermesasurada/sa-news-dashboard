@@ -186,6 +186,9 @@ def init_db():
             conn.execute(
                 "UPDATE articles SET is_read = 1 WHERE CAST(email_id AS INTEGER) <= 723"
             )
+        # 마이그레이션: parse_method 컬럼 (어떤 파서로 본문을 가져왔는지). 기존행은 NULL 유지.
+        if "parse_method" not in cols:
+            conn.execute("ALTER TABLE articles ADD COLUMN parse_method TEXT")
         # 마이그레이션: FTS에 original_title 컬럼 추가 (최초 1회)
         fts_cols = [r[1] for r in conn.execute("PRAGMA table_info(articles_fts)").fetchall()]
         if "original_title" not in fts_cols:
@@ -448,6 +451,7 @@ def publish_article(
     headline: str,
     summary_details,
     ticker_color: str = "blue",
+    parse_method: Optional[str] = None,
 ) -> bool:
     """작업 2 성공 — 한국어 요약 UPDATE + pub_status='published'.
     ticker가 None이 아닌 경우 ticker 컬럼도 함께 업데이트.
@@ -475,14 +479,14 @@ def publish_article(
                 """
                 UPDATE articles SET
                   ticker = ?, company_name = ?, headline = ?,
-                  summary_details = ?, ticker_color = ?,
+                  summary_details = ?, ticker_color = ?, parse_method = ?,
                   pub_status = 'published', last_modified = ?, fail_reason = NULL
                 WHERE id = ? AND pub_status != 'deleted'
                 """,
                 (
                     ticker, company_name, headline,
                     json.dumps(summary_details, ensure_ascii=False),
-                    ticker_color, last_modified, article_id,
+                    ticker_color, parse_method, last_modified, article_id,
                 ),
             )
         else:
@@ -490,14 +494,14 @@ def publish_article(
                 """
                 UPDATE articles SET
                   company_name = ?, headline = ?,
-                  summary_details = ?, ticker_color = ?,
+                  summary_details = ?, ticker_color = ?, parse_method = ?,
                   pub_status = 'published', last_modified = ?, fail_reason = NULL
                 WHERE id = ? AND pub_status != 'deleted'
                 """,
                 (
                     company_name, headline,
                     json.dumps(summary_details, ensure_ascii=False),
-                    ticker_color, last_modified, article_id,
+                    ticker_color, parse_method, last_modified, article_id,
                 ),
             )
         return cur.rowcount > 0

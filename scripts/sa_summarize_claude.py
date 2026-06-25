@@ -88,24 +88,30 @@ def validate(d: dict) -> dict:
 
 # ── SA 파싱 ────────────────────────────────────────────────────────────────
 
-def parse_article(article_id: int) -> tuple[str | None, str | None]:
-    """sa_publish.py parse 호출 → (본문, None) 또는 (None, 오류사유)."""
+def parse_article(article_id: int) -> tuple[str | None, str | None, str | None]:
+    """sa_publish.py parse 호출 → (본문, method, 오류사유).
+    성공: (content, method, None) / 실패: (None, None, reason)."""
     try:
         result = subprocess.run(
             [sys.executable, str(SCRIPT_DIR / "sa_publish.py"), "parse", str(article_id)],
             capture_output=True, text=True, timeout=90,
         )
+        # stderr에서 PARSE_METHOD 추출 (성공/실패 무관하게 시도)
+        method = None
+        for line in (result.stderr or "").splitlines():
+            if line.startswith("PARSE_METHOD:"):
+                method = line.split(":", 1)[1].strip() or None
         if result.returncode != 0:
             reason = result.stderr.strip() or f"parse exit {result.returncode}"
-            return None, reason
+            return None, None, reason
         content = result.stdout.strip()
         if not content:
-            return None, "parse returned empty content"
-        return content, None
+            return None, None, "parse returned empty content"
+        return content, method, None
     except subprocess.TimeoutExpired:
-        return None, "parse timeout"
+        return None, None, "parse timeout"
     except Exception as e:
-        return None, str(e)
+        return None, None, str(e)
 
 
 # ── 단일 기사 처리 ─────────────────────────────────────────────────────────
@@ -118,7 +124,7 @@ def process_article(row: dict) -> bool:
     print(f"  [{article_id}] {ticker} | {orig}")
 
     # 1. SA 페이지 파싱
-    content, parse_err = parse_article(article_id)
+    content, parse_method, parse_err = parse_article(article_id)
     if not content:
         reason = parse_err or "PARSE_FAIL"
         print(f"     파싱 실패: {reason}", file=sys.stderr)
@@ -161,6 +167,7 @@ def process_article(row: dict) -> bool:
         headline=data["headline"],
         summary_details=data["summary_details"],
         ticker_color=data["ticker_color"],
+        parse_method=parse_method,
     )
     if ok:
         print(f"     ✓ published: {data['headline'][:70]}")

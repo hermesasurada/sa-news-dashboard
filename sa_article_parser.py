@@ -160,7 +160,13 @@ def parse_with_jina_reader(url: str) -> Optional[Dict[str, Any]]:
     try:
         resp = curl_requests.get(
             f"https://r.jina.ai/{url}",
-            headers={"Accept": "application/json", "User-Agent": UA},
+            headers={
+                "Accept": "application/json",
+                "User-Agent": UA,
+                # #2: 기사 element만 추출 → SA 네비게이션 ~14000자 제거.
+                # SA 뉴스 본문은 <article>에 H1·날짜·종목태그(TSLA 등)와 함께 담김.
+                "X-Target-Selector": "article",
+            },
             timeout=25,
         )
         if resp.status_code != 200:
@@ -190,19 +196,10 @@ def parse_with_jina_reader(url: str) -> Optional[Dict[str, Any]]:
         if "Access to this page has been denied" in content_md:
             return None
 
-        # 본문 시작점 찾기: Jina markdown은 보통
-        #   "# {title} | Seeking Alpha" (페이지 헤더) → 사이트 네비게이션 ~14000자 → "# {title}" (article H1) → 본문
-        # 형태. title이 두 번째 등장하는 위치부터 잘라야 nav가 잘려서 10000자 윈도우에 본문이 들어옴.
-        # title 매칭에는 첫 60자만 사용 (Jina가 "| Seeking Alpha" 등 suffix를 붙이거나 일부 변형할 수 있음).
-        start = 0
-        if title:
-            needle = title[:60]
-            first = content_md.find(needle)
-            if first >= 0:
-                second = content_md.find(needle, first + len(needle))
-                if second > 0:
-                    start = second
-        body = content_md[start:start + 10000]
+        # #2: X-Target-Selector=article로 이미 기사 element만 받으므로
+        # 기존의 "title 2번째 등장" nav-제거 휴리스틱은 불필요(오히려 본문을 잘못 자름).
+        # article 안의 'recommended for you' 링크는 보통 본문 뒤라 앞에서 10000자 자르면 본문이 들어옴.
+        body = content_md[:10000]
         if title and not body.lstrip().startswith(title[:30]):
             body = f"{title}\n\n{body}"[:10000]
         return {
@@ -246,6 +243,32 @@ def parse_with_curl_cffi_rotated(url: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _og_lead(url: str) -> str:
+    """SA 페이지 정적 메타(og:title/og:description)에서 깔끔한 리드 추출.
+    어떤 본문 파서가 이기든 핵심 종목이 담긴 리드를 보장하기 위함 (#1).
+    실패해도 빈 문자열 → 호출측 무해."""
+    try:
+        r = curl_requests.get(url, headers={"User-Agent": UA}, impersonate="chrome124", timeout=20)
+        if r.status_code != 200:
+            return ""
+        html_text = r.text
+        def _meta(prop):
+            m = re.search(
+                r'<meta[^>]*property=["\']og:' + prop + r'["\'][^>]*content=["\']([^"\']*)["\']',
+                html_text)
+            if not m:
+                m = re.search(
+                    r'<meta[^>]*content=["\']([^"\']*)["\'][^>]*property=["\']og:' + prop + r'["\']',
+                    html_text)
+            return html.unescape(m.group(1).strip()) if m else ""
+        title = _meta("title")
+        desc = _meta("description")
+        lead = "\n".join(x for x in (title, desc) if x)
+        return lead.strip()
+    except Exception:
+        return ""
+
+
 def parse_sa_article(url: str) -> Dict[str, Any]:
     """SA 기사 파싱 (3단계 Fallback, 인증 없음).
 
@@ -253,16 +276,22 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
         {
             "success": bool,
             "title": str,
-            "content": str,           # 본문 (요약 재료)
+            "content": str,           # 본문 (요약 재료) — 앞에 og 리드 prepend
             "method": str or None,
             "error": str or None
         }
     """
     url = strip_utm(url)
+    lead = _og_lead(url)  # #1: 핵심 종목이 담긴 리드 (본문 앞에 붙임)
     # 우선순위 (v5 — Jina 우선): 로컬 IP 평판 소모 방지
     for parser in [parse_with_jina_reader, parse_with_playwright_stealth, parse_with_curl_cffi_rotated]:
         result = parser(url)
         if result:
+            body = result.get("content", "")
+            # 핵심 종목이 담긴 og 리드를 항상 본문 앞에 prepend (어떤 파서가 이기든 보장).
+            # 단, 리드 끝부분(설명 핵심)이 이미 본문에 있으면 중복 회피.
+            if lead and (len(lead) < 40 or lead[-40:] not in body):
+                result["content"] = f"{lead}\n\n{body}"
             result["success"] = True
             result["error"] = None
             return result
