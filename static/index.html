@@ -522,9 +522,6 @@ body {
 .footer-method {
   display: block;
   margin-top: 2px;
-  font-size: 9px;
-  color: #cbd5e1;
-  letter-spacing: 0.02em;
 }
 .footer-actions {
   display: flex;
@@ -938,10 +935,10 @@ function extractTickers(a) {
 // parse_method(db) → 카드에 표기할 수집방식 라벨. NULL(기존행)이면 빈값.
 function parseMethodLabel(m) {
   if (!m) return '';
-  if (m.startsWith('jina')) return '수집: Jina';
-  if (m.startsWith('playwright')) return '수집: Playwright';
-  if (m.startsWith('curl_cffi')) return '수집: curl';
-  return '수집: ' + m;
+  if (m.startsWith('jina')) return 'Jina';
+  if (m.startsWith('playwright')) return 'Playwright';
+  if (m.startsWith('curl_cffi')) return 'curl';
+  return m;
 }
 
 /* ── Card Render ── */
