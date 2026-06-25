@@ -142,8 +142,9 @@ def parse_with_playwright_stealth(url: str) -> Optional[Dict[str, Any]]:
             )
             ctx.add_init_script(STEALTH_INIT)
             page = ctx.new_page()
-            page.goto(url, timeout=25000, wait_until="load")
-            time.sleep(2)
+            # SA가 느릴 수 있어 로드 35s 허용. JS SPA라 본문은 load 이후 XHR로 렌더 → 3s 추가 대기.
+            page.goto(url, timeout=35000, wait_until="load")
+            time.sleep(3)
             html_content = page.content()
             ctx.close()
         return _parse_html(html_content, "playwright_stealth")
@@ -167,7 +168,7 @@ def parse_with_jina_reader(url: str) -> Optional[Dict[str, Any]]:
                 # SA 뉴스 본문은 <article>에 H1·날짜·종목태그(TSLA 등)와 함께 담김.
                 "X-Target-Selector": "article",
             },
-            timeout=25,
+            timeout=30,
         )
         if resp.status_code != 200:
             return None

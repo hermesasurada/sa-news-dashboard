@@ -94,7 +94,9 @@ def parse_article(article_id: int) -> tuple[str | None, str | None, str | None]:
     try:
         result = subprocess.run(
             [sys.executable, str(SCRIPT_DIR / "sa_publish.py"), "parse", str(article_id)],
-            capture_output=True, text=True, timeout=90,
+            # SA 페이지 로딩이 느릴 수 있고, 3단계 폴백(og+Jina+Playwright+curl_cffi)이
+            # 순차로 돌면 worst-case가 길어지므로 래퍼는 넉넉히 잡음.
+            capture_output=True, text=True, timeout=200,
         )
         # stderr에서 PARSE_METHOD 추출 (성공/실패 무관하게 시도)
         method = None
