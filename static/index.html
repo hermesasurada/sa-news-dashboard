@@ -331,13 +331,26 @@ body {
 
 /* ── Card Title Row (제목 + 미읽음 dot) ── */
 .card-title-row {
+  position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 7px;
-  margin-bottom: 3px;
+  gap: 8px;
+  margin-bottom: 4px;
+  padding-left: 13px;
+}
+/* 감정색 좌측 액센트 바 — 제목 영역을 눈에 띄게 */
+.card-title-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 4px;
+  border-radius: 3px;
+  background: var(--accent, #3b82f6);
 }
 .card-title-row .unread-dot {
-  margin-top: 6px;
+  margin-top: 8px;
   flex-shrink: 0;
 }
 .card-title-row .card-title {
@@ -450,11 +463,12 @@ body {
 
 /* ── Card Title ── */
 .card-title {
-  font-size: 16px;
-  color: #111827;
-  font-weight: 700;
+  font-size: 17.5px;
+  color: #0f172a;
+  font-weight: 800;
   margin-bottom: 3px;
-  line-height: 1.5;
+  line-height: 1.42;
+  letter-spacing: -0.01em;
   word-break: keep-all;
   overflow-wrap: break-word;
 }
@@ -464,6 +478,7 @@ body {
   font-style: italic;
   line-height: 1.4;
   margin-bottom: 0;
+  margin-left: 13px;
   word-break: break-word;
 }
 
@@ -593,7 +608,7 @@ body {
 @media (max-width: 480px) {
   body { padding: 10px; }
   .card { padding: 14px; }
-  .card-title { font-size: 15px; }
+  .card-title { font-size: 16px; }
 }
 
 /* ── Pagination ── */
@@ -740,6 +755,8 @@ let trashView = false;
 const SVG_EYE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const SVG_EYE_OFF = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
 const SVG_TRASH = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>`;
+// 제목 좌측 액센트 바 색 (ticker_color 감정색과 동일 팔레트)
+const ACCENT = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f59e0b', yellow:'#eab308', purple:'#8b5cf6', gray:'#94a3b8' };
 const SVG_RESTORE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`;
 
 /* ── Filters ── */
@@ -940,7 +957,7 @@ function renderCard(a) {
   const combinedBadges = tickerBadges;
 
   return `
-<div class="card${!isRead ? ' card-unread' : ''}" data-id="${a.id}" data-read="${isRead ? '1' : '0'}">
+<div class="card${!isRead ? ' card-unread' : ''}" data-id="${a.id}" data-read="${isRead ? '1' : '0'}" style="--accent:${ACCENT[a.ticker_color] || ACCENT.blue}">
   <div class="card-title-row">
     ${unreadDot}
     <h2 class="card-title">${a.headline}</h2>
