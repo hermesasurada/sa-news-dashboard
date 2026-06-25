@@ -19,6 +19,11 @@ TICKER_ALIASES = {
     "FOXA": "FOX",     # Fox Class A → Class B
     "NWSA": "NWS",     # News Corp Class A → Class B
     "UAA": "UA",       # Under Armour Class A → Class C
+    # 한국 거래소 코드 → OTC ADR 티커 (FOREIGN_LISTINGS가 OTC 키로 한글명 표시)
+    "005930": "SSNLF", "005930.KS": "SSNLF",   # 삼성전자
+    "000660": "HXSCL", "000660.KS": "HXSCL",   # SK하이닉스
+    "066570": "LGEIY", "066570.KS": "LGEIY",   # LG전자
+    "035420": "NHNCF", "035420.KS": "NHNCF",   # 네이버
 }
 
 
