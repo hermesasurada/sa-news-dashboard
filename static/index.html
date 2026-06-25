@@ -519,6 +519,13 @@ body {
   color: #c4c9d4;
   white-space: nowrap;
 }
+.footer-method {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  color: #cbd5e1;
+  letter-spacing: 0.02em;
+}
 .footer-actions {
   display: flex;
   gap: 8px;
@@ -928,12 +935,22 @@ function extractTickers(a) {
   return [...map.entries()].map(([ticker, name]) => ({ ticker, name }));
 }
 
+// parse_method(db) → 카드에 표기할 수집방식 라벨. NULL(기존행)이면 빈값.
+function parseMethodLabel(m) {
+  if (!m) return '';
+  if (m.startsWith('jina')) return '수집: Jina';
+  if (m.startsWith('playwright')) return '수집: Playwright';
+  if (m.startsWith('curl_cffi')) return '수집: curl';
+  return '수집: ' + m;
+}
+
 /* ── Card Render ── */
 function renderCard(a) {
   const details = a.summary_details.map(d => `<li>${d}</li>`).join('');
   const timeLabel = formatTime(a.email_time_et);
   const emailIdLabel = a.email_id ? `ID:${a.email_id}` : '';
   const footerMeta = [emailIdLabel, timeLabel].filter(Boolean).join(' · ');
+  const methodLabel = parseMethodLabel(a.parse_method);
   const isRead = !!a.is_read;
   const unreadDot = !isRead ? '<span class="unread-dot" title="미읽음"></span>' : '';
   const readBtnClass = isRead ? 'read-btn done' : 'read-btn';
@@ -971,7 +988,7 @@ function renderCard(a) {
   </div>
   ${combinedBadges ? `<div class="card-tickers">${combinedBadges}</div>` : ''}
   <div class="card-footer">
-    <span class="footer-left">${footerMeta}</span>
+    <span class="footer-left">${footerMeta}${methodLabel ? `<span class="footer-method">${methodLabel}</span>` : ''}</span>
     <div class="footer-actions">
       ${trashView ? '' : `<button class="${readBtnClass}" onclick="toggleRead(${a.id}, this)" title="${readBtnTitle}">${isRead ? SVG_EYE_OFF : SVG_EYE}</button>`}
       <a href="${a.article_url}" target="_blank" rel="noopener" class="link-btn">원문보기</a>
