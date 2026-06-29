@@ -170,6 +170,7 @@ def process_article(row: dict) -> bool:
         summary_details=data["summary_details"],
         ticker_color=data["ticker_color"],
         parse_method=parse_method,
+        article_body=content,
     )
     if ok:
         print(f"     ✓ published: {data['headline'][:70]}")
