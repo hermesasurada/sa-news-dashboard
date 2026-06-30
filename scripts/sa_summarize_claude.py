@@ -86,6 +86,58 @@ def validate(d: dict) -> dict:
     return d
 
 
+# ── 원문 정제 + 번역 ────────────────────────────────────────────────────────
+
+def clean_body(text: str) -> str:
+    """파싱한 markdown 본문에서 태그·링크·이미지·네비/추천/크레딧을 제거하고 기사 prose만 남김."""
+    t = text or ""
+    # 하단 추천/관련 섹션 이후 잘라냄
+    m = re.search(r"recommended for you|related (stocks|articles|analysis)|more on this|sign up for", t, re.I)
+    if m:
+        t = t[:m.start()]
+    t = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", t)        # 이미지
+    t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)     # 링크 → 텍스트
+    t = re.sub(r"https?://\S+", "", t)                 # 맨 URL
+    t = re.sub(r"^\s{0,3}#{1,6}\s*", "", t, flags=re.M)  # md 헤더
+    t = re.sub(r"^\s*[\*\-•]\s+", "", t, flags=re.M)     # 불릿
+    drop = ("skip to content", "home page", "create free account", "sign in", "about premium",
+            "via getty", "getty images", "istock", "/reuters", "/bloomberg", "unsplash", "shutterstock")
+    seen, out = set(), []
+    for ln in t.splitlines():
+        s = ln.strip()
+        if not s:
+            out.append("")
+            continue
+        low = s.lower()
+        if any(d in low for d in drop):
+            continue
+        if re.match(r"^comments\s*\(\d+\)$", s, re.I):
+            continue
+        if len(s) > 15 and s in seen:   # 중복 제목/줄 제거(긴 줄만)
+            continue
+        seen.add(s)
+        out.append(s)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+def translate_to_korean(text: str) -> str:
+    """정제된 영어 본문을 한국어로 번역. 실패 시 빈 문자열(발행은 계속)."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    prompt = (
+        "다음 영어 기사 본문을 자연스러운 한국어로 번역하세요. "
+        "번역문만 출력하고 설명·머리말·코드블럭은 쓰지 마세요. "
+        "외국 기업·인명·티커는 영문 원어 유지, 한자·가나 금지.\n\n=== 본문 ===\n"
+        + text[:6000]
+    )
+    try:
+        r = call_claude(prompt)
+        return (r or "").strip()
+    except Exception:
+        return ""
+
+
 # ── SA 파싱 ────────────────────────────────────────────────────────────────
 
 def parse_article(article_id: int) -> tuple[str | None, str | None, str | None]:
@@ -160,7 +212,13 @@ def process_article(row: dict) -> bool:
         db.mark_attempt_failed(article_id, reason[:200])
         return False
 
-    # 4. DB 발행 (ticker가 추출됐으면 교체, 없으면 Stage 1 값 유지)
+    # 4. 원문 정제(태그/링크 제거) + 한국어 번역
+    clean_en = clean_body(content)
+    print(f"     원문 번역 중…", end="", flush=True)
+    body_ko = translate_to_korean(clean_en)
+    print(" 완료" if body_ko else " (번역 실패/생략)")
+
+    # 5. DB 발행 (ticker가 추출됐으면 교체, 없으면 Stage 1 값 유지)
     new_ticker = data.get("ticker") or ""
     ok = db.publish_article(
         article_id,
@@ -170,7 +228,8 @@ def process_article(row: dict) -> bool:
         summary_details=data["summary_details"],
         ticker_color=data["ticker_color"],
         parse_method=parse_method,
-        article_body=content,
+        article_body=clean_en,
+        article_body_ko=body_ko,
     )
     if ok:
         print(f"     ✓ published: {data['headline'][:70]}")
