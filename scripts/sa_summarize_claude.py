@@ -88,39 +88,46 @@ def validate(d: dict) -> dict:
 
 # ── 원문 정제 + 번역 ────────────────────────────────────────────────────────
 
-# 본문 하단에 SA가 끼워넣는 페이월/구독 프로모·관련글 nav 시작 마커.
-# (이 지점부터 잘라냄. 상단 'Comments (N)' 링크는 별도로 라인 단위 제거 → 오절단 방지)
-_PAYWALL_MARK = re.compile(
-    r"(Recommended For You|Subscribe to |Smarter .{0,25}? Starts Here|Tap into "
-    r"|Quick Insights|More on this|Related (Stocks|Articles|Analysis)|Sign Up\s*\n?\s*Share)",
-    re.I,
-)
+# 본문 하단의 '관련글' 섹션 시작 마커 — 이 지점부터 잘라냄.
+# (SA의 'Quick Insights' AI Q&A는 이 앞이라 보존됨. 구독 프로모는 라인 단위로 제거)
+_TAIL_MARK = re.compile(
+    r"(Recommended For You|More on (this|the)\b|Related (Stocks|Articles|Analysis))", re.I)
+
+# 라인 단위로 버리는 구독 프로모·UI cruft
+_DROP_SUB = ("subscribe to", "sign up", "newsletters for every", "get daily", "sector-specific",
+             "smarter ", "tap into ", "copy link", "play(", "skip to content", "home page",
+             "create free account", "sign in", "about premium", "sa news editor",
+             "via getty", "getty images", "istock", "/reuters", "/bloomberg", "unsplash", "shutterstock")
+_DROP_EXACT = {"save", "share", "print", "comments", "follow", "on the move", "financials", "newsletters", "quick insights"}
 
 
 def clean_body(text: str) -> str:
-    """파싱한 markdown 본문에서 태그·링크·이미지·네비/추천/크레딧/페이월 프로모를 제거하고
-    기사 prose만 남김. (SA는 무료 미리보기라 본문이 페이월 경계에서 끝날 수 있음 — junk만 제거)"""
+    """파싱한 markdown 본문에서 태그·링크·이미지·구독 프로모·UI cruft를 제거하고 기사 prose만 남김.
+    SA가 무료로 붙여주는 'Quick Insights' Q&A는 보존(요약 substance가 거기 있음).
+    (무료 미리보기라 기자 본문은 페이월 경계에서 끝날 수 있음 — junk만 제거)"""
     t = text or ""
-    m = _PAYWALL_MARK.search(t)
+    m = _TAIL_MARK.search(t)
     if m:
         t = t[:m.start()]
     t = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", t)        # 이미지
     t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)     # 링크 → 텍스트
     t = re.sub(r"https?://\S+", "", t)                 # 맨 URL
-    t = re.sub(r"^\s{0,3}#{1,6}\s*", "", t, flags=re.M)  # md 헤더
-    t = re.sub(r"^\s*[\*\-•]\s+", "", t, flags=re.M)     # 불릿
-    drop = ("skip to content", "home page", "create free account", "sign in", "about premium",
-            "via getty", "getty images", "istock", "/reuters", "/bloomberg", "unsplash", "shutterstock")
     seen, out = set(), []
     for ln in t.splitlines():
-        s = ln.strip()
+        s = re.sub(r"^[\*\-•]\s+", "", ln.strip())      # 불릿 먼저
+        s = re.sub(r"^\s*#{1,6}\s*", "", s)             # 그 안의 md 헤더 (예: '* ### Q')
         if not s:
             out.append("")
             continue
         low = s.lower()
-        if any(d in low for d in drop):
+        if low in _DROP_EXACT:
+            continue
+        if any(d in low for d in _DROP_SUB):
             continue
         if re.match(r"^comments\s*\(?\d*\)?$", s, re.I):
+            continue
+        # 날짜+티커 메타라인 (예: 'Jun 30, 2026, 5:22 AM ET ... Stock, ... By: ...')
+        if re.search(r"\bET\b", s) and s.count(",") >= 4:
             continue
         if len(s) > 15 and s in seen:   # 중복 제목/줄 제거(긴 줄만)
             continue

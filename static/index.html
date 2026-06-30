@@ -730,14 +730,24 @@ body {
   padding: 20px 0;
   white-space: normal;
 }
-.src-sec-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #6b7280;
-  margin: 14px 0 6px;
-  letter-spacing: 0.02em;
+.src-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 18px 10px;
+  border-bottom: 1px solid #eef0f3;
 }
-.src-sec-label:first-child { margin-top: 0; }
+.src-tab {
+  background: none;
+  border: none;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.src-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
 .src-text { white-space: pre-wrap; }
 .src-text.src-en { color: #64748b; font-size: 12.5px; }
 </style>
@@ -796,6 +806,10 @@ body {
       <button class="modal-close" onclick="closeSourceModal()" aria-label="닫기">✕</button>
     </div>
     <a id="source-link" class="source-link" href="#" target="_blank" rel="noopener">🔗 Seeking Alpha에서 원문 보기 ↗</a>
+    <div class="src-tabs">
+      <button class="src-tab active" id="src-tab-ko" onclick="switchSourceTab('ko')">🇰🇷 번역</button>
+      <button class="src-tab" id="src-tab-en" onclick="switchSourceTab('en')">🇺🇸 영어 원문</button>
+    </div>
     <div id="source-body" class="source-body"></div>
   </div>
 </div>
@@ -987,25 +1001,30 @@ function extractTickers(a) {
   return [...map.entries()].map(([ticker, name]) => ({ ticker, name }));
 }
 
-// ── 원문(수집 본문) 모달 ──
-let _itemsById = {};  // 현재 페이지 카드 데이터 (id → article)
+// ── 원문(수집 본문) 모달 ── 2탭: 번역 / 영어 원문
+let _itemsById = {};        // 현재 페이지 카드 데이터 (id → article)
+let _srcData = { ko: '', en: '' };
 function openSourceModal(id) {
   const a = _itemsById[id];
   if (!a) return;
-  const link = document.getElementById('source-link');
-  link.href = a.article_url || '#';
-  const bodyEl = document.getElementById('source-body');
-  const en = (a.article_body || '').trim();
-  const ko = (a.article_body_ko || '').trim();
-  if (!en && !ko) {
-    bodyEl.innerHTML = '<div class="no-source">이 기사는 원문을 수집하지 않았습니다. 아래 링크에서 원문을 확인하세요.</div>';
-  } else {
-    let html = '';
-    if (ko) html += `<div class="src-sec-label">🇰🇷 번역</div><div class="src-text">${escapeHtml(ko)}</div>`;
-    if (en) html += `<div class="src-sec-label">🇺🇸 원문</div><div class="src-text src-en">${escapeHtml(en)}</div>`;
-    bodyEl.innerHTML = html;
-  }
+  document.getElementById('source-link').href = a.article_url || '#';
+  _srcData = { ko: (a.article_body_ko || '').trim(), en: (a.article_body || '').trim() };
+  switchSourceTab('ko');    // 기본: 번역 탭
   document.getElementById('source-modal').classList.add('show');
+}
+function switchSourceTab(tab) {
+  document.getElementById('src-tab-ko').classList.toggle('active', tab === 'ko');
+  document.getElementById('src-tab-en').classList.toggle('active', tab === 'en');
+  const bodyEl = document.getElementById('source-body');
+  const content = _srcData[tab];
+  if (content) {
+    bodyEl.innerHTML = `<div class="src-text${tab === 'en' ? ' src-en' : ''}">${escapeHtml(content)}</div>`;
+  } else {
+    const msg = tab === 'ko'
+      ? '번역이 없습니다 (과거 수집분).'
+      : '영어 원문을 수집하지 않았습니다 (과거 수집분).';
+    bodyEl.innerHTML = `<div class="no-source">${msg} 상단의 'Seeking Alpha에서 원문 보기' 링크를 이용하세요.</div>`;
+  }
 }
 function closeSourceModal() {
   document.getElementById('source-modal').classList.remove('show');
