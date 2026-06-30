@@ -725,6 +725,9 @@ body {
       <span id="sort-label">이메일시간순</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
     </button>
+    <button class="btn-sort" id="order-toggle" onclick="toggleOrder()" title="정렬 방향">
+      <span id="order-label">최신순</span>
+    </button>
     <button class="btn-reset" onclick="reset()">초기화</button>
     <button class="btn-unread" id="unread-filter" onclick="toggleUnreadFilter()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -760,6 +763,7 @@ body {
 const PAGE_SIZE = 15;
 let currentOffset = 0;
 let currentSort = 'email_time_et';
+let currentOrder = 'desc';   // desc=최신순 / asc=과거순
 let trashView = false;
 
 /* ── SVG Icons ── */
@@ -833,18 +837,46 @@ function renderTickerList() {
 }
 
 /* ── Sort ── */
+// 정렬 기준/방향 UI를 현재 상태에 맞게 반영
+function applySortUI() {
+  document.getElementById('sort-label').textContent = currentSort === 'last_modified' ? '수정시간순' : '이메일시간순';
+  document.getElementById('sort-toggle').classList.toggle('alt', currentSort === 'last_modified');
+  document.getElementById('order-label').textContent = currentOrder === 'asc' ? '과거순' : '최신순';
+  document.getElementById('order-toggle').classList.toggle('alt', currentOrder === 'asc');
+}
+
 function toggleSort() {
   currentSort = currentSort === 'email_time_et' ? 'last_modified' : 'email_time_et';
-  const btn = document.getElementById('sort-toggle');
-  const label = document.getElementById('sort-label');
-  if (currentSort === 'last_modified') {
-    label.textContent = '수정시간순';
-    btn.classList.add('alt');
-  } else {
-    label.textContent = '이메일시간순';
-    btn.classList.remove('alt');
-  }
+  applySortUI();
+  savePrefs();
   search(0);
+}
+
+function toggleOrder() {
+  currentOrder = currentOrder === 'desc' ? 'asc' : 'desc';
+  applySortUI();
+  savePrefs();
+  search(0);
+}
+
+// ── 검색조건 기본값 로컬 저장/로드 ──
+function savePrefs() {
+  try {
+    localStorage.setItem('sa_prefs', JSON.stringify({
+      sort: currentSort,
+      order: currentOrder,
+      unread: document.getElementById('unread-filter').classList.contains('active'),
+    }));
+  } catch (e) {}
+}
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem('sa_prefs') || '{}');
+    if (p.sort === 'last_modified' || p.sort === 'email_time_et') currentSort = p.sort;
+    if (p.order === 'asc' || p.order === 'desc') currentOrder = p.order;
+    if (p.unread) document.getElementById('unread-filter').classList.add('active');
+  } catch (e) {}
+  applySortUI();
 }
 
 /* ── Params ── */
@@ -855,6 +887,7 @@ function getParams(offset) {
   if (q) p.set('q', q);
   if (ticker) p.set('ticker', ticker);
   p.set('sort_by', currentSort);
+  p.set('order', currentOrder);
   if (document.getElementById('unread-filter').classList.contains('active'))
     p.set('unread_only', 'true');
   if (trashView) p.set('deleted', 'true');
@@ -1136,11 +1169,10 @@ function restoreFromURL() {
   if (sp.has('q'))           document.getElementById('q').value = sp.get('q');
   if (sp.has('ticker'))    { document.getElementById('ticker-filter').value = sp.get('ticker'); updateTickerLabel(); }
   if (sp.has('unread_only')) document.getElementById('unread-filter').classList.add('active');
-  if (sp.get('sort_by') === 'last_modified') {
-    currentSort = 'last_modified';
-    document.getElementById('sort-label').textContent = '수정시간순';
-    document.getElementById('sort-toggle').classList.add('alt');
-  }
+  // URL이 정렬을 지정하면 로컬 기본값보다 우선 (공유 링크)
+  if (sp.has('sort_by')) currentSort = sp.get('sort_by') === 'last_modified' ? 'last_modified' : 'email_time_et';
+  if (sp.has('order'))   currentOrder = sp.get('order') === 'asc' ? 'asc' : 'desc';
+  applySortUI();
   return parseInt(sp.get('offset') || '0');
 }
 
@@ -1229,6 +1261,7 @@ async function search(offset = 0) {
 /* ── Filter Controls ── */
 function toggleUnreadFilter() {
   document.getElementById('unread-filter').classList.toggle('active');
+  savePrefs();
   search(0);
 }
 
@@ -1245,11 +1278,12 @@ function reset() {
   document.getElementById('ticker-filter').value = '';
   updateTickerLabel();
   currentSort = 'email_time_et';
-  document.getElementById('sort-label').textContent = '이메일시간순';
-  document.getElementById('sort-toggle').classList.remove('alt');
+  currentOrder = 'desc';
+  applySortUI();
   document.getElementById('unread-filter').classList.remove('active');
   trashView = false;
   document.getElementById('trash-view').classList.remove('active');
+  savePrefs();
   search(0);
 }
 
@@ -1288,7 +1322,8 @@ document.addEventListener('keydown', e => {
 /* ── Init ── */
 async function init() {
   await loadFilters();             // 먼저 ticker 옵션 로드
-  const savedOffset = restoreFromURL(); // URL → 필터 복원 (ticker 옵션 있어야 선택 가능)
+  loadPrefs();                     // 로컬에 저장된 검색조건 기본값 적용
+  const savedOffset = restoreFromURL(); // URL이 있으면 우선 (공유 링크)
   search(savedOffset);
   startNotificationPolling();
 }

@@ -33,6 +33,7 @@ def get_articles(
     date_from: str = Query("", description="시작 날짜 YYYY-MM-DD (email_time_et 기준)"),
     date_to: str = Query("", description="종료 날짜 YYYY-MM-DD (email_time_et 기준)"),
     sort_by: str = Query("email_time_et", description="정렬 기준: email_time_et | last_modified"),
+    order: str = Query("desc", description="정렬 방향: desc(최신순) | asc(과거순)"),
     unread_only: bool = Query(False, description="미읽음만 보기"),
     deleted: bool = Query(False, description="휴지통(삭제됨)만 보기"),
     limit: int = Query(50, ge=1, le=200),
@@ -41,7 +42,7 @@ def get_articles(
     return db.query_articles(
         q=q, ticker=ticker,
         date_from=date_from, date_to=date_to,
-        sort_by=sort_by,
+        sort_by=sort_by, order=order,
         unread_only=unread_only,
         deleted=deleted,
         limit=limit, offset=offset,

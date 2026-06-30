@@ -202,6 +202,7 @@ def query_articles(
     date_from: str = "",
     date_to: str = "",
     sort_by: str = "email_time_et",  # email_time_et | last_modified
+    order: str = "desc",             # desc(최신순) | asc(과거순)
     unread_only: bool = False,
     deleted: bool = False,
     limit: int = 50,
@@ -209,7 +210,7 @@ def query_articles(
 ) -> dict:
     """기사 목록 조회. 기본은 pub_status='published'만 노출.
     deleted=True 이면 휴지통(pub_status='deleted')만 노출.
-    정렬 기본: email_time_et DESC → email_id DESC.
+    정렬 기본: email_time_et DESC → email_id DESC. order=asc면 오름차순(과거순).
     날짜 필터는 email_time_et 기준 (YYYY-MM-DD)."""
     params = []
     joins = ""
@@ -243,11 +244,10 @@ def query_articles(
 
     where_sql = "WHERE " + " AND ".join(wheres)
 
-    # 정렬 조건
-    if sort_by == "last_modified":
-        order = "articles.last_modified DESC, CAST(articles.email_id AS INTEGER) DESC"
-    else:
-        order = "articles.email_time_et DESC, CAST(articles.email_id AS INTEGER) DESC"
+    # 정렬 조건 (방향: asc=과거순 / 그 외=desc 최신순)
+    direction = "ASC" if str(order).lower() == "asc" else "DESC"
+    field = "articles.last_modified" if sort_by == "last_modified" else "articles.email_time_et"
+    order_clause = f"{field} {direction}, CAST(articles.email_id AS INTEGER) {direction}"
 
     with get_conn() as conn:
         total = conn.execute(
@@ -258,7 +258,7 @@ def query_articles(
             f"""
             SELECT articles.* FROM articles {joins}
             {where_sql}
-            ORDER BY {order}
+            ORDER BY {order_clause}
             LIMIT ? OFFSET ?
             """,
             params + [limit, offset],
