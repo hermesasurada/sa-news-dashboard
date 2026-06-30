@@ -1089,7 +1089,8 @@ function renderCard(a) {
     <span class="footer-left">${footerMeta}${methodLabel ? `<span class="footer-method">${methodLabel}</span>` : ''}</span>
     <div class="footer-actions">
       ${trashView ? '' : `<button class="${readBtnClass}" onclick="toggleRead(${a.id}, this)" title="${readBtnTitle}">${isRead ? SVG_EYE_OFF : SVG_EYE}</button>`}
-      <button type="button" class="link-btn" onclick="openSourceModal(${a.id})">원문보기</button>
+      <button type="button" class="link-btn" onclick="openSourceModal(${a.id})">본문</button>
+      <a class="link-btn" href="${a.article_url}" target="_blank" rel="noopener">원문보기</a>
       ${trashView
         ? `<button class="restore-btn" onclick="restoreCard(${a.id}, this)" title="복원">${SVG_RESTORE}복원</button>`
         : `<button class="delete-btn" onclick="deleteCard(${a.id}, this)" title="삭제">${SVG_TRASH}</button>`}
