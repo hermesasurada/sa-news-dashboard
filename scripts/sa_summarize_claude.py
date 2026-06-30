@@ -88,11 +88,20 @@ def validate(d: dict) -> dict:
 
 # ── 원문 정제 + 번역 ────────────────────────────────────────────────────────
 
+# 본문 하단에 SA가 끼워넣는 페이월/구독 프로모·관련글 nav 시작 마커.
+# (이 지점부터 잘라냄. 상단 'Comments (N)' 링크는 별도로 라인 단위 제거 → 오절단 방지)
+_PAYWALL_MARK = re.compile(
+    r"(Recommended For You|Subscribe to |Smarter .{0,25}? Starts Here|Tap into "
+    r"|Quick Insights|More on this|Related (Stocks|Articles|Analysis)|Sign Up\s*\n?\s*Share)",
+    re.I,
+)
+
+
 def clean_body(text: str) -> str:
-    """파싱한 markdown 본문에서 태그·링크·이미지·네비/추천/크레딧을 제거하고 기사 prose만 남김."""
+    """파싱한 markdown 본문에서 태그·링크·이미지·네비/추천/크레딧/페이월 프로모를 제거하고
+    기사 prose만 남김. (SA는 무료 미리보기라 본문이 페이월 경계에서 끝날 수 있음 — junk만 제거)"""
     t = text or ""
-    # 하단 추천/관련 섹션 이후 잘라냄
-    m = re.search(r"recommended for you|related (stocks|articles|analysis)|more on this|sign up for", t, re.I)
+    m = _PAYWALL_MARK.search(t)
     if m:
         t = t[:m.start()]
     t = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", t)        # 이미지
@@ -111,7 +120,7 @@ def clean_body(text: str) -> str:
         low = s.lower()
         if any(d in low for d in drop):
             continue
-        if re.match(r"^comments\s*\(\d+\)$", s, re.I):
+        if re.match(r"^comments\s*\(?\d*\)?$", s, re.I):
             continue
         if len(s) > 15 and s in seen:   # 중복 제목/줄 제거(긴 줄만)
             continue
