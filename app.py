@@ -3,7 +3,7 @@ SA News Dashboard — FastAPI 앱
 """
 from fastapi import FastAPI, Query, Body, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pathlib import Path
 import ast
 import json
@@ -21,9 +21,17 @@ db.init_db()
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def root():
-    return FileResponse(BASE_DIR / "static" / "index.html")
+    # app.css/app.js에 mtime 기반 ?v= 를 주입 → 파일 변경 시 새로고침만으로 즉시 반영
+    html = (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
+    for asset in ("app.css", "app.js"):
+        try:
+            v = int((BASE_DIR / "static" / asset).stat().st_mtime)
+        except OSError:
+            v = 0
+        html = html.replace(f'/static/{asset}"', f'/static/{asset}?v={v}"')
+    return HTMLResponse(html)
 
 
 @app.get("/api/articles")
