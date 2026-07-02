@@ -8,10 +8,6 @@ from typing import Optional
 
 DB_PATH = Path(__file__).parent / "sa_news.db"
 
-# Telegram 피드 원본(Obsidian vault) 루트. 환경변수로 재정의 가능.
-import os as _os
-ASURADA_DIR = Path(_os.environ.get("ASURADA_DIR", str(Path.home() / "Documents" / "Asurada")))
-
 # 사실상 같은 종목(주식 클래스 차이 등)을 하나의 대표 티커로 병합.
 #   key(별칭, 대문자) → value(대표 티커). 필요 시 항목 추가.
 TICKER_ALIASES = {
@@ -73,18 +69,6 @@ CREATE INDEX IF NOT EXISTS idx_last_mod    ON articles(last_modified DESC);
 CREATE INDEX IF NOT EXISTS idx_ticker      ON articles(ticker);
 CREATE INDEX IF NOT EXISTS idx_company     ON articles(company_name);
 CREATE INDEX IF NOT EXISTS idx_pub_status  ON articles(pub_status);
-
-CREATE TABLE IF NOT EXISTS telegram_feeds (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    feed_date      TEXT NOT NULL,           -- '2026-05-19'
-    title          TEXT NOT NULL,
-    summary        TEXT,
-    tags           TEXT,                    -- JSON array
-    original_path  TEXT,                    -- md 파일 전체 경로
-    created_at     TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_telegram_feed_date ON telegram_feeds(feed_date DESC);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
     ticker,
@@ -687,103 +671,3 @@ def get_weekly_rankings(weeks: int = 4, top_n: int = 8) -> dict:
     week_labels = [f"{s.month}/{s.day}~{e.month}/{e.day}" for s, e in buckets]
     return {"top_n": top_n, "weeks": week_labels, "series": series}
 
-
-# ==================== Telegram Feed ====================
-
-def query_telegram_feeds(
-    q: str = "",
-    date_from: str = "",
-    date_to: str = "",
-    limit: int = 100,
-    offset: int = 0,
-) -> dict:
-    """Telegram FEED 목록 조회"""
-    import re
-    params = []
-    wheres = []
-
-    if q:
-        wheres.append("(title LIKE ? OR summary LIKE ?)")
-        params.extend([f"%{q}%", f"%{q}%"])
-
-    if date_from:
-        wheres.append("feed_date >= ?")
-        params.append(date_from)
-
-    if date_to:
-        wheres.append("feed_date <= ?")
-        params.append(date_to)
-
-    where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
-
-    with get_conn() as conn:
-        total = conn.execute(
-            f"SELECT COUNT(*) FROM telegram_feeds {where_sql}", params
-        ).fetchone()[0]
-
-        rows = conn.execute(
-            f"""
-            SELECT * FROM telegram_feeds
-            {where_sql}
-            ORDER BY feed_date DESC, id DESC
-            LIMIT ? OFFSET ?
-            """,
-            params + [limit, offset],
-        ).fetchall()
-
-    return {
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "items": [dict(r) for r in rows],
-    }
-
-
-def get_telegram_feed_original(feed_id: int) -> dict:
-    """원본 Markdown + 이미지 경로 반환"""
-    import re
-    from pathlib import Path
-
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT original_path FROM telegram_feeds WHERE id = ?", (feed_id,)
-        ).fetchone()
-
-    if not row or not row[0]:
-        return {"error": "Not found"}
-
-    original_path = row[0]
-    full_path = ASURADA_DIR / original_path
-
-    if not full_path.exists():
-        # .md 확장자 자동 추가 시도
-        if not str(full_path).endswith(".md"):
-            full_path = Path(str(full_path) + ".md")
-        if not full_path.exists():
-            return {"error": "File not found", "path": str(full_path)}
-
-    content = full_path.read_text(encoding="utf-8")
-
-    # 이미지 추출 (Obsidian + 일반 Markdown 둘 다 지원)
-    images = []
-    # 1. Obsidian wiki link: ![[attach/xxx.png]] 또는 ![[attach/xxx.png|526]]
-    images += re.findall(r"!\[\[attach/([^\]|]+)(?:\|[^\]]+)?\]\]", content)
-    # 2. 일반 Markdown: ![alt](attach/xxx.png)
-    images += re.findall(r"!\[[^\]]*\]\((?:/static/)?attach/([^)|]+)(?:\|[^)]+)?\)", content)
-
-    # 중복 제거 + |숫자 제거
-    seen = set()
-    unique_images = []
-    for img in images:
-        # |숫자 같은 Obsidian 너비 지정 제거
-        clean_img = img.split("|")[0]
-        if clean_img and clean_img not in seen:
-            seen.add(clean_img)
-            unique_images.append(clean_img)
-
-    return {
-        "id": feed_id,
-        "original_path": original_path,
-        "content": content,
-        "images": unique_images,
-    }

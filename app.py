@@ -122,32 +122,3 @@ def restore_article_endpoint(article_id: int):
     if not success:
         raise HTTPException(status_code=404, detail="Article not found or not deleted")
     return {"status": "restored", "id": article_id}
-
-
-# ==================== Telegram Feed API ====================
-
-@app.get("/api/telegram_feeds")
-def get_telegram_feeds(
-    q: str = Query("", description="검색어"),
-    date_from: str = Query("", description="시작 날짜 YYYY-MM-DD"),
-    date_to: str = Query("", description="종료 날짜 YYYY-MM-DD"),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
-):
-    return db.query_telegram_feeds(
-        q=q, date_from=date_from, date_to=date_to,
-        limit=limit, offset=offset
-    )
-
-
-@app.get("/api/telegram_feed/{feed_id}/original")
-def get_telegram_feed_original(feed_id: int):
-    result = db.get_telegram_feed_original(feed_id)
-    if "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
-    return result
-
-
-@app.get("/telegram")
-def telegram_page():
-    return FileResponse(BASE_DIR / "static" / "telegram.html")

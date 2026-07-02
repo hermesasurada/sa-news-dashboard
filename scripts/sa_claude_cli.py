@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SA news — Claude CLI 공용 유틸.
 
-sa_summarize_claude.py / sa_retag_claude.py 가 공유:
+sa_summarize_claude.py 가 사용:
   - resolve_claude_bin(): 버전 pin 없이 최신 Claude CLI 바이너리 동적 탐지
   - call_claude(prompt, timeout): stream-json 호출 후 최종 텍스트 반환
   - extract_json(text): 응답에서 JSON 객체 추출
