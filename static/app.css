@@ -305,7 +305,7 @@ body {
 .card {
   background: var(--surface);
   border: none;
-  border-radius: 5px;
+  border-radius: 4px;
   padding: 22px 24px;
   margin-bottom: 22px;
   box-shadow: var(--nm-raised);
@@ -680,6 +680,6 @@ body {
 /* ── Mobile ── */
 @media (max-width: 480px) {
   body { padding: 14px; }
-  .card { padding: 18px; border-radius: 5px; }
+  .card { padding: 18px; border-radius: 4px; }
   .card-title { font-size: 16px; }
 }
