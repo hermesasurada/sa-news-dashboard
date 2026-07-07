@@ -109,10 +109,16 @@ function savePrefs() {
 }
 function loadPrefs() {
   try {
-    const p = JSON.parse(localStorage.getItem('sa_prefs') || '{}');
-    if (p.sort === 'last_modified' || p.sort === 'email_time_et') currentSort = p.sort;
-    if (p.order === 'asc' || p.order === 'desc') currentOrder = p.order;
-    if (p.unread) document.getElementById('unread-filter').classList.add('active');
+    const raw = localStorage.getItem('sa_prefs');
+    const p = raw ? JSON.parse(raw) : null;
+    if (p) {
+      if (p.sort === 'last_modified' || p.sort === 'email_time_et') currentSort = p.sort;
+      if (p.order === 'asc' || p.order === 'desc') currentOrder = p.order;
+      if (p.unread) document.getElementById('unread-filter').classList.add('active');
+    } else {
+      // 최초 방문 — '미읽음만'을 기본값으로 선택
+      document.getElementById('unread-filter').classList.add('active');
+    }
   } catch (e) {}
   applySortUI();
 }
@@ -472,9 +478,16 @@ async function search(offset = 0) {
     const trashLabel = trashView ? '🗑 휴지통 · ' : '';
 
     if (data.items.length === 0) {
-      cardsEl.innerHTML = '';
+      const hasFilter = !!(document.getElementById('q').value.trim()
+        || document.getElementById('ticker-filter').value
+        || document.getElementById('unread-filter').classList.contains('active'));
+      let msg, icon;
+      if (trashView)       { icon = '🗑'; msg = '휴지통이 비어있습니다.'; }
+      else if (hasFilter)  { icon = '🔍'; msg = '조건에 해당하는 기사가 없습니다.'; }
+      else                 { icon = '📭'; msg = '표시할 기사가 없습니다.'; }
+      cardsEl.innerHTML = `<div class="empty-state"><span class="empty-icon">${icon}</span>${msg}</div>`;
       document.getElementById('pagination').innerHTML = '';
-      statsEl.innerHTML = (trashView ? '🗑 휴지통이 비어있습니다.' : '검색 결과가 없습니다.') + badges;
+      statsEl.innerHTML = badges;
       return;
     }
 
