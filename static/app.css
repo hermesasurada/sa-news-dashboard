@@ -83,8 +83,21 @@ body {
 .btn-search,
 .btn-reset,
 .btn-sort {
-  height: 40px;
+  height: 35px;
   box-sizing: border-box;
+}
+
+/* 검색영역: 높이 35 / 라운드 16 (하단바는 제외) */
+.search-bar > input[type=text],
+.search-bar > select,
+.search-bar > input[type=date],
+.search-bar > .btn-search,
+.search-bar > .btn-reset,
+.search-bar > .btn-sort,
+.search-bar > .btn-unread,
+.search-bar > .btn-ticker {
+  height: 35px;
+  border-radius: 16px;
 }
 .search-bar input[type=text] {
   flex: 1;
