@@ -8,7 +8,7 @@ sa_summarize_claude.py 가 사용:
 
 환경변수:
   CLAUDE_BIN / CLAUDE_CODE_BIN — 바이너리 경로 override
-  CLAUDE_MODEL — 모델명 (기본 'claude-opus-4-8')
+  CLAUDE_MODEL — 모델명 (기본 'opus' = 현재 claude-opus-4-8)
 """
 import json
 import os
@@ -44,7 +44,7 @@ def resolve_claude_bin() -> str:
 
 
 CLAUDE_BIN = resolve_claude_bin()
-CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-4-8")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "opus")
 
 
 def call_claude(prompt: str, timeout: int = 120) -> str | None:
