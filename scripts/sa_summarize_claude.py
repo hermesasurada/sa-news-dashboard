@@ -23,7 +23,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 
 import db  # noqa: E402
-from sa_claude_cli import call_claude, extract_json  # noqa: E402
+from sa_claude_cli import call_claude, call_grok, extract_json  # noqa: E402
 from sa_lock import single_instance  # noqa: E402
 
 # ── 프롬프트 ──────────────────────────────────────────────────────────────
@@ -139,7 +139,11 @@ def process_article(row: dict) -> bool:
     print(f"     Claude 요약 중…", end="", flush=True)
     response = call_claude(prompt)
     if not response:
-        reason = "Claude CLI 응답 없음"
+        # Claude 실패 → grok CLI 폴백
+        print(" 실패 → grok 폴백…", end="", flush=True)
+        response = call_grok(prompt)
+    if not response:
+        reason = "Claude/grok CLI 응답 없음"
         print(f"\n     {reason}", file=sys.stderr)
         db.mark_attempt_failed(article_id, reason)
         return False

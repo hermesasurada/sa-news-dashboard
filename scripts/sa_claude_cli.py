@@ -13,8 +13,10 @@ sa_summarize_claude.py 가 사용:
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -45,6 +47,18 @@ def resolve_claude_bin() -> str:
 
 CLAUDE_BIN = resolve_claude_bin()
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "opus")
+
+
+def resolve_grok_bin() -> str:
+    """grok CLI 경로 — cron bare PATH 대비 절대경로 fallback."""
+    env_bin = os.environ.get("GROK_BIN")
+    if env_bin:
+        return str(Path(env_bin).expanduser())
+    return shutil.which("grok") or str(Path.home() / ".grok" / "bin" / "grok")
+
+
+GROK_BIN = resolve_grok_bin()
+GROK_MODEL = os.environ.get("GROK_MODEL", "")  # 빈값 = grok 기본 모델
 
 
 def call_claude(prompt: str, timeout: int = 120) -> str | None:
@@ -118,3 +132,33 @@ def extract_json(text: str) -> dict | None:
         except json.JSONDecodeError:
             pass
     return None
+
+
+def call_grok(prompt: str, timeout: int = 120) -> str | None:
+    """Claude 실패 시 폴백 — grok CLI 헤드리스 단일 호출. 실패 시 None.
+
+    `grok -p <PROMPT> --output-format plain` 으로 응답 텍스트만 stdout 수신.
+    응답 형식은 Claude와 동일(요약 JSON 텍스트) → 호출측에서 extract_json 재사용.
+    """
+    try:
+        cmd = [GROK_BIN, "-p", prompt, "--output-format", "plain"]
+        if GROK_MODEL:
+            cmd += ["-m", GROK_MODEL]
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=timeout,
+            cwd=tempfile.gettempdir(),  # 프로젝트 파일 스캔 방지 (순수 텍스트 생성)
+        )
+        if proc.returncode != 0:
+            print(f"     Grok CLI 오류 (rc={proc.returncode}): {(proc.stderr or '')[:300]}", file=sys.stderr)
+            return None
+        return (proc.stdout or "").strip() or None
+    except subprocess.TimeoutExpired:
+        print("     Grok CLI 타임아웃", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"     Grok CLI 호출 실패: {e}", file=sys.stderr)
+        return None
