@@ -225,6 +225,19 @@ function parseMethodLabel(m) {
   return m;
 }
 
+// summary_model(db) → 요약한 LLM+버전 라벨. NULL(기존행)이면 빈값.
+function summaryModelLabel(m) {
+  if (!m) return '';
+  let mm;
+  if ((mm = m.match(/^claude-opus-(\d+)-(\d+)/)))   return `Claude Opus ${mm[1]}.${mm[2]}`;
+  if ((mm = m.match(/^claude-sonnet-(\d+)/)))        return `Claude Sonnet ${mm[1]}`;
+  if ((mm = m.match(/^claude-haiku-(\d+)-(\d+)/)))   return `Claude Haiku ${mm[1]}.${mm[2]}`;
+  if (m.startsWith('claude'))                        return 'Claude';
+  if ((mm = m.match(/^grok-([\d.]+)/)))              return `Grok ${mm[1]}`;
+  if (m.startsWith('grok'))                          return 'Grok';
+  return m;
+}
+
 /* ── Card Render ── */
 function renderCard(a) {
   const details = a.summary_details.map(d => `<li>${d}</li>`).join('');
@@ -232,6 +245,8 @@ function renderCard(a) {
   const emailIdLabel = a.email_id ? `ID:${a.email_id}` : '';
   const footerMeta = [emailIdLabel, timeLabel].filter(Boolean).join(' · ');
   const methodLabel = parseMethodLabel(a.parse_method);
+  const modelLabel = summaryModelLabel(a.summary_model);
+  const metaLine2 = [methodLabel, modelLabel].filter(Boolean).join(' · ');
   const isRead = !!a.is_read;
   const unreadDot = !isRead ? '<span class="unread-dot" title="미읽음"></span>' : '';
   const readBtnClass = isRead ? 'read-btn done' : 'read-btn';
@@ -269,7 +284,7 @@ function renderCard(a) {
   </div>
   ${combinedBadges ? `<div class="card-tickers">${combinedBadges}</div>` : ''}
   <div class="card-footer">
-    <span class="footer-left">${footerMeta}${methodLabel ? `<span class="footer-method">${methodLabel}</span>` : ''}</span>
+    <span class="footer-left">${footerMeta}${metaLine2 ? `<span class="footer-method">${metaLine2}</span>` : ''}</span>
     <div class="footer-actions">
       ${trashView ? '' : `<button class="${readBtnClass}" onclick="toggleRead(${a.id}, this)" title="${readBtnTitle}">${isRead ? SVG_EYE_OFF : SVG_EYE}</button>`}
       <a class="link-btn" href="${a.article_url}" target="_blank" rel="noopener">원문보기</a>

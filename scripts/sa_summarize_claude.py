@@ -137,17 +137,17 @@ def process_article(row: dict) -> bool:
     # 2. Claude로 한국어 요약 생성
     prompt = _PROMPT_TMPL.format(content=content[:10000])
     print(f"     Claude 요약 중…", end="", flush=True)
-    response = call_claude(prompt)
+    response, summary_model = call_claude(prompt)
     if not response:
         # Claude 실패 → grok CLI 폴백
         print(" 실패 → grok 폴백…", end="", flush=True)
-        response = call_grok(prompt)
+        response, summary_model = call_grok(prompt)
     if not response:
         reason = "Claude/grok CLI 응답 없음"
         print(f"\n     {reason}", file=sys.stderr)
         db.mark_attempt_failed(article_id, reason)
         return False
-    print(" 완료")
+    print(f" 완료 ({summary_model})")
 
     # 3. JSON 추출 및 검증
     data = extract_json(response)
@@ -174,6 +174,7 @@ def process_article(row: dict) -> bool:
         summary_details=data["summary_details"],
         ticker_color=data["ticker_color"],
         parse_method=parse_method,
+        summary_model=summary_model,
     )
     if ok:
         print(f"     ✓ published: {data['headline'][:70]}")
