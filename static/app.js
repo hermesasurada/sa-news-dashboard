@@ -201,17 +201,14 @@ const FOREIGN_LISTINGS = {
 };
 
 function extractTickers(a) {
+  // LLM이 관련성 판단해 선별한 ticker 필드만 사용
+  // ($TICKER 정규식 무조건 수집은 제거 — 스치는 언급까지 배지로 붙는 문제)
   const map = new Map();
   const rawTicker = (a.ticker || '').trim();
   if (rawTicker && rawTicker.toUpperCase() !== 'NONE') {
     const tks = rawTicker.split(/[,·\s]+/).map(t => t.trim()).filter(t => /^[A-Z0-9.]{1,6}$/.test(t));
     const names = (a.company_name || '').split(/·/).map(n => n.trim()).filter(Boolean);
     tks.forEach((t, i) => { const c = canonTicker(t); if (c && !map.has(c)) map.set(c, names[i] || names[0] || ''); });
-  }
-  const text = [a.summary_core || '', ...(a.summary_details || [])].join(' ');
-  for (const m of text.matchAll(/\$([A-Z]{1,5})\b/g)) {
-    const c = canonTicker(m[1]);
-    if (!map.has(c)) map.set(c, '');
   }
   return [...map.entries()].map(([ticker, name]) => ({ ticker, name }));
 }
