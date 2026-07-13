@@ -520,11 +520,11 @@ body {
   padding-top: 16px;
 }
 .footer-left {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--faint);
-  font-family: var(--mono);
+  font-family: inherit;
   white-space: nowrap;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 .footer-method { display: block; margin-top: 2px; }
 .footer-actions { display: flex; gap: 8px; align-items: center; }
