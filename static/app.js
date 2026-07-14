@@ -266,7 +266,13 @@ function renderCard(a) {
   // 키워드 태그는 표시하지 않음 — 티커 배지만 사용
   const combinedBadges = tickerBadges;
 
+  // 모바일 스와이프 배경 (telegram-digest 이식) — PC는 @media(hover:hover)에서 숨김
+  const swipeEye = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+
   return `
+<div class="swipe-row">
+  <div class="swipe-action left" aria-hidden="true">${swipeEye}<span>읽음</span></div>
+  <div class="swipe-action right" aria-hidden="true"><span>읽음</span>${swipeEye}</div>
 <div class="card${!isRead ? ' card-unread' : ''}" data-id="${a.id}" data-read="${isRead ? '1' : '0'}" style="--accent:${ACCENT[a.ticker_color] || ACCENT.blue}">
   <div class="card-title-row">
     ${unreadDot}
@@ -290,7 +296,82 @@ function renderCard(a) {
         : `<button class="delete-btn" onclick="deleteCard(${a.id}, this)" title="삭제">${SVG_TRASH}</button>`}
     </div>
   </div>
+</div>
 </div>`;
+}
+
+/* ── 모바일 스와이프 → 읽음처리 (telegram-digest 이식) ──
+   터치 이벤트만 사용 → 데스크톱 무영향. 좌/우 양방향, 미읽음 카드만. */
+const SWIPE_INTERACTIVE = '.read-btn,.link-btn,.delete-btn,.restore-btn,.ticker-badge,a,button';
+
+function attachSwipeHandlers() {
+  if (trashView) return;  // 휴지통 뷰: 스와이프 없음 (read-btn 부재)
+  document.querySelectorAll('.swipe-row').forEach((row) => {
+    const card = row.querySelector('.card');
+    const left = row.querySelector('.swipe-action.left');
+    const right = row.querySelector('.swipe-action.right');
+    if (!card) return;
+    let startX = 0, startY = 0, dx = 0, axis = null, active = false;
+
+    const reset = (animate) => {
+      card.style.transition = animate ? 'transform .2s ease' : 'none';
+      card.style.transform = 'translateX(0)';
+      if (left) left.style.opacity = '0';
+      if (right) right.style.opacity = '0';
+    };
+
+    row.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      if (e.target.closest(SWIPE_INTERACTIVE)) return;   // 버튼/링크 탭 보존
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      dx = 0; axis = null; active = true;
+      card.style.transition = 'none';
+    }, { passive: true });
+
+    row.addEventListener('touchmove', (e) => {
+      if (!active) return;
+      dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (axis === null) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+        if (axis === 'y') { active = false; return; }  // 세로 스크롤 허용
+      }
+      if (axis !== 'x') return;
+      e.preventDefault();                                // 세로 스크롤 차단
+      row.classList.add('swiping');                      // 스와이프 중에만 overflow 클리핑(그림자는 평소 노출)
+      const w = card.offsetWidth || 320;
+      const clamped = Math.max(-w, Math.min(w, dx));
+      card.style.transform = `translateX(${clamped}px)`;
+      const progress = Math.min(1, Math.abs(clamped) / (w * 0.35));
+      if (clamped > 0) { if (left) left.style.opacity = String(progress); if (right) right.style.opacity = '0'; }
+      else { if (right) right.style.opacity = String(progress); if (left) left.style.opacity = '0'; }
+    }, { passive: false });
+
+    const unswipe = () => setTimeout(() => row.classList.remove('swiping'), 220);
+    row.addEventListener('touchend', () => {
+      if (!active) return;
+      active = false;
+      if (axis !== 'x') { reset(false); row.classList.remove('swiping'); return; }
+      const w = card.offsetWidth || 320;
+      const threshold = Math.max(90, w * 0.35);
+      if (Math.abs(dx) >= threshold && card.dataset.read !== '1') {
+        // 미읽음일 때만 읽음처리(강제 읽음). 이미 읽음이면 스냅백.
+        toggleRead(parseInt(card.dataset.id), card.querySelector('.read-btn'));
+        if (document.getElementById('unread-filter').classList.contains('active')) {
+          const dir = dx > 0 ? 1 : -1;                   // 스와이프 방향으로 밀어내고 toggleRead가 페이드+제거(래퍼째)
+          card.style.transition = 'transform .2s ease, opacity .2s ease';
+          card.style.transform = `translateX(${dir * w}px)`;
+          card.style.opacity = '0';
+        } else {
+          reset(true); unswipe();                        // 전체 보기: 읽음처리만, 제자리 복귀
+        }
+      } else {
+        reset(true); unswipe();                          // 스냅백
+      }
+    });
+  });
 }
 
 /* ── Read Toggle ── */
@@ -313,11 +394,11 @@ async function toggleRead(id, btn) {
       btn.className = 'read-btn done';
       btn.title = '읽음 취소';
       btn.innerHTML = SVG_EYE_OFF;
-      // #2: 미읽음 필터 활성 중이면 카드 즉시 제거
+      // #2: 미읽음 필터 활성 중이면 카드 즉시 제거 (swipe-row 래퍼째)
       if (document.getElementById('unread-filter').classList.contains('active')) {
         card.style.transition = 'opacity 0.3s';
         card.style.opacity = '0';
-        setTimeout(() => card.remove(), 300);
+        setTimeout(() => (card.closest('.swipe-row') || card).remove(), 300);
       }
     } else {
       card.classList.add('card-unread');
@@ -505,6 +586,7 @@ async function search(offset = 0) {
 
     statsEl.innerHTML = trashLabel + `${data.total}건 (${offset+1}~${Math.min(offset+PAGE_SIZE, data.total)}번째)` + badges;
     cardsEl.innerHTML = data.items.map(renderCard).join('');
+    attachSwipeHandlers();
     renderPagination(data.total, offset);
 
     // #7: 필터 없는 1페이지 결과로 기준 total 갱신

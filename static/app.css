@@ -314,22 +314,58 @@ body {
   }
 }
 
+/* ── Swipe Row (모바일 스와이프 읽음처리 — telegram-digest 이식) ── */
+.swipe-row {
+  position: relative;
+  border-radius: 4px;
+  min-width: 0;
+  display: flex;
+  margin-bottom: 22px;
+}
+/* 평소엔 overflow 없이 카드 뉴모피즘 그림자 노출, 스와이프 중에만 밀려나는 카드를 클리핑 */
+.swipe-row.swiping { overflow: hidden; }
+.swipe-action {
+  position: absolute;
+  top: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 22px;
+  font-weight: 800;
+  font-size: 14px;
+  color: #fff;
+  background: var(--accent);
+  opacity: 0;
+  z-index: 0;
+  border-radius: 4px;
+}
+.swipe-action svg { width: 20px; height: 20px; }
+.swipe-action.left { left: 0; justify-content: flex-start; }
+.swipe-action.right { right: 0; justify-content: flex-end; }
+/* PC(마우스 환경): 스와이프 배경 숨김 */
+@media (hover: hover) { .swipe-action { display: none; } }
+
 /* ── Card ── */
 .card {
+  position: relative;
+  z-index: 1;
+  will-change: transform;
   background: var(--surface);
   border: none;
   border-radius: 4px;
   padding: 22px 24px;
-  margin-bottom: 22px;
   box-shadow: var(--nm-raised);
   overflow: visible;
   word-break: break-word;
   overflow-wrap: break-word;
   transition: box-shadow 0.18s, transform 0.18s;
   height: 100%;
+  width: 100%;
   display: flex;
   flex-direction: column;
 }
+/* 터치 기기: 카드 경계선으로 경계 강조 (스와이프 시 배경과 구분) */
+@media (hover: none) { .card { border: 1px solid #c6ccd7; } }
 .card-deleting {
   opacity: 0.4;
   pointer-events: none;
@@ -337,7 +373,7 @@ body {
   transition: opacity 0.2s, box-shadow 0.2s;
 }
 @media (min-width: 768px) {
-  .card { margin-bottom: 0; }
+  .swipe-row { margin-bottom: 0; }
   .card:hover {
     transform: translateY(-3px);
     box-shadow: 9px 9px 20px var(--sh-dark), -9px -9px 18px var(--sh-light);
