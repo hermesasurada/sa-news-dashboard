@@ -18,6 +18,12 @@ BASE_DIR = Path(__file__).parent
 # Portfolio v2 (hermes-portfolio) — live change % for ticker badges
 PORTFOLIO_BASE = os.environ.get("PORTFOLIO_API_BASE", "http://127.0.0.1:8765").rstrip("/")
 
+# 시세 조회 전용 리다이렉션 — 대시보드 표기는 왼쪽(대표 티커)이지만
+# 포트폴리오가 다른 클래스로 시세를 제공하는 종목. (표기/검색/DB에는 영향 없음)
+QUOTE_REDIRECTS = {
+    "GOOG": "GOOGL",   # Alphabet: 표기는 Class C, 시세는 Class A
+}
+
 app = FastAPI(title="SA News Dashboard")
 
 # DB 초기화
@@ -77,6 +83,7 @@ def price_quote(ticker: str = Query(..., min_length=1, max_length=32, descriptio
     clean = (ticker or "").strip().upper()
     if not clean or any(ch in clean for ch in " \t\n\r/\\"):
         raise HTTPException(status_code=400, detail="invalid ticker")
+    clean = QUOTE_REDIRECTS.get(clean, clean)
 
     def _fallback_name() -> str:
         """포트폴리오 미보유/미도달 시 NASDAQ 심볼 파일(ticker_names, 7일 캐시)로 종목명 조회."""
