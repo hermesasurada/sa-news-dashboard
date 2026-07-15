@@ -143,6 +143,13 @@ def price_quote(ticker: str = Query(..., min_length=1, max_length=32, descriptio
         and abs(float(current) - float(ext_price)) < 1e-9
     ):
         ext_out = ext_pct
+    # 프리장에서는 전일대비와 장외 등락의 기준점(어제 종가)이 같아 값이 중복됨 → 병기 생략
+    if (
+        ext_out is not None
+        and change_pct is not None
+        and abs(float(ext_out) - float(change_pct)) < 0.005
+    ):
+        ext_out = None
 
     # 포트폴리오가 이름 대신 티커를 에코하면 NASDAQ 정식명으로 보강
     name = raw.get("name") or ""
