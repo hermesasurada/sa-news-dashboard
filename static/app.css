@@ -585,7 +585,7 @@ body {
 }
 .card-summary strong { color: var(--ink); }
 .card-details {
-  font-size: 13px;
+  font-size: 14px;
   color: #58616f;
   line-height: 1.45;   /* bullet 내부(줄바꿈) 줄간격 */
   margin-top: 4px;
