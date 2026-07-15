@@ -5,12 +5,18 @@ from fastapi import FastAPI, Query, Body, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from pathlib import Path
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 import ast
 import json
+import os
 import sqlite3
 import db
 
 BASE_DIR = Path(__file__).parent
+
+# Portfolio v2 (hermes-portfolio) — live change % for ticker badges
+PORTFOLIO_BASE = os.environ.get("PORTFOLIO_API_BASE", "http://127.0.0.1:8765").rstrip("/")
 
 app = FastAPI(title="SA News Dashboard")
 
@@ -60,6 +66,96 @@ def get_articles(
 @app.get("/api/filters")
 def get_filters():
     return db.get_filter_options()
+
+
+@app.get("/api/price-quote")
+def price_quote(ticker: str = Query(..., min_length=1, max_length=32, description="Portfolio-form ticker e.g. AAPL, 005930.KS")):
+    """Proxy portfolio v2 /api/chart for current price + day change (viewer-only).
+
+    Same-origin so the browser never talks to :8765 directly (CORS/Tailscale).
+    """
+    clean = (ticker or "").strip().upper()
+    if not clean or any(ch in clean for ch in " \t\n\r/\\"):
+        raise HTTPException(status_code=400, detail="invalid ticker")
+
+    def _fallback_name() -> str:
+        """포트폴리오 미보유/미도달 시 NASDAQ 심볼 파일(ticker_names, 7일 캐시)로 종목명 조회."""
+        try:
+            import ticker_names
+            return ticker_names.name_for(clean) or ""
+        except Exception:
+            return ""
+
+    url = f"{PORTFOLIO_BASE}/api/chart?ticker={quote(clean, safe='.-:')}"
+    raw = None
+    try:
+        req = Request(url, headers={"User-Agent": "sa-dashboard/1.0"})
+        with urlopen(req, timeout=6) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        raw = None
+
+    current = (raw or {}).get("current_price") if isinstance(raw, dict) else None
+    # 미도달/미보유(시세 없음) — 종목명만이라도 반환 (found=false)
+    if not isinstance(raw, dict) or not raw.get("ticker") or current is None:
+        return {
+            "ticker": clean,
+            "name": _fallback_name(),
+            "found": False,
+            "currency": "",
+            "current_price": None,
+            "previous_price": None,
+            "change": None,
+            "change_pct": None,
+            "extended_change_pct": None,
+            "market_label": "",
+            "market_status": "",
+            "is_regular": None,
+        }
+
+    previous = raw.get("previous_price")
+    change = raw.get("change")
+    market = raw.get("market") or {}
+
+    # change_pct = 항상 전일대비
+    change_pct = raw.get("change_pct")
+    if change is not None and previous not in (None, 0):
+        try:
+            change_pct = float(change) / float(previous) * 100.0
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+
+    # 애프터/프리장 프린트면 장외 등락률을 별도 필드로 병기
+    ext_out = None
+    ext_pct = raw.get("extended_change_pct")
+    ext_price = raw.get("extended_price")
+    if (
+        ext_pct is not None
+        and ext_price is not None
+        and not market.get("is_regular", True)
+        and abs(float(current) - float(ext_price)) < 1e-9
+    ):
+        ext_out = ext_pct
+
+    # 포트폴리오가 이름 대신 티커를 에코하면 NASDAQ 정식명으로 보강
+    name = raw.get("name") or ""
+    if not name or name.upper() == clean:
+        name = _fallback_name() or name or clean
+
+    return {
+        "ticker": raw.get("ticker") or clean,
+        "name": name,
+        "found": True,
+        "currency": raw.get("currency") or "",
+        "current_price": current,
+        "previous_price": previous,
+        "change": change,
+        "change_pct": change_pct,
+        "extended_change_pct": ext_out,
+        "market_label": market.get("label") or "",
+        "market_status": market.get("status") or "",
+        "is_regular": bool(market.get("is_regular")) if market else None,
+    }
 
 
 @app.get("/api/stats")

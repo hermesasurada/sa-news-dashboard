@@ -439,34 +439,94 @@ body {
 .ticker-red    { background: #fbdedb; color: #a01810; }
 .ticker-gray   { background: #e2e5ec; color: #495260; }
 
-/* ── Ticker 커스텀 툴팁 ── */
-.ticker-badge[data-company] { position: relative; }
-.ticker-badge[data-company]::after {
-  content: attr(data-company);
-  position: absolute;
-  bottom: calc(100% + 7px);
-  left: 0;
-  transform: scale(0.92);
-  transform-origin: bottom left;
-  background: var(--ink);
-  color: #fff;
-  padding: 5px 10px;
-  border-radius: 4px;
+/* ── Ticker live quote popover (portfolio v2) ── */
+.ticker-badge.ticker-live {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ticker-badge.ticker-live:active { transform: scale(0.97); }
+
+.ticker-quote-pop {
+  position: fixed;
+  z-index: 400;
+  min-width: 168px;
+  max-width: min(280px, 88vw);
+  padding: 10px 12px 9px;
+  border-radius: 8px;
+  background: #1b222c;
+  color: #f4f6f8;
+  box-shadow: 0 10px 28px rgba(20, 24, 32, 0.38);
   font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  pointer-events: none;
+}
+.ticker-quote-pop[hidden] { display: none !important; }
+.tqp-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+.tqp-symbol {
+  font-family: var(--mono);
   font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-  max-width: 80vw;
+  font-weight: 700;
+  color: #9fb0c3;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+.tqp-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e8edf3;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: 0;
-  pointer-events: none;
-  opacity: 0;
-  box-shadow: 0 6px 18px rgba(35,39,50,0.28);
-  transition: opacity 0.08s ease, transform 0.08s ease;
-  z-index: 300;
+  white-space: nowrap;
+  min-width: 0;
 }
-.ticker-badge[data-company]:hover::after { opacity: 1; transform: scale(1); }
+.tqp-body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tqp-price {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.tqp-chg {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.tqp-chg.up   { color: #ff6b6b; }   /* 한국식: 상승 빨강 */
+.tqp-chg.down { color: #4dabf7; }   /* 하락 파랑 */
+.tqp-chg.flat { color: #94a3b8; }
+/* 애프터/프리장 병기 줄: "장외 +0.04%" */
+.tqp-ext {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
+.tqp-ext[hidden] { display: none; }
+.tqp-ext-label { font-size: 10px; color: #8b98a8; }
+.tqp-ext-chg { font-family: var(--mono); font-size: 11.5px; font-weight: 700; }
+.tqp-ext-chg.up   { color: #ff6b6b; }
+.tqp-ext-chg.down { color: #4dabf7; }
+.tqp-ext-chg.flat { color: #94a3b8; }
+.tqp-meta {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #8b98a8;
+  letter-spacing: 0.01em;
+}
 
 /* ── Card Meta ── */
 .card-source {

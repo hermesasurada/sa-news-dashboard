@@ -255,12 +255,18 @@ function renderCard(a) {
   const tickerBadges = tickers.map((t, i) => {
     const color = i === 0 ? (a.ticker_color || 'blue') : 'gray';
     const fl = FOREIGN_LISTINGS[t.ticker];
-    let label, tipText;
-    if (fl && fl.kr)   { label = fl.name; tipText = fl.home; }  // 한국: 한글명 + 티커 툴팁
-    else if (fl)       { label = fl.home; tipText = fl.name; }  // 외국: 자국티커 + 영문명 툴팁
-    else               { label = t.ticker; tipText = t.name; }  // 미국상장: 티커 + 회사명
-    const tip = tipText ? ` data-company="${tipText}"` : '';
-    return `<span class="ticker-badge ticker-${color}"${tip}>${label}</span>`;
+    let label, companyName, quoteTicker;
+    if (fl && fl.kr)   { label = fl.name; companyName = fl.name; quoteTicker = fl.home; }
+    else if (fl)       { label = fl.home; companyName = fl.name || t.name; quoteTicker = fl.home; }
+    else               { label = t.ticker; companyName = t.name || t.ticker; quoteTicker = t.ticker; }
+    const attrs = [
+      `data-ticker="${escapeAttr(t.ticker)}"`,
+      `data-quote-ticker="${escapeAttr(quoteTicker)}"`,
+      `data-company="${escapeAttr(companyName || '')}"`,
+      'role="button"',
+      'tabindex="0"',
+    ].join(' ');
+    return `<span class="ticker-badge ticker-${color} ticker-live"${attrs}>${label}</span>`;
   }).join('');
 
   // 키워드 태그는 표시하지 않음 — 티커 배지만 사용
@@ -303,6 +309,204 @@ function renderCard(a) {
 /* ── 모바일 스와이프 → 읽음처리 (telegram-digest 이식) ──
    터치 이벤트만 사용 → 데스크톱 무영향. 좌/우 양방향, 미읽음 카드만. */
 const SWIPE_INTERACTIVE = '.read-btn,.link-btn,.delete-btn,.restore-btn,.ticker-badge,a,button';
+
+/* ── Ticker popover: company + portfolio v2 live change ── */
+const quoteCache = new Map(); // quoteTicker → { at, data } | { at, error }
+const QUOTE_TTL_MS = 60_000;
+
+function escapeAttr(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function fmtPrice(price, currency) {
+  if (price == null || !Number.isFinite(Number(price))) return '—';
+  const n = Number(price);
+  const cur = (currency || '').toUpperCase();
+  if (cur === 'KRW') return `₩${Math.round(n).toLocaleString('ko-KR')}`;
+  if (cur === 'USD') return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (cur === 'EUR') return `€${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (cur === 'JPY') return `¥${Math.round(n).toLocaleString('en-US')}`;
+  return `${n.toLocaleString(undefined, { maximumFractionDigits: 4 })}${cur ? ' ' + cur : ''}`;
+}
+
+function fmtChangePct(pct) {
+  if (pct == null || !Number.isFinite(Number(pct))) return { text: '—', cls: 'flat' };
+  const n = Number(pct);
+  const cls = n > 0 ? 'up' : n < 0 ? 'down' : 'flat';
+  const sign = n > 0 ? '+' : '';
+  return { text: `${sign}${n.toFixed(2)}%`, cls };
+}
+
+function ensureTickerPopover() {
+  let el = document.getElementById('ticker-quote-pop');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'ticker-quote-pop';
+  el.className = 'ticker-quote-pop';
+  el.hidden = true;
+  el.setAttribute('role', 'dialog');
+  el.innerHTML = `
+    <div class="tqp-head">
+      <span class="tqp-symbol"></span>
+      <span class="tqp-name"></span>
+    </div>
+    <div class="tqp-body">
+      <span class="tqp-price">…</span>
+      <span class="tqp-chg flat">…</span>
+    </div>
+    <div class="tqp-ext" hidden><span class="tqp-ext-label"></span><span class="tqp-ext-chg flat"></span></div>
+    <div class="tqp-meta"></div>`;
+  document.body.appendChild(el);
+  return el;
+}
+
+/* ── 종목명 캐시 (localStorage) — 포트폴리오/NASDAQ에서 확인된 이름 저장 ── */
+const nameCache = (() => {
+  try { return JSON.parse(localStorage.getItem('sa_ticker_names') || '{}'); }
+  catch (e) { return {}; }
+})();
+function rememberName(ticker, name) {
+  if (!ticker || !name || name.toUpperCase() === ticker.toUpperCase()) return;
+  if (nameCache[ticker] === name) return;
+  nameCache[ticker] = name;
+  try { localStorage.setItem('sa_ticker_names', JSON.stringify(nameCache)); } catch (e) {}
+}
+
+function hideTickerPopover() {
+  const el = document.getElementById('ticker-quote-pop');
+  if (el) el.hidden = true;
+}
+
+function positionTickerPopover(el, anchor) {
+  const r = anchor.getBoundingClientRect();
+  const pad = 8;
+  el.hidden = false;
+  // measure after show
+  const w = el.offsetWidth || 200;
+  const h = el.offsetHeight || 80;
+  let left = r.left;
+  let top = r.top - h - 10;
+  if (top < pad) top = r.bottom + 10;
+  if (left + w > window.innerWidth - pad) left = window.innerWidth - w - pad;
+  if (left < pad) left = pad;
+  el.style.left = `${Math.round(left)}px`;
+  el.style.top = `${Math.round(top)}px`;
+}
+
+async function fetchPortfolioQuote(quoteTicker) {
+  const key = String(quoteTicker || '').toUpperCase();
+  const hit = quoteCache.get(key);
+  if (hit && Date.now() - hit.at < QUOTE_TTL_MS) return hit;
+  try {
+    const res = await fetch(`/api/price-quote?ticker=${encodeURIComponent(key)}`);
+    if (!res.ok) {
+      const err = { at: Date.now(), error: true, status: res.status };
+      quoteCache.set(key, err);
+      return err;
+    }
+    const data = await res.json();
+    const packed = { at: Date.now(), data };
+    quoteCache.set(key, packed);
+    return packed;
+  } catch (e) {
+    const err = { at: Date.now(), error: true, message: e.message };
+    quoteCache.set(key, err);
+    return err;
+  }
+}
+
+function renderTickerPopoverContent(el, companyFallback, quoteTicker, packed) {
+  const sym = el.querySelector('.tqp-symbol');
+  const name = el.querySelector('.tqp-name');
+  const price = el.querySelector('.tqp-price');
+  const chg = el.querySelector('.tqp-chg');
+  const ext = el.querySelector('.tqp-ext');
+  const extLabel = el.querySelector('.tqp-ext-label');
+  const extChg = el.querySelector('.tqp-ext-chg');
+  const meta = el.querySelector('.tqp-meta');
+  sym.textContent = quoteTicker;
+  ext.hidden = true;
+
+  const d = (!packed.error && packed.data) ? packed.data : null;
+  // 종목명: 서버(포트폴리오/NASDAQ) > 로컬 캐시 > 기사 회사명 > 티커
+  const bestName = (d && d.name) || nameCache[quoteTicker] || companyFallback || quoteTicker;
+  name.textContent = bestName;
+  if (d && d.name) rememberName(quoteTicker, d.name);
+
+  if (!d || d.found === false || d.current_price == null) {
+    price.textContent = '시세 없음';
+    chg.textContent = '';
+    chg.className = 'tqp-chg flat';
+    meta.textContent = packed.error ? '포트폴리오 서버 연결 실패' : '포트폴리오 시세 미제공';
+    return;
+  }
+  price.textContent = fmtPrice(d.current_price, d.currency);
+  const { text, cls } = fmtChangePct(d.change_pct);
+  chg.textContent = text;
+  chg.className = `tqp-chg ${cls}`;
+  // 애프터/프리장: 전일대비 + 장외 등락 병기
+  if (d.extended_change_pct != null) {
+    const e = fmtChangePct(d.extended_change_pct);
+    extLabel.textContent = d.market_label || '장외';
+    extChg.textContent = e.text;
+    extChg.className = `tqp-ext-chg ${e.cls}`;
+    ext.hidden = false;
+  }
+  const bits = [];
+  if (d.market_label) bits.push(d.market_label);
+  bits.push('전일대비');
+  meta.textContent = bits.join(' · ');
+}
+
+async function showTickerQuote(badge) {
+  const quoteTicker = (badge.dataset.quoteTicker || badge.dataset.ticker || '').toUpperCase();
+  const company = badge.dataset.company || '';
+  if (!quoteTicker) return;
+  const el = ensureTickerPopover();
+  el.dataset.activeTicker = quoteTicker;
+  // loading state
+  el.querySelector('.tqp-symbol').textContent = quoteTicker;
+  el.querySelector('.tqp-name').textContent = company || nameCache[quoteTicker] || quoteTicker;
+  el.querySelector('.tqp-price').textContent = '불러오는 중…';
+  el.querySelector('.tqp-chg').textContent = '';
+  el.querySelector('.tqp-chg').className = 'tqp-chg flat';
+  el.querySelector('.tqp-ext').hidden = true;
+  el.querySelector('.tqp-meta').textContent = 'portfolio v2';
+  positionTickerPopover(el, badge);
+  const packed = await fetchPortfolioQuote(quoteTicker);
+  if (el.dataset.activeTicker !== quoteTicker) return; // superseded
+  renderTickerPopoverContent(el, company, quoteTicker, packed);
+  positionTickerPopover(el, badge);
+}
+
+function attachTickerQuoteHandlers() {
+  document.querySelectorAll('.ticker-badge.ticker-live').forEach((badge) => {
+    if (badge.dataset.quoteBound) return;
+    badge.dataset.quoteBound = '1';
+    const open = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showTickerQuote(badge);
+    };
+    badge.addEventListener('click', open);
+    badge.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') open(e);
+    });
+  });
+}
+
+// Close popover on outside tap / scroll / escape
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.ticker-badge.ticker-live')) return;
+  if (e.target.closest('#ticker-quote-pop')) return;
+  hideTickerPopover();
+}, true);
+document.addEventListener('scroll', hideTickerPopover, true);
+window.addEventListener('resize', hideTickerPopover);
 
 function attachSwipeHandlers() {
   if (trashView) return;  // 휴지통 뷰: 스와이프 없음 (read-btn 부재)
@@ -587,6 +791,7 @@ async function search(offset = 0) {
     statsEl.innerHTML = trashLabel + `${data.total}건 (${offset+1}~${Math.min(offset+PAGE_SIZE, data.total)}번째)` + badges;
     cardsEl.innerHTML = data.items.map(renderCard).join('');
     attachSwipeHandlers();
+    attachTickerQuoteHandlers();
     renderPagination(data.total, offset);
 
     // #7: 필터 없는 1페이지 결과로 기준 total 갱신
@@ -661,7 +866,9 @@ document.getElementById('q').addEventListener('keydown', e => {
 });
 // Esc로 모달 닫기
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeTickerModal();
+  if (e.key !== 'Escape') return;
+  hideTickerPopover();
+  closeTickerModal();
 });
 
 /* ── Init ── */
