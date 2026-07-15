@@ -351,7 +351,6 @@ function ensureTickerPopover() {
   el.setAttribute('role', 'dialog');
   el.innerHTML = `
     <div class="tqp-head">
-      <span class="tqp-symbol"></span>
       <span class="tqp-name"></span>
     </div>
     <div class="tqp-body">
@@ -420,7 +419,6 @@ async function fetchPortfolioQuote(quoteTicker) {
 }
 
 function renderTickerPopoverContent(el, companyFallback, quoteTicker, packed) {
-  const sym = el.querySelector('.tqp-symbol');
   const name = el.querySelector('.tqp-name');
   const price = el.querySelector('.tqp-price');
   const chg = el.querySelector('.tqp-chg');
@@ -428,7 +426,6 @@ function renderTickerPopoverContent(el, companyFallback, quoteTicker, packed) {
   const extLabel = el.querySelector('.tqp-ext-label');
   const extChg = el.querySelector('.tqp-ext-chg');
   const meta = el.querySelector('.tqp-meta');
-  sym.textContent = quoteTicker;
   ext.hidden = true;
 
   const d = (!packed.error && packed.data) ? packed.data : null;
@@ -469,7 +466,6 @@ async function showTickerQuote(badge) {
   const el = ensureTickerPopover();
   el.dataset.activeTicker = quoteTicker;
   // loading state
-  el.querySelector('.tqp-symbol').textContent = quoteTicker;
   el.querySelector('.tqp-name').textContent = company || nameCache[quoteTicker] || quoteTicker;
   el.querySelector('.tqp-price').textContent = '불러오는 중…';
   el.querySelector('.tqp-chg').textContent = '';
