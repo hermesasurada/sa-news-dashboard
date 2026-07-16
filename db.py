@@ -1,12 +1,25 @@
-"""
-SA News Dashboard — SQLite DB layer
-"""
-import sqlite3
-import json
-from pathlib import Path
-from typing import Optional
+"""SA News Dashboard SQLite repository and workflow state machine."""
 
-DB_PATH = Path(__file__).parent / "sa_news.db"
+from __future__ import annotations
+
+import ast
+import datetime as dt
+import json
+import re
+import sqlite3
+from typing import Optional
+from zoneinfo import ZoneInfo
+
+import settings
+
+DB_PATH = settings.DB_PATH
+
+STATUS_PENDING = "pending"
+STATUS_PUBLISHED = "published"
+STATUS_FAILED = "failed"
+STATUS_DELETED = "deleted"
+STATUS_PURGED = "purged"
+MUTABLE_STATUSES = (STATUS_PENDING, STATUS_PUBLISHED, STATUS_FAILED)
 
 # 사실상 같은 종목(주식 클래스 차이 등)을 하나의 대표 티커로 병합.
 #   key(별칭, 대문자) → value(대표 티커). 필요 시 항목 추가.
@@ -114,8 +127,13 @@ class ClosingConnection(sqlite3.Connection):
 
 
 def get_conn():
-    conn = sqlite3.connect(DB_PATH, factory=ClosingConnection)
+    conn = sqlite3.connect(
+        DB_PATH,
+        timeout=settings.DB_BUSY_TIMEOUT_MS / 1_000,
+        factory=ClosingConnection,
+    )
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout={settings.DB_BUSY_TIMEOUT_MS}")
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
@@ -156,31 +174,62 @@ INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_core, su
 SELECT id, ticker,
        COALESCE(company_name,''), COALESCE(headline,''),
        COALESCE(summary_core,''), COALESCE(summary_details,''), COALESCE(original_title,'')
-FROM articles WHERE pub_status != 'deleted';
+FROM articles WHERE pub_status != 'purged';
 """
 
 
-def init_db():
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def init_db() -> None:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_conn() as conn:
         conn.executescript(CREATE_SQL)
-        # 마이그레이션: is_read 컬럼 (최초 1회)
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(articles)").fetchall()]
+        cols = _table_columns(conn, "articles")
         if "is_read" not in cols:
             conn.execute("ALTER TABLE articles ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0")
             conn.execute(
                 "UPDATE articles SET is_read = 1 WHERE CAST(email_id AS INTEGER) <= 723"
             )
-        # 마이그레이션: parse_method 컬럼 (어떤 파서로 본문을 가져왔는지). 기존행은 NULL 유지.
         if "parse_method" not in cols:
             conn.execute("ALTER TABLE articles ADD COLUMN parse_method TEXT")
-        # 마이그레이션: summary_model 컬럼 (어떤 LLM+버전이 요약했는지). 기존행은 NULL 유지.
         if "summary_model" not in cols:
             conn.execute("ALTER TABLE articles ADD COLUMN summary_model TEXT")
-        # 마이그레이션: FTS에 original_title 컬럼 추가 (최초 1회)
-        fts_cols = [r[1] for r in conn.execute("PRAGMA table_info(articles_fts)").fetchall()]
-        if "original_title" not in fts_cols:
+        if "original_title" not in _table_columns(conn, "articles_fts"):
             conn.executescript(_FTS_REBUILD_SQL)
     print(f"DB initialized: {DB_PATH}")
+
+
+def build_fts_query(query: str) -> str:
+    """Convert free-form user text into a safe FTS5 prefix query.
+
+    FTS operators and punctuation are deliberately treated as text.  This
+    avoids syntax errors for searches such as a lone quote while retaining
+    Unicode Korean and ticker-friendly dots/hyphens.
+    """
+    tokens = re.findall(r"[^\W_]+(?:[.\-][^\W_]+)*", query or "", re.UNICODE)
+    return " AND ".join(f'"{token.replace(chr(34), chr(34) * 2)}"*' for token in tokens)
+
+
+def decode_summary_details(value) -> list[str]:
+    """Decode canonical JSON plus legacy Python-list representations."""
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    for parser in (json.loads, ast.literal_eval):
+        try:
+            parsed = parser(value)
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed]
+        except (TypeError, ValueError, SyntaxError, json.JSONDecodeError):
+            continue
+    return []
+
+
+def row_to_dict(row: sqlite3.Row) -> dict:
+    article = dict(row)
+    article["summary_details"] = decode_summary_details(article.get("summary_details"))
+    return article
 
 
 def query_articles(
@@ -205,9 +254,13 @@ def query_articles(
         else ["articles.pub_status = 'published'"]
 
     if q:
-        joins = "JOIN articles_fts ON articles.id = articles_fts.rowid"
-        wheres.append("articles_fts MATCH ?")
-        params.append(q + "*")
+        fts_query = build_fts_query(q)
+        if fts_query:
+            joins = "JOIN articles_fts ON articles.id = articles_fts.rowid"
+            wheres.append("articles_fts MATCH ?")
+            params.append(fts_query)
+        else:
+            wheres.append("0")
 
     if ticker:
         # 다중 ticker 행("FCX, MP" 등) 대응 — 공백 제거 후 ',T,' 패턴으로 토큰 매칭
@@ -251,24 +304,6 @@ def query_articles(
             params + [limit, offset],
         ).fetchall()
 
-    def row_to_dict(r):
-        d = dict(r)
-        sd = d["summary_details"]
-        try:
-            d["summary_details"] = json.loads(sd)
-        except (json.JSONDecodeError, TypeError):
-            # Korean quotes / Python repr 형태로 저장된 경우 ast.literal_eval로 복원
-            import ast
-            try:
-                parsed = ast.literal_eval(sd)
-                if isinstance(parsed, list):
-                    d["summary_details"] = parsed
-                else:
-                    d["summary_details"] = []
-            except (ValueError, SyntaxError):
-                d["summary_details"] = []
-        return d
-
     return {
         "total": total,
         "limit": limit,
@@ -297,16 +332,13 @@ def get_filter_options() -> dict:
     return {"tickers": sorted(tickers), "aliases": TICKER_ALIASES}
 
 
-if __name__ == "__main__":
-    init_db()
-
-
 def mark_article_read(article_id: int, is_read: bool = True) -> bool:
     """읽음/안읽음 토글. 소프트삭제된 레코드는 제외."""
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE articles SET is_read = ? WHERE id = ? AND pub_status != 'deleted'",
-            (1 if is_read else 0, article_id),
+            "UPDATE articles SET is_read = ? "
+            "WHERE id = ? AND pub_status = ?",
+            (1 if is_read else 0, article_id, STATUS_PUBLISHED),
         )
         return cur.rowcount > 0
 
@@ -316,9 +348,9 @@ def delete_article(article_id: int) -> bool:
     last_modified를 삭제 시각으로 갱신 → 30일 경과 영구삭제(purge) 기준이 됨."""
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE articles SET pub_status = 'deleted', last_modified = ? "
-            "WHERE id = ? AND pub_status != 'deleted'",
-            (_now_kst(), article_id),
+            "UPDATE articles SET pub_status = ?, last_modified = ? "
+            "WHERE id = ? AND pub_status IN (?, ?, ?)",
+            (STATUS_DELETED, _now_kst(), article_id, *MUTABLE_STATUSES),
         )
         return cur.rowcount > 0
 
@@ -330,7 +362,7 @@ def purge_old_deleted(days: int = 30) -> int:
     - 재처리는 pub_status='pending'만 대상이므로 'purged'는 안전
     삭제 시점(last_modified)의 날짜 기준으로 경과 여부 판단. DB 컬럼 추가 없음.
     반환: 영구삭제 처리된 행 수."""
-    cutoff = (_dt.datetime.now() - _dt.timedelta(days=days)).strftime("%Y-%m-%d")
+    cutoff = (dt.datetime.now(ZoneInfo("Asia/Seoul")) - dt.timedelta(days=days)).strftime("%Y-%m-%d")
     with get_conn() as conn:
         cur = conn.execute(
             """
@@ -356,19 +388,15 @@ def restore_article(article_id: int) -> bool:
     """휴지통 기사 복원 (pub_status='deleted' → 'published'). 삭제 상태가 아니면 False."""
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE articles SET pub_status = 'published' WHERE id = ? AND pub_status = 'deleted'",
-            (article_id,),
+            "UPDATE articles SET pub_status = ?, last_modified = ? "
+            "WHERE id = ? AND pub_status = ?",
+            (STATUS_PUBLISHED, _now_kst(), article_id, STATUS_DELETED),
         )
         return cur.rowcount > 0
 
 
-# ==================== Collect / Publish (2-stage workflow) ====================
-
-import datetime as _dt
-
-
 def _now_kst() -> str:
-    return _dt.datetime.now().strftime("%Y-%m-%d %H:%M KST")
+    return dt.datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M KST")
 
 
 def insert_pending_article(
@@ -402,14 +430,17 @@ def insert_pending_article(
             return None
 
 
-def get_pending_due(batch_size: int = 10, max_retry: int = 5) -> list[dict]:
+def get_pending_due(
+    batch_size: int = settings.PUBLISH_BATCH_SIZE,
+    max_retry: int = settings.MAX_RETRY,
+) -> list[dict]:
     """작업 2 대상 조회 — pub_status='pending' AND 지수 백오프 due.
     next_due = last_attempt + 2^retry_count * 20 분.
       retry=0 →  20 min,  retry=1 →  40 min,  retry=2 →  80 min,
       retry=3 → 160 min,  retry=4 → 320 min.
     retry_count < max_retry 행만 (도달 시 pub_status='failed' 전환은 mark_attempt_failed 책임).
     정렬: retry_count ASC (새 행 우선) → email_time_et ASC (오래된 것 먼저)."""
-    sql = """
+    sql = f"""
         SELECT id, email_id, ticker, original_title, article_url,
                email_time_et, retry_count, last_attempt
         FROM articles
@@ -418,7 +449,7 @@ def get_pending_due(batch_size: int = 10, max_retry: int = 5) -> list[dict]:
           AND (
               last_attempt IS NULL
               OR datetime(REPLACE(last_attempt, ' KST', ''), '-9 hours',
-                          '+' || ((1 << retry_count) * 20) || ' minutes')
+                          '+' || ((1 << retry_count) * {settings.RETRY_BASE_MINUTES}) || ' minutes')
                  <= datetime('now')
           )
         ORDER BY retry_count ASC,
@@ -445,7 +476,7 @@ def publish_article(
     ticker가 None이 아닌 경우 ticker 컬럼도 함께 업데이트.
     last_modified=now, fail_reason=NULL.
     (summary_core/tag/tag_color는 더 이상 생성하지 않아 건드리지 않음 — 기존 값 유지)
-    이미 published 아닌 row만 영향 (실패 → 발행 전환 포함)."""
+    pending/failed 발행과 published 수동 재처리는 허용하고 deleted/purged는 보호한다."""
     last_modified = _now_kst()
     if ticker is not None:
         # 동일 종목(GOOGL=GOOG 등) 티커 병합
@@ -469,7 +500,7 @@ def publish_article(
                   ticker = ?, company_name = ?, headline = ?,
                   summary_details = ?, ticker_color = ?, parse_method = ?, summary_model = ?,
                   pub_status = 'published', last_modified = ?, fail_reason = NULL
-                WHERE id = ? AND pub_status != 'deleted'
+                WHERE id = ? AND pub_status IN ('pending', 'published', 'failed')
                 """,
                 (
                     ticker, company_name, headline,
@@ -484,7 +515,7 @@ def publish_article(
                   company_name = ?, headline = ?,
                   summary_details = ?, ticker_color = ?, parse_method = ?, summary_model = ?,
                   pub_status = 'published', last_modified = ?, fail_reason = NULL
-                WHERE id = ? AND pub_status != 'deleted'
+                WHERE id = ? AND pub_status IN ('pending', 'published', 'failed')
                 """,
                 (
                     company_name, headline,
@@ -495,26 +526,50 @@ def publish_article(
         return cur.rowcount > 0
 
 
-def mark_attempt_failed(article_id: int, reason: str, max_retry: int = 5) -> dict:
-    """작업 2 실패 — retry_count++, last_attempt=now, fail_reason 기록.
-    retry_count > max_retry 이면 pub_status='failed' 전환 (영구 실패).
-    반환: {'retry_count': int, 'pub_status': str}"""
+def mark_attempt_failed(
+    article_id: int,
+    reason: str,
+    max_retry: int = settings.MAX_RETRY,
+) -> dict:
+    """Record a publish failure without reviving deleted or purged rows.
+
+    A manual reprocess of an already-published article keeps the published
+    version visible when parsing or summarization fails.
+    """
     now = _now_kst()
     with get_conn() as conn:
-        cur = conn.execute(
-            "SELECT retry_count FROM articles WHERE id = ?", (article_id,)
+        row = conn.execute(
+            "SELECT retry_count, pub_status FROM articles WHERE id = ?", (article_id,)
         ).fetchone()
-        if not cur:
+        if not row:
             return {"retry_count": -1, "pub_status": "not_found"}
-        new_count = (cur[0] or 0) + 1
-        new_status = "failed" if new_count >= max_retry else "pending"
-        conn.execute(
+
+        old_status = row["pub_status"]
+        if old_status in (STATUS_DELETED, STATUS_PURGED):
+            return {"retry_count": row["retry_count"] or 0, "pub_status": old_status}
+
+        new_count = (row["retry_count"] or 0) + 1
+        if old_status == STATUS_PUBLISHED:
+            new_status = STATUS_PUBLISHED
+        else:
+            new_status = STATUS_FAILED if new_count >= max_retry else STATUS_PENDING
+        updated = conn.execute(
             """UPDATE articles SET
                  retry_count = ?, last_attempt = ?, fail_reason = ?,
                  pub_status = ?, last_modified = ?
-               WHERE id = ?""",
-            (new_count, now, reason[:200], new_status, now, article_id),
+               WHERE id = ? AND pub_status = ?""",
+            (new_count, now, reason[:200], new_status, now, article_id, old_status),
         )
+        if updated.rowcount == 0:
+            current = conn.execute(
+                "SELECT retry_count, pub_status FROM articles WHERE id = ?", (article_id,)
+            ).fetchone()
+            if not current:
+                return {"retry_count": -1, "pub_status": "not_found"}
+            return {
+                "retry_count": current["retry_count"] or 0,
+                "pub_status": current["pub_status"],
+            }
         return {"retry_count": new_count, "pub_status": new_status}
 
 
@@ -531,6 +586,13 @@ def get_queue_stats() -> dict:
         ).fetchone()[0]
     stats["unread"] = unread
     return stats
+
+
+def health_check() -> dict:
+    """Minimal dependency check used by launchd and smoke tests."""
+    with get_conn() as conn:
+        conn.execute("SELECT 1").fetchone()
+    return {"status": "ok", "database": "ok"}
 
 
 def get_dashboard_stats() -> dict:
@@ -616,8 +678,6 @@ def get_weekly_rankings(weeks: int = 4, top_n: int = 8) -> dict:
     주 구간은 일요일~토요일 고정 달력주(오늘이 포함된 주가 최신, 진행 중일 수 있음).
     각 주의 top_n 합집합을 series로 반환,
     ranks[i]는 i번째 주 순위(top_n 밖이면 null), counts[i]는 해당 주 기사수."""
-    import datetime as dt
-
     today = dt.date.today()
     # 이번 주 일요일 찾기 (weekday: Mon=0..Sun=6 → 일요일까지 지난 일수)
     days_since_sunday = (today.weekday() + 1) % 7
@@ -675,3 +735,6 @@ def get_weekly_rankings(weeks: int = 4, top_n: int = 8) -> dict:
     week_labels = [f"{s.month}/{s.day}~{e.month}/{e.day}" for s, e in buckets]
     return {"top_n": top_n, "weeks": week_labels, "series": series}
 
+
+if __name__ == "__main__":
+    init_db()

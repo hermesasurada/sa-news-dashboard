@@ -13,7 +13,6 @@ cron 틱이 겹쳐 같은 작업이 동시에 두 번 도는 것을 방지.
 락을 못 잡으면 with 블록은 그대로 진입하되 ok=False (호출측이 조기 return).
 """
 import fcntl
-import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -23,11 +22,11 @@ from pathlib import Path
 def single_instance(name: str):
     """name별 lockfile을 비차단(LOCK_NB)으로 획득. 성공 True / 이미 점유 False."""
     lock_path = Path(tempfile.gettempdir()) / f"sa_news_{name}.lock"
-    f = open(lock_path, "w")
+    lock_file = open(lock_path, "w", encoding="utf-8")
     acquired = False
     try:
         try:
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             acquired = True
         except OSError:
             acquired = False
@@ -35,7 +34,7 @@ def single_instance(name: str):
     finally:
         if acquired:
             try:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
             except OSError:
                 pass
-        f.close()
+        lock_file.close()

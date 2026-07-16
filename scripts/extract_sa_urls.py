@@ -110,6 +110,9 @@ def get_unread_sa_emails():
         [HIMALAYA, 'envelope', 'list', '-s', '200', '-w', '500'],
         capture_output=True, text=True, timeout=60
     )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "unknown error").strip()[-500:]
+        raise RuntimeError(f"himalaya envelope list failed (rc={result.returncode}): {detail}")
     output = result.stdout
 
     unread_sa_emails = []
@@ -196,6 +199,12 @@ def extract_urls(email_id: int, subject: str = '') -> dict:
         [HIMALAYA, 'message', 'read', str(email_id)],
         capture_output=True, text=True, timeout=60
     )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "unknown error").strip()[-500:]
+        raise RuntimeError(
+            f"himalaya message read failed for {email_id} "
+            f"(rc={result.returncode}): {detail}"
+        )
     content = result.stdout
 
     # 두 가지 source에서 b64 후보를 모두 모음:

@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""SA news monitor — Stage 2 (Publish): batch 후보 출력 + parse_sa_article 호출.
+"""Low-level Stage 2 CLI used by the summarizer and manual diagnostics.
 
-이 스크립트는 LLM이 cron prompt를 통해 호출한다. 흐름:
-  1. `python3 sa_publish.py --list` → pending 행 (10건) JSON 출력
-  2. LLM이 각 행에 대해 sa_publish.py 본 모듈 import 또는 직접 처리
-  3. 본문 추출 성공 → 한국어 요약 작성 → publish_article(article_id, ...)
-  4. 본문 추출 실패 → mark_attempt_failed(article_id, reason='...')
-
-대안 `--parse <article_id>`: 해당 행의 article_url을 파싱해 본문 반환 (LLM이 직접 import 안 하고 CLI로 쓸 때).
+The active cron entrypoint is ``sa_summarize_claude.py``.  It invokes this
+module's ``parse`` command to isolate page parsing and capture parser metadata.
+``list`` and ``stats`` remain useful read-only operator commands.
 """
 import argparse
 import json
@@ -20,6 +16,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 
 import db  # noqa: E402
+import settings  # noqa: E402
 
 
 def cmd_list(batch_size: int):
@@ -31,12 +28,10 @@ def cmd_list(batch_size: int):
 def cmd_parse(article_id: int):
     """단일 article_url 파싱 후 본문 stdout 출력. 실패 시 exit code 1."""
     from sa_article_parser import parse_sa_article
-    import sqlite3
-    conn = sqlite3.connect(db.DB_PATH)
-    row = conn.execute(
-        "SELECT article_url FROM articles WHERE id = ?", (article_id,)
-    ).fetchone()
-    conn.close()
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT article_url FROM articles WHERE id = ?", (article_id,)
+        ).fetchone()
     if not row:
         print(f'ERROR: article_id {article_id} not found', file=sys.stderr)
         sys.exit(2)
@@ -64,7 +59,7 @@ def main():
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest='cmd')
     pl = sub.add_parser('list', help='pending due 행 JSON 출력')
-    pl.add_argument('--batch', type=int, default=10)
+    pl.add_argument('--batch', type=int, default=settings.PUBLISH_BATCH_SIZE)
     pp = sub.add_parser('parse', help='article_id의 article_url 파싱')
     pp.add_argument('article_id', type=int)
     sub.add_parser('stats', help='큐 통계')

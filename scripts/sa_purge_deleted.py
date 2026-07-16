@@ -13,8 +13,10 @@
   python3 sa_purge_deleted.py --dry-run  # 대상 건수만 출력(변경 없음)
 """
 import argparse
+import datetime as dt
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -25,8 +27,9 @@ import db  # noqa: E402
 
 
 def count_due(days: int) -> int:
-    import datetime as dt
-    cutoff = (dt.datetime.now() - dt.timedelta(days=days)).strftime("%Y-%m-%d")
+    cutoff = (
+        dt.datetime.now(ZoneInfo("Asia/Seoul")) - dt.timedelta(days=days)
+    ).strftime("%Y-%m-%d")
     with db.get_conn() as conn:
         return conn.execute(
             "SELECT COUNT(*) FROM articles "
@@ -38,7 +41,14 @@ def count_due(days: int) -> int:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="SA 휴지통 영구삭제 정리")
-    p.add_argument("--days", type=int, default=30, help="삭제 후 경과 일수 기준 (기본 30)")
+    p.add_argument(
+        "--days",
+        type=int,
+        choices=range(1, 3651),
+        default=30,
+        metavar="DAYS",
+        help="삭제 후 경과 일수 기준 1~3650 (기본 30)",
+    )
     p.add_argument("--dry-run", action="store_true", help="대상 건수만 출력, 변경 없음")
     args = p.parse_args()
 

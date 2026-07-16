@@ -1,19 +1,19 @@
-"""
-기존 HTML 대시보드 파일 → SQLite DB 마이그레이션
-"""
+"""Import legacy static HTML dashboard cards into the current SQLite schema."""
+
+import argparse
+import json
 import sys
 import re
-import glob
-import os
-from datetime import datetime, timezone, timedelta
+import sqlite3
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-sys.path.insert(0, str(Path(__file__).parent))
-import db
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+import db  # noqa: E402
 
-db.init_db()
-
-REPORTS_DIR = Path.home() / "Documents" / "reports"
+DEFAULT_REPORTS_DIR = Path.home() / "Documents" / "reports"
 
 def parse_created_at(filename):
     """파일명에서 KST 시각 추출: sa_dashboard_YYYYMMDD_HHMM.html"""
@@ -21,23 +21,17 @@ def parse_created_at(filename):
     if not m:
         return None
     date_str, time_str = m.group(1), m.group(2)
-    dt = datetime(
+    created_at = datetime(
         int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
         int(time_str[:2]), int(time_str[2:4]),
-        tzinfo=timezone(timedelta(hours=9))
+        tzinfo=ZoneInfo("Asia/Seoul"),
     )
-    return dt.isoformat()
+    return created_at.strftime("%Y-%m-%d %H:%M KST")
 
 def parse_cards(html):
     """HTML에서 카드 데이터 파싱"""
     cards = []
-    # 각 카드 블록 추출
-    card_blocks = re.findall(r'<div class="card">(.*?)</div>\s*</div>\s*(?=<div class="card">|$)', html, re.DOTALL)
-    if not card_blocks:
-        # 마지막 카드 포함 패턴
-        card_blocks = re.findall(r'<div class="card">(.*?)</div>\s*\n?\s*</div>', html, re.DOTALL)
-
-    # 더 robust한 방식: card div 전체를 추출
+    # div depth를 추적해 각 card 블록 전체를 추출한다.
     raw_cards = []
     pos = 0
     while True:
@@ -117,59 +111,62 @@ def parse_cards(html):
     return cards
 
 
-def migrate():
-    files = sorted(glob.glob(str(REPORTS_DIR / "**" / "sa_dashboard_*.html"), recursive=True))
-    # 루트 레벨도 포함
-    files += sorted(glob.glob(str(REPORTS_DIR / "sa_dashboard_*.html")))
-    files = sorted(set(files))
+def migrate(reports_dir: Path = DEFAULT_REPORTS_DIR):
+    db.init_db()
+    files = sorted(reports_dir.rglob("sa_dashboard_*.html"))
 
     print(f"총 {len(files)}개 파일 마이그레이션 시작...")
     total_inserted = 0
     total_skipped = 0
 
-    for fpath in files:
-        created_at = parse_created_at(os.path.basename(fpath))
+    for path in files:
+        created_at = parse_created_at(path.name)
         if not created_at:
-            print(f"  SKIP (파일명 파싱 실패): {fpath}")
+            print(f"  SKIP (파일명 파싱 실패): {path}")
             continue
 
-        with open(fpath, encoding='utf-8') as f:
-            html = f.read()
+        html = path.read_text(encoding="utf-8")
 
         cards = parse_cards(html)
         inserted = 0
         for i, card in enumerate(cards):
             # email_id 대신 파일명+인덱스로 중복 방지
-            pseudo_email_id = f"migrate:{os.path.basename(fpath)}:{i}"
-            # created_at을 파일 시각 기준으로 직접 주입
+            pseudo_email_id = f"migrate:{path.name}:{i}"
             with db.get_conn() as conn:
-                import json, sqlite3
                 try:
-                    conn.execute(
+                    cursor = conn.execute(
                         """INSERT INTO articles
-                           (ticker, ticker_color, company_name, headline,
+                           (email_id, ticker, company_name, headline,
                             summary_core, summary_details, tag, tag_color,
-                            article_url, email_time_et, email_id, created_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            ticker_color, article_url, email_time_et, last_modified,
+                            pub_status, retry_count, is_read)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'published', 0, 1)""",
                         (
-                            card['ticker'], card['ticker_color'],
+                            pseudo_email_id, card['ticker'],
                             card['company_name'], card['headline'],
                             card['summary_core'],
                             json.dumps(card['summary_details'], ensure_ascii=False),
                             card['tag'], card['tag_color'],
-                            card['article_url'], card['email_time_et'],
-                            pseudo_email_id, created_at,
+                            card['ticker_color'], card['article_url'],
+                            card['email_time_et'] or created_at, created_at,
                         )
                     )
-                    inserted += 1
+                    inserted += cursor.rowcount
                 except sqlite3.IntegrityError:
                     pass  # 중복
 
         total_inserted += inserted
         total_skipped += len(cards) - inserted
-        print(f"  {os.path.basename(fpath)}: {len(cards)}개 카드 → {inserted}건 삽입")
+        print(f"  {path.name}: {len(cards)}개 카드 → {inserted}건 삽입")
 
     print(f"\n완료: {total_inserted}건 삽입, {total_skipped}건 중복 스킵")
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="legacy HTML → current SQLite")
+    parser.add_argument("--reports-dir", type=Path, default=DEFAULT_REPORTS_DIR)
+    args = parser.parse_args()
+    migrate(args.reports_dir)
+
+
 if __name__ == "__main__":
-    migrate()
+    main()

@@ -12,13 +12,28 @@ const SVG_TRASH = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" s
 const ACCENT = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f59e0b', yellow:'#eab308', purple:'#8b5cf6', gray:'#94a3b8' };
 const SVG_RESTORE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`;
 
+/* ── Shared utilities ── */
+const {
+  escapeHTML,
+  escapeAttr,
+  safeExternalURL,
+  formatTime,
+  formatPrice: fmtPrice,
+  formatChangePct: fmtChangePct,
+} = window.SAUtils;
+
+async function fetchJSON(url, options) {
+  const response = await fetch(url, options);
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${url}`);
+  return response.json();
+}
+
 /* ── Filters ── */
 let allTickers = [];
 
 async function loadFilters() {
   try {
-    const res = await fetch('/api/filters');
-    const data = await res.json();
+    const data = await fetchJSON('/api/filters');
     allTickers = data.tickers || [];
     TICKER_ALIASES = data.aliases || {};   // db가 단일 소스
   } catch(e) { console.error('필터 로드 실패', e); }
@@ -68,8 +83,8 @@ function renderTickerList() {
   }
   const chips = matched.map(t => {
     const fl = FOREIGN_LISTINGS[t];
-    const sub = fl ? `<span class="sub">${fl.kr ? fl.name : fl.home}</span>` : '';
-    return `<div class="tk-chip ${t === cur ? 'active' : ''}" onclick="setTicker('${t}')">${t}${sub}</div>`;
+    const sub = fl ? `<span class="sub">${escapeHTML(fl.kr ? fl.name : fl.home)}</span>` : '';
+    return `<div class="tk-chip ${t === cur ? 'active' : ''}" data-ticker="${escapeAttr(t)}" onclick="setTicker(this.dataset.ticker)">${escapeHTML(t)}${sub}</div>`;
   }).join('');
   document.getElementById('ticker-list').innerHTML = allChip + chips;
 }
@@ -140,13 +155,6 @@ function getParams(offset) {
   return p;
 }
 
-function formatTime(et) {
-  if (!et) return '';
-  const m = et.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/);
-  if (!m) return et;
-  return `${m[2]}/${m[3]} ${m[4]}`;
-}
-
 // 동일 종목(클래스 차이) 병합 규칙 — 단일 소스는 db.TICKER_ALIASES.
 // loadFilters()가 /api/filters에서 받아와 채움 (실패 시 빈 맵 = 병합 없이 원본 유지).
 let TICKER_ALIASES = {};
@@ -207,7 +215,7 @@ function extractTickers(a) {
   const map = new Map();
   const rawTicker = (a.ticker || '').trim();
   if (rawTicker && rawTicker.toUpperCase() !== 'NONE') {
-    const tks = rawTicker.split(/[,·\s]+/).map(t => t.trim()).filter(t => /^[A-Z0-9.]{1,6}$/.test(t));
+    const tks = rawTicker.split(/[,·\s]+/).map(t => t.trim()).filter(t => /^[A-Z0-9.^-]{1,12}$/.test(t));
     const names = (a.company_name || '').split(/·/).map(n => n.trim()).filter(Boolean);
     tks.forEach((t, i) => { const c = canonTicker(t); if (c && !map.has(c)) map.set(c, names[i] || names[0] || ''); });
   }
@@ -239,19 +247,21 @@ function summaryModelLabel(m) {
 
 /* ── Card Render ── */
 function renderCard(a) {
-  const details = a.summary_details.map(d => `<li>${d}</li>`).join('');
-  const timeLabel = formatTime(a.email_time_et);
-  const emailIdLabel = a.email_id ? `ID:${a.email_id}` : '';
+  const articleId = Number(a.id) || 0;
+  const details = (Array.isArray(a.summary_details) ? a.summary_details : [])
+    .map(detail => `<li>${escapeHTML(detail)}</li>`).join('');
+  const timeLabel = escapeHTML(formatTime(a.email_time_et));
+  const emailIdLabel = a.email_id ? `ID:${escapeHTML(a.email_id)}` : '';
   const footerMeta = [emailIdLabel, timeLabel].filter(Boolean).join(' · ');
-  const methodLabel = parseMethodLabel(a.parse_method);
-  const modelLabel = summaryModelLabel(a.summary_model);
+  const methodLabel = escapeHTML(parseMethodLabel(a.parse_method));
+  const modelLabel = escapeHTML(summaryModelLabel(a.summary_model));
   const metaLine2 = [methodLabel, modelLabel].filter(Boolean).join(' · ');
   const isRead = !!a.is_read;
   const unreadDot = !isRead ? '<span class="unread-dot" title="미읽음"></span>' : '';
   const readBtnClass = isRead ? 'read-btn done' : 'read-btn';
   const readBtnTitle = isRead ? '읽음 취소' : '읽음 처리';
   const hasOrig = !!a.original_title;
-  const originalTitle = hasOrig ? `<div class="card-orig-title">${a.original_title}</div>` : '';
+  const originalTitle = hasOrig ? `<div class="card-orig-title">${escapeHTML(a.original_title)}</div>` : '';
 
   const tickers = extractTickers(a);
   const tickerBadges = tickers.map((t, i) => {
@@ -268,7 +278,7 @@ function renderCard(a) {
       'role="button"',
       'tabindex="0"',
     ].join(' ');
-    return `<span class="ticker-badge ticker-${color} ticker-live"${attrs}>${label}</span>`;
+    return `<span class="ticker-badge ticker-${color} ticker-live" ${attrs}>${escapeHTML(label)}</span>`;
   }).join('');
 
   // 키워드 태그는 표시하지 않음 — 티커 배지만 사용
@@ -281,14 +291,14 @@ function renderCard(a) {
 <div class="swipe-row">
   <div class="swipe-action left" aria-hidden="true">${swipeEye}<span>읽음</span></div>
   <div class="swipe-action right" aria-hidden="true"><span>읽음</span>${swipeEye}</div>
-<div class="card${!isRead ? ' card-unread' : ''}" data-id="${a.id}" data-read="${isRead ? '1' : '0'}" style="--accent:${ACCENT[a.ticker_color] || ACCENT.blue}">
+<div class="card${!isRead ? ' card-unread' : ''}" data-id="${articleId}" data-read="${isRead ? '1' : '0'}" style="--accent:${ACCENT[a.ticker_color] || ACCENT.blue}">
   <div class="card-title-row">
     ${unreadDot}
-    <h2 class="card-title">${a.headline}</h2>
+    <h2 class="card-title">${escapeHTML(a.headline)}</h2>
   </div>
   ${originalTitle}
   <hr class="card-divider">
-  ${a.summary_core ? `<div class="card-summary"><strong>핵심</strong>&nbsp;${a.summary_core}</div>` : ''}
+  ${a.summary_core ? `<div class="card-summary"><strong>핵심</strong>&nbsp;${escapeHTML(a.summary_core)}</div>` : ''}
   <div class="card-details">
     ${a.summary_core ? '<strong>상세</strong>' : ''}
     <ul>${details}</ul>
@@ -297,11 +307,11 @@ function renderCard(a) {
   <div class="card-footer">
     <span class="footer-left">${footerMeta}${metaLine2 ? `<span class="footer-method">${metaLine2}</span>` : ''}</span>
     <div class="footer-actions">
-      ${trashView ? '' : `<button class="${readBtnClass}" onclick="toggleRead(${a.id}, this)" title="${readBtnTitle}">${isRead ? SVG_EYE_OFF : SVG_EYE}</button>`}
-      <a class="link-btn" href="${a.article_url}" target="_blank" rel="noopener">원문보기</a>
+      ${trashView ? '' : `<button class="${readBtnClass}" onclick="toggleRead(${articleId}, this)" title="${readBtnTitle}">${isRead ? SVG_EYE_OFF : SVG_EYE}</button>`}
+      <a class="link-btn" href="${escapeAttr(safeExternalURL(a.article_url))}" target="_blank" rel="noopener noreferrer">원문보기</a>
       ${trashView
-        ? `<button class="restore-btn" onclick="restoreCard(${a.id}, this)" title="복원">${SVG_RESTORE}복원</button>`
-        : `<button class="delete-btn" onclick="deleteCard(${a.id}, this)" title="삭제">${SVG_TRASH}</button>`}
+        ? `<button class="restore-btn" onclick="restoreCard(${articleId}, this)" title="복원">${SVG_RESTORE}복원</button>`
+        : `<button class="delete-btn" onclick="deleteCard(${articleId}, this)" title="삭제">${SVG_TRASH}</button>`}
     </div>
   </div>
 </div>
@@ -315,33 +325,6 @@ const SWIPE_INTERACTIVE = '.read-btn,.link-btn,.delete-btn,.restore-btn,.ticker-
 /* ── Ticker popover: company + portfolio v2 live change ── */
 const quoteCache = new Map(); // quoteTicker → { at, data } | { at, error }
 const QUOTE_TTL_MS = 60_000;
-
-function escapeAttr(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function fmtPrice(price, currency) {
-  if (price == null || !Number.isFinite(Number(price))) return '—';
-  const n = Number(price);
-  const cur = (currency || '').toUpperCase();
-  if (cur === 'KRW') return `₩${Math.round(n).toLocaleString('ko-KR')}`;
-  if (cur === 'USD') return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  if (cur === 'EUR') return `€${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  if (cur === 'JPY') return `¥${Math.round(n).toLocaleString('en-US')}`;
-  return `${n.toLocaleString(undefined, { maximumFractionDigits: 4 })}${cur ? ' ' + cur : ''}`;
-}
-
-function fmtChangePct(pct) {
-  if (pct == null || !Number.isFinite(Number(pct))) return { text: '—', cls: 'flat' };
-  const n = Number(pct);
-  const cls = n > 0 ? 'up' : n < 0 ? 'down' : 'flat';
-  const sign = n > 0 ? '+' : '';
-  return { text: `${sign}${n.toFixed(2)}%`, cls };
-}
 
 function ensureTickerPopover() {
   let el = document.getElementById('ticker-quote-pop');
@@ -660,8 +643,8 @@ function showToast(message, actionLabel, actionFn, duration = 4500) {
   const toast = document.getElementById('toast');
   if (_toastTimer) clearTimeout(_toastTimer);
   _toastUndoFn = actionFn;
-  toast.innerHTML = `<span>${message}</span>`
-    + (actionLabel ? `<button class="toast-action" onclick="toastAction()">${actionLabel}</button>` : '');
+  toast.innerHTML = `<span>${escapeHTML(message)}</span>`
+    + (actionLabel ? `<button class="toast-action" onclick="toastAction()">${escapeHTML(actionLabel)}</button>` : '');
   toast.classList.add('show');
   _toastTimer = setTimeout(() => {
     toast.classList.remove('show');
@@ -734,8 +717,7 @@ function startNotificationPolling() {
   setInterval(async () => {
     if (lastKnownTotal === 0) return;
     try {
-      const res = await fetch('/api/articles?limit=1&sort_by=last_modified');
-      const { total } = await res.json();
+      const { total } = await fetchJSON('/api/articles?limit=1&sort_by=last_modified');
       if (total > lastKnownTotal) {
         showNewArticlesBanner(total - lastKnownTotal);
       }
@@ -756,12 +738,10 @@ async function search(offset = 0) {
   cardsEl.innerHTML = '<div class="empty-state">불러오는 중...</div>';
 
   try {
-    const [res, qRes] = await Promise.all([
-      fetch('/api/articles?' + params.toString()),
-      fetch('/api/queue_stats'),
+    const [data, qData] = await Promise.all([
+      fetchJSON('/api/articles?' + params.toString()),
+      fetchJSON('/api/queue_stats'),
     ]);
-    const data = await res.json();
-    const qData = await qRes.json();
 
     const pendingBadge = qData.pending > 0
       ? ` <span class="pending-badge">대기 ${qData.pending}건</span>`

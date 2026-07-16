@@ -11,7 +11,6 @@ db.publish_article() 또는 db.mark_attempt_failed()를 호출한다.
 """
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -23,6 +22,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 
 import db  # noqa: E402
+import settings  # noqa: E402
 from sa_claude_cli import call_claude, call_grok, extract_json  # noqa: E402
 from sa_lock import single_instance  # noqa: E402
 
@@ -68,25 +68,42 @@ _PROMPT_TMPL = """\
 
 
 _VALID_COLORS = {"blue", "green", "red", "orange", "yellow", "purple", "gray"}
+_TICKER_RE = re.compile(r"^[A-Z0-9.^-]{1,12}$")
+_HAN_RE = re.compile(r"[\u4e00-\u9fff]")
+_KANA_RE = re.compile(r"[\u3040-\u30ff]")
+_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)]\([^)]+\)")
+
+
+def _plain_text(value) -> str:
+    text = str(value or "").strip()
+    text = _MARKDOWN_LINK_RE.sub(r"\1", text)
+    return text.replace("**", "").replace("__", "").replace("*", "").replace("_", " ")
 
 
 def validate(d: dict) -> dict:
-    """필드 타입 보정 및 기본값 설정."""
-    # ticker: 쉼표 구분된 심볼 목록, 각각 ^[A-Z0-9.]{1,6}$ 검증
-    raw_tickers = str(d.get("ticker") or "").strip()
-    valid_tickers = [
-        t.strip() for t in raw_tickers.split(",")
-        if re.match(r"^[A-Z0-9.]{1,6}$", t.strip())
-    ]
+    """Normalize model output and reject forbidden writing-system leakage."""
+    raw_tickers = str(d.get("ticker") or "").upper().strip()
+    valid_tickers = []
+    for ticker in raw_tickers.split(","):
+        ticker = ticker.strip()
+        if _TICKER_RE.fullmatch(ticker) and ticker not in valid_tickers:
+            valid_tickers.append(ticker)
     d["ticker"] = ", ".join(valid_tickers)
-    d["company_name"] = str(d.get("company_name") or "").strip()
-    d["headline"] = str(d.get("headline") or "").strip()
+    d["company_name"] = _plain_text(d.get("company_name"))
+    d["headline"] = _plain_text(d.get("headline"))
     details = d.get("summary_details") or []
     if not isinstance(details, list):
         details = [str(details)]
-    d["summary_details"] = [str(x).strip() for x in details if str(x).strip()][:6]
+    normalized_details = [_plain_text(item) for item in details]
+    d["summary_details"] = [item for item in normalized_details if item][:6]
     tc = str(d.get("ticker_color") or "blue").lower()
     d["ticker_color"] = tc if tc in _VALID_COLORS else "blue"
+
+    korean_blob = d["headline"] + "".join(d["summary_details"])
+    if _HAN_RE.search(korean_blob):
+        raise ValueError("한자 문자가 요약에 포함됨")
+    if _KANA_RE.search(korean_blob):
+        raise ValueError("가나 문자가 요약에 포함됨")
     return d
 
 
@@ -100,7 +117,9 @@ def parse_article(article_id: int) -> tuple[str | None, str | None, list, str | 
             [sys.executable, str(SCRIPT_DIR / "sa_publish.py"), "parse", str(article_id)],
             # SA 페이지 로딩이 느릴 수 있고, 폴백(API+Jina+Playwright+curl_cffi)이
             # 순차로 돌면 worst-case가 길어지므로 래퍼는 넉넉히 잡음.
-            capture_output=True, text=True, timeout=200,
+            capture_output=True,
+            text=True,
+            timeout=settings.PUBLISH_PARSE_TIMEOUT_SECONDS,
         )
         # stderr에서 PARSE_METHOD / SA_TICKERS 추출 (성공/실패 무관하게 시도)
         method = None
@@ -157,7 +176,10 @@ def process_article(row: dict) -> bool:
                 "\n- 심볼·회사명은 이 표기를 그대로 사용(임의 변형 금지)."
                 "\n- 목록에 없어도 본문의 핵심 상장사는 추가 가능."
             )
-    prompt = _PROMPT_TMPL.format(content=content[:10000], candidates=candidates)
+    prompt = _PROMPT_TMPL.format(
+        content=content[: settings.SUMMARY_CONTENT_LIMIT],
+        candidates=candidates,
+    )
     print(f"     Claude 요약 중…", end="", flush=True)
     response, summary_model = call_claude(prompt)
     if not response:
@@ -179,7 +201,13 @@ def process_article(row: dict) -> bool:
         db.mark_attempt_failed(article_id, reason[:200])
         return False
 
-    data = validate(data)
+    try:
+        data = validate(data)
+    except ValueError as exc:
+        reason = f"출력 검증 실패: {exc}"
+        print(f"     {reason}", file=sys.stderr)
+        db.mark_attempt_failed(article_id, reason)
+        return False
     if not data["headline"] or not data["summary_details"]:
         reason = f"필수 필드 누락: headline={bool(data['headline'])} summary_details={bool(data['summary_details'])}"
         print(f"     {reason}", file=sys.stderr)
@@ -201,7 +229,7 @@ def process_article(row: dict) -> bool:
     if ok:
         print(f"     ✓ published: {data['headline'][:70]}")
     else:
-        print(f"     publish 실패 (이미 삭제된 행?)", file=sys.stderr)
+        print("     publish 실패 (삭제/영구정리 상태 또는 동시 변경)", file=sys.stderr)
     return ok
 
 
@@ -224,7 +252,12 @@ def run_batch(batch_size: int) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="SA Stage 2 — Claude CLI 요약")
-    p.add_argument("--batch", type=int, default=10, help="일괄 처리 건수 (기본 10)")
+    p.add_argument(
+        "--batch",
+        type=int,
+        default=settings.PUBLISH_BATCH_SIZE,
+        help=f"일괄 처리 건수 (기본 {settings.PUBLISH_BATCH_SIZE})",
+    )
     p.add_argument("--id", type=int, dest="article_id", help="특정 article_id 강제 처리")
     args = p.parse_args()
 
@@ -233,11 +266,12 @@ def main() -> None:
         with db.get_conn() as conn:
             r = conn.execute(
                 "SELECT id, ticker, original_title, article_url, retry_count "
-                "FROM articles WHERE id = ? AND pub_status != 'deleted'",
+                "FROM articles WHERE id = ? "
+                "AND pub_status IN ('pending', 'published', 'failed')",
                 (args.article_id,),
             ).fetchone()
         if not r:
-            print(f"article_id {args.article_id} 없음 또는 삭제됨", file=sys.stderr)
+            print(f"article_id {args.article_id} 없음 또는 처리 불가 상태", file=sys.stderr)
             sys.exit(1)
         process_article(dict(r))
     else:

@@ -87,15 +87,24 @@ def _forensic_log(attempt, summary, stderr_text, stdout_text):
         pass
 
 
-def mark_seen(email_ids: list[str]) -> None:
+def mark_seen(email_ids: list[str]) -> bool:
     if not email_ids:
-        return
+        return True
     # 절대경로 — Desktop 앱이 cron 틱을 잡으면 PATH에 /opt/homebrew/bin이 없음
     himalaya = shutil.which('himalaya') or '/opt/homebrew/bin/himalaya'
     cmd = [himalaya, 'flag', 'add']
     for eid in email_ids:
         cmd.extend([str(eid), 'seen'])
-    subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"SA collect: seen 처리 실패 — {exc}", file=sys.stderr)
+        return False
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "unknown error").strip()[-300:]
+        print(f"SA collect: seen 처리 실패 (rc={result.returncode}) {detail}", file=sys.stderr)
+        return False
+    return True
 
 
 def main():
@@ -147,11 +156,15 @@ def main():
         processed_ids.append(eid_str.strip())
 
     # seen 처리 (실패해도 다음 사이클에 중복 INSERT는 email_id UNIQUE로 차단됨)
-    mark_seen(processed_ids)
+    seen_ok = mark_seen(processed_ids)
 
     now = datetime.datetime.now().strftime('%H:%M')
     total = inserted + duplicated + skipped
-    print(f'SA collect: {total}건 (신규 {inserted}/중복 {duplicated}/스킵 {skipped}) / {now}')
+    seen_label = "" if seen_ok else "/seen실패"
+    print(
+        f'SA collect: {total}건 '
+        f'(신규 {inserted}/중복 {duplicated}/스킵 {skipped}{seen_label}) / {now}'
+    )
 
 
 if __name__ == '__main__':

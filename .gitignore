@@ -33,3 +33,4 @@ __pycache__/
 .idea/
 static/attach/
 ticker_names.json
+.ticker_names.json.*.tmp

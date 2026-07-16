@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-SA 기사 파서 (3단계 Fallback, 인증 없음)
+SA 기사 파서 (4단계 fallback, 인증 없음)
 
-Fallback 순서 (v5 — Jina 우선):
-1. Jina Reader (r.jina.ai) — 외부 reader proxy. 우리 로컬 IP 평판 보호.
-2. Playwright stealth + persistent profile (누적 브라우저 상태)
-3. curl_cffi impersonate 로테이션 (chrome124 → safari17_2 → edge99)
+Fallback 순서 (v6 — SA 내부 API 우선):
+1. SA 내부 API — 노이즈 없는 본문과 공식 primary ticker 후보
+2. Jina Reader — 외부 reader proxy로 로컬 IP 평판 보호
+3. Playwright stealth + persistent profile
+4. curl_cffi impersonate 로테이션 (chrome124 → safari17_2 → edge99)
 
 세션 쿠키/Google OAuth 의존성 제거. 모든 단계가 인증 없이 동작.
 
@@ -320,7 +321,7 @@ def _og_lead(url: str) -> str:
 
 
 def parse_sa_article(url: str) -> Dict[str, Any]:
-    """SA 기사 파싱 (3단계 Fallback, 인증 없음).
+    """SA 기사 파싱 (4단계 fallback, 인증 없음).
 
     Returns:
         {
@@ -352,7 +353,7 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
         "title": "",
         "content": "",
         "method": None,
-        "error": "All 3 methods failed (strong block or transient failure)",
+        "error": "All 4 methods failed (strong block or transient failure)",
     }
 
 

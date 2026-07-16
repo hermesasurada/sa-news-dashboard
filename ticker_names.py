@@ -9,6 +9,7 @@ company_name이 비어 있을 때(매크로/라운드업 기사라 Claude가 회
 import json
 import re
 import datetime
+import os
 import urllib.request
 from pathlib import Path
 
@@ -20,6 +21,16 @@ _URLS = [
 ]
 
 _cache = None  # 프로세스 내 메모이즈
+
+
+def _write_cache(data: dict) -> None:
+    """Atomically replace the cache so concurrent workers never read partial JSON."""
+    temp_path = CACHE_PATH.with_name(f".{CACHE_PATH.name}.{os.getpid()}.tmp")
+    try:
+        temp_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        temp_path.replace(CACHE_PATH)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def _clean(s: str) -> str:
@@ -62,7 +73,7 @@ def _load() -> dict:
     try:
         m = _download_map()
         if m:
-            CACHE_PATH.write_text(json.dumps(m, ensure_ascii=False))
+            _write_cache(m)
             _cache = m
             return _cache
     except Exception:
