@@ -170,6 +170,7 @@ const FOREIGN_LISTINGS = {
   DLAKF:{home:'LHA.DE', name:'Lufthansa'}, DLAKY:{home:'LHA.DE', name:'Lufthansa'},
   DHER:{home:'DHER.DE', name:'Delivery Hero'},
   SAFRF:{home:'SAF.PA', name:'Safran'}, SAFRY:{home:'SAF.PA', name:'Safran'},
+  HESAY:{home:'RMS.PA', name:'Hermès'}, HESAF:{home:'RMS.PA', name:'Hermès'},
   DUAVF:{home:'AM.PA', name:'Dassault Aviation'},
   ENI:{home:'ENI.MI', name:'Eni'},
   NTOIY:{home:'NESTE.HE', name:'Neste'},
