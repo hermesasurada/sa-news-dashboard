@@ -60,7 +60,7 @@ _PROMPT_TMPL = """\
   상승·긍정=green, 하락·부정=red, 중립·기타=blue
 - 외국 기업·인명·약품명 = 영문 원어 유지. 한국 기업만 한국어 유지.
   음차 금지 예: 앤티로픽→Anthropic, 파란티어→Palantir, 애플→Apple, 테슬라→Tesla, 엔비디아→Nvidia
-- 한자·가나 절대 금지. 売上→매출, 格上げ→상향 등으로 순 한국어 교체.
+- 한자·가나 절대 금지. 売上→매출, 格上げ→상향 등으로 순 한국어 교체.{candidates}
 
 === 기사 원문 ===
 {content}
@@ -92,32 +92,38 @@ def validate(d: dict) -> dict:
 
 # ── SA 파싱 ────────────────────────────────────────────────────────────────
 
-def parse_article(article_id: int) -> tuple[str | None, str | None, str | None]:
-    """sa_publish.py parse 호출 → (본문, method, 오류사유).
-    성공: (content, method, None) / 실패: (None, None, reason)."""
+def parse_article(article_id: int) -> tuple[str | None, str | None, list, str | None]:
+    """sa_publish.py parse 호출 → (본문, method, 공식티커후보, 오류사유).
+    성공: (content, method, [{symbol,name}...], None) / 실패: (None, None, [], reason)."""
     try:
         result = subprocess.run(
             [sys.executable, str(SCRIPT_DIR / "sa_publish.py"), "parse", str(article_id)],
-            # SA 페이지 로딩이 느릴 수 있고, 3단계 폴백(og+Jina+Playwright+curl_cffi)이
+            # SA 페이지 로딩이 느릴 수 있고, 폴백(API+Jina+Playwright+curl_cffi)이
             # 순차로 돌면 worst-case가 길어지므로 래퍼는 넉넉히 잡음.
             capture_output=True, text=True, timeout=200,
         )
-        # stderr에서 PARSE_METHOD 추출 (성공/실패 무관하게 시도)
+        # stderr에서 PARSE_METHOD / SA_TICKERS 추출 (성공/실패 무관하게 시도)
         method = None
+        sa_tickers = []
         for line in (result.stderr or "").splitlines():
             if line.startswith("PARSE_METHOD:"):
                 method = line.split(":", 1)[1].strip() or None
+            elif line.startswith("SA_TICKERS:"):
+                try:
+                    sa_tickers = json.loads(line.split(":", 1)[1].strip())
+                except Exception:
+                    sa_tickers = []
         if result.returncode != 0:
             reason = result.stderr.strip() or f"parse exit {result.returncode}"
-            return None, None, reason
+            return None, None, [], reason
         content = result.stdout.strip()
         if not content:
-            return None, None, "parse returned empty content"
-        return content, method, None
+            return None, None, [], "parse returned empty content"
+        return content, method, sa_tickers, None
     except subprocess.TimeoutExpired:
-        return None, None, "parse timeout"
+        return None, None, [], "parse timeout"
     except Exception as e:
-        return None, None, str(e)
+        return None, None, [], str(e)
 
 
 # ── 단일 기사 처리 ─────────────────────────────────────────────────────────
@@ -130,7 +136,7 @@ def process_article(row: dict) -> bool:
     print(f"  [{article_id}] {ticker} | {orig}")
 
     # 1. SA 페이지 파싱
-    content, parse_method, parse_err = parse_article(article_id)
+    content, parse_method, sa_tickers, parse_err = parse_article(article_id)
     if not content:
         reason = parse_err or "PARSE_FAIL"
         print(f"     파싱 실패: {reason}", file=sys.stderr)
@@ -138,8 +144,20 @@ def process_article(row: dict) -> bool:
         print(f"     → {res}")
         return False
 
-    # 2. Claude로 한국어 요약 생성
-    prompt = _PROMPT_TMPL.format(content=content[:10000])
+    # 2. Claude로 한국어 요약 생성 — SA 공식 태깅 티커가 있으면 후보 화이트리스트로 주입
+    candidates = ""
+    if sa_tickers:
+        pairs = ", ".join(
+            f"{t['symbol']}={t.get('name') or t['symbol']}" for t in sa_tickers if t.get("symbol")
+        )
+        if pairs:
+            candidates = (
+                "\n\nSA 공식 태깅 후보 종목(심볼=회사명): " + pairs +
+                "\n- 위 후보 중 본문상 **실질 관련**인 것만 ticker/company_name에 사용(단순 나열·비교대상 제외)."
+                "\n- 심볼·회사명은 이 표기를 그대로 사용(임의 변형 금지)."
+                "\n- 목록에 없어도 본문의 핵심 상장사는 추가 가능."
+            )
+    prompt = _PROMPT_TMPL.format(content=content[:10000], candidates=candidates)
     print(f"     Claude 요약 중…", end="", flush=True)
     response, summary_model = call_claude(prompt)
     if not response:

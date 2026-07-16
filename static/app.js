@@ -217,6 +217,7 @@ function extractTickers(a) {
 // parse_method(db) → 카드에 표기할 수집방식 라벨. NULL(기존행)이면 빈값.
 function parseMethodLabel(m) {
   if (!m) return '';
+  if (m.startsWith('sa_api')) return 'SA API';
   if (m.startsWith('jina')) return 'Jina';
   if (m.startsWith('playwright')) return 'Playwright';
   if (m.startsWith('curl_cffi')) return 'curl';

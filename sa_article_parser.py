@@ -121,6 +121,55 @@ def _parse_html(html_content: str, method: str) -> Optional[Dict[str, Any]]:
     }
 
 
+def parse_with_sa_api(url: str) -> Optional[Dict[str, Any]]:
+    """0단계(우선): SA 내부 API /api/v3/news/{id}.
+
+    페이지 HTML/Jina 대비 이점:
+      (a) 네비게이션·'Recommended For You'·관련종목 노이즈 0 → 순수 본문만.
+      (b) primaryTickers = SA가 직접 태깅한 후보 종목(심볼↔회사명 정확) 동봉.
+    본문 길이는 다른 경로와 동일(비로그인 프리뷰 ~300자) — 페이월 우회는 아님.
+    news 형식이 아니거나(예: /article/) 응답 이상 시 None → 다음 폴백.
+    """
+    m = re.search(r'/news/(\d+)', url)
+    if not m:
+        return None
+    nid = m.group(1)
+    try:
+        resp = curl_requests.get(
+            f"https://seekingalpha.com/api/v3/news/{nid}?include=primaryTickers",
+            headers={"User-Agent": UA, "Accept": "application/json"},
+            impersonate="chrome124", timeout=25,
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+    except Exception:
+        return None
+
+    node = data.get("data") or {}
+    attrs = node.get("attributes") or {}
+    body = html.unescape(re.sub(r"<[^>]+>", " ", attrs.get("content") or ""))
+    body = re.sub(r"\s+", " ", body).strip()
+    if len(body) < 80:
+        return None  # 본문 과소 → 폴백에 기회
+    title = (attrs.get("title") or "").strip()
+
+    # primaryTickers → [{symbol, name}] (included의 tag 노드에서 해석)
+    tickers = []
+    rel = node.get("relationships") or {}
+    prim_ids = [x.get("id") for x in ((rel.get("primaryTickers") or {}).get("data") or [])]
+    inc = {(x.get("type"), x.get("id")): x for x in (data.get("included") or [])}
+    for i in prim_ids:
+        tag = inc.get(("tag", i)) or {}
+        a = tag.get("attributes") or {}
+        sym = (a.get("name") or "").strip()
+        if sym:
+            tickers.append({"symbol": sym, "name": (a.get("company") or "").strip()})
+
+    full = f"{title}\n\n{body}" if title else body
+    return {"title": title, "content": full[:10000], "method": "sa_api", "tickers": tickers}
+
+
 def parse_with_playwright_stealth(url: str) -> Optional[Dict[str, Any]]:
     """1단계: Playwright + stealth init + persistent profile (인증 없음)
 
@@ -284,8 +333,8 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
     """
     url = strip_utm(url)
     lead = _og_lead(url)  # #1: 핵심 종목이 담긴 리드 (본문 앞에 붙임)
-    # 우선순위 (v5 — Jina 우선): 로컬 IP 평판 소모 방지
-    for parser in [parse_with_jina_reader, parse_with_playwright_stealth, parse_with_curl_cffi_rotated]:
+    # 우선순위 (v6 — 내부 API 우선): 노이즈 0 본문 + 공식 티커. 실패 시 Jina→PW→curl.
+    for parser in [parse_with_sa_api, parse_with_jina_reader, parse_with_playwright_stealth, parse_with_curl_cffi_rotated]:
         result = parser(url)
         if result:
             body = result.get("content", "")
@@ -293,6 +342,7 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
             # 단, 리드 끝부분(설명 핵심)이 이미 본문에 있으면 중복 회피.
             if lead and (len(lead) < 40 or lead[-40:] not in body):
                 result["content"] = f"{lead}\n\n{body}"
+            result.setdefault("tickers", [])  # API만 채움, 폴백 파서는 빈 목록
             result["success"] = True
             result["error"] = None
             return result
