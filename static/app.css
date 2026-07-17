@@ -740,9 +740,17 @@ body {
   gap: 10px;
   flex-wrap: wrap;
 }
+/* 검색영역 버튼과 통일(35px·16px pill) + 은은한 붉은 톤 */
 .bottom-bar .btn-trash-view,
-.bottom-bar .btn-stats { margin-left: 0; }
+.bottom-bar .btn-stats {
+  margin-left: 0;
+  height: 35px;
+  border-radius: 16px;
+  color: #b0544c;
+}
 .bottom-bar .btn-trash-view { width: auto; padding: 0 15px; gap: 6px; font-size: 12.5px; font-weight: 700; }
+.bottom-bar .btn-trash-view:hover,
+.bottom-bar .btn-stats:hover { color: #c0392b; }
 
 /* ── 모달 ── */
 .modal-overlay {
