@@ -728,9 +728,6 @@ body {
   text-align: center;
   color: var(--muted);
   font-size: 15px;
-  background: var(--surface);
-  border-radius: 4px;
-  box-shadow: var(--nm-inset-sm);
 }
 .empty-state .empty-icon { font-size: 30px; display: block; margin-bottom: 10px; opacity: 0.7; }
 
