@@ -351,7 +351,7 @@ body {
   z-index: 1;
   will-change: transform;
   background: var(--surface);
-  border: none;
+  border: 1px solid #c6ccd7;
   border-radius: 4px;
   padding: 22px 24px;
   box-shadow: var(--nm-raised);
@@ -364,8 +364,6 @@ body {
   display: flex;
   flex-direction: column;
 }
-/* 터치 기기: 카드 경계선으로 경계 강조 (스와이프 시 배경과 구분) */
-@media (hover: none) { .card { border: 1px solid #c6ccd7; } }
 .card-deleting {
   opacity: 0.4;
   pointer-events: none;
