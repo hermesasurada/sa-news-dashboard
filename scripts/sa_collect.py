@@ -31,6 +31,25 @@ from sa_lock import single_instance  # noqa: E402
 
 TICKER_PREFIX = re.compile(r'^([A-Z0-9][A-Z0-9.,\s]{0,40}[A-Z0-9])\s*:\s')
 
+# 우선주 배당 공시 필터 — 시리즈별로 쏟아지는 저가치 뉴스(예: BAC.PR.S declares $0.29 dividend) 제외.
+_DIVIDEND_RE = re.compile(r'\bdeclares?\b.*\bdividend\b', re.I)
+_PREFERRED_TICKER_RE = re.compile(r'\.PR[.A-Z]')  # BAC.PR.S / BML.PR.G (RMS.PA 등 .PA는 불매치)
+_PREFERRED_SUBJECT_RE = re.compile(
+    r'\bPFD\b|\bPfd\b|Preferred|Perp\.?\s*Pfd|Depositary|Deposit\s+Sh|'
+    r'Non[-\s]?Cum|\bNCUM\b|Cum\s+Pfd|Repr\s+1/',
+    re.I,
+)
+
+
+def is_preferred_dividend(subject: str, ticker: str) -> bool:
+    """우선주(preferred stock) 배당 공시 뉴스인가 → 수집 제외 대상.
+    조건: 배당 선언 문구 + (우선주 티커 접미사 .PR. 또는 제목의 우선주 표지).
+    일반주 배당 뉴스(예: 'AAPL declares $0.25 dividend')는 제외하지 않음."""
+    s = subject or ''
+    if not _DIVIDEND_RE.search(s):
+        return False
+    return bool(_PREFERRED_TICKER_RE.search(ticker or '') or _PREFERRED_SUBJECT_RE.search(s))
+
 
 def ticker_from_subject(subject: str) -> str:
     """envelope subject prefix에서 ticker 추출. 없으면 'NONE'.
@@ -125,6 +144,7 @@ def main():
     inserted = 0
     duplicated = 0
     skipped = 0
+    filtered = 0
 
     for line in lines:
         parts = line.split('\t')
@@ -142,6 +162,11 @@ def main():
             skipped += 1
             continue
         ticker = ticker_from_subject(original_title)
+        # 우선주 배당 공시 → 수집 제외 (INSERT 없이 seen 처리, 재수집 방지)
+        if is_preferred_dividend(original_title, ticker):
+            processed_ids.append(eid_str.strip())
+            filtered += 1
+            continue
         aid = db.insert_pending_article(
             email_id=eid_str.strip(),
             ticker=ticker,
@@ -159,11 +184,12 @@ def main():
     seen_ok = mark_seen(processed_ids)
 
     now = datetime.datetime.now().strftime('%H:%M')
-    total = inserted + duplicated + skipped
+    total = inserted + duplicated + skipped + filtered
     seen_label = "" if seen_ok else "/seen실패"
+    filtered_label = f"/우선주배당 {filtered}" if filtered else ""
     print(
         f'SA collect: {total}건 '
-        f'(신규 {inserted}/중복 {duplicated}/스킵 {skipped}{seen_label}) / {now}'
+        f'(신규 {inserted}/중복 {duplicated}/스킵 {skipped}{filtered_label}{seen_label}) / {now}'
     )
 
 
