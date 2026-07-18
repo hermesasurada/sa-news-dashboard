@@ -660,7 +660,7 @@ body {
 /* ── Toast ── */
 #toast {
   position: fixed;
-  bottom: 24px;
+  bottom: max(24px, env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%) translateY(80px);
   background: var(--ink);
@@ -675,10 +675,11 @@ body {
   transition: transform 0.2s ease, opacity 0.2s ease;
   opacity: 0;
   z-index: 1000;
-  white-space: nowrap;
+  max-width: calc(100vw - 28px);
   pointer-events: none;
 }
 #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
+#toast > span { min-width: 0; }
 .toast-action {
   background: none;
   border: 1px solid rgba(255,255,255,0.45);
@@ -689,6 +690,8 @@ body {
   cursor: pointer;
   font-weight: 700;
   white-space: nowrap;
+  flex-shrink: 0;
+  touch-action: manipulation;
 }
 .toast-action:hover { background: rgba(255,255,255,0.14); }
 
@@ -806,6 +809,13 @@ body {
   body { padding: 14px; }
   .card { padding: 18px; border-radius: 4px; }
   .card-title { font-size: 16px; }
+  #toast {
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    width: calc(100vw - 28px);
+    justify-content: space-between;
+    padding: 10px 12px 10px 16px;
+  }
+  .toast-action { min-height: 40px; padding: 0 14px; }
 
   /* 검색조건: 아이콘/축약으로 두 줄 유지 */
   .search-bar { gap: 6px; }

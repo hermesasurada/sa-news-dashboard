@@ -1,4 +1,5 @@
 const PAGE_SIZE = 15;
+const DELETE_UNDO_DURATION_MS = 6000;
 let currentOffset = 0;
 let currentSort = 'email_time_et';
 let currentOrder = 'desc';   // desc=최신순 / asc=과거순
@@ -607,8 +608,13 @@ function deleteCard(articleId, element) {
     .then(res => {
       if (res.ok) {
         card.remove();
-        // 즉시 삭제 완료 → 3초간 '취소' 버튼 노출
-        showToast('기사를 삭제했습니다', '취소', () => undoDelete(articleId), 3000);
+        // 확인창 없이 즉시 삭제하고, 하단 토스트에서만 복원 기회를 제공한다.
+        showToast(
+          '기사를 삭제했습니다',
+          '되돌리기',
+          () => undoDelete(articleId),
+          DELETE_UNDO_DURATION_MS,
+        );
       } else {
         card.classList.remove('card-deleting');
         delete card.dataset.deleting;
@@ -644,19 +650,22 @@ function showToast(message, actionLabel, actionFn, duration = 4500) {
   if (_toastTimer) clearTimeout(_toastTimer);
   _toastUndoFn = actionFn;
   toast.innerHTML = `<span>${escapeHTML(message)}</span>`
-    + (actionLabel ? `<button class="toast-action" onclick="toastAction()">${escapeHTML(actionLabel)}</button>` : '');
+    + (actionLabel ? `<button type="button" class="toast-action" onclick="toastAction()">${escapeHTML(actionLabel)}</button>` : '');
   toast.classList.add('show');
   _toastTimer = setTimeout(() => {
     toast.classList.remove('show');
     _toastUndoFn = null;
+    _toastTimer = null;
   }, duration);
 }
 
 function toastAction() {
-  if (_toastUndoFn) _toastUndoFn();
-  document.getElementById('toast').classList.remove('show');
+  const action = _toastUndoFn;
+  _toastUndoFn = null;  // 모바일 더블탭으로 복원 요청이 중복되는 것을 방지
   if (_toastTimer) clearTimeout(_toastTimer);
-  _toastUndoFn = null;
+  _toastTimer = null;
+  document.getElementById('toast').classList.remove('show');
+  if (action) action();
 }
 
 /* ── Pagination ── */

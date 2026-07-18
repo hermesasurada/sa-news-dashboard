@@ -70,6 +70,15 @@ class DatabaseWorkflowTests(unittest.TestCase):
         self.assertEqual(db.query_articles()["total"], 0)
         self.assertEqual(db.query_articles(deleted=True)["total"], 1)
 
+    def test_delete_can_be_restored_from_undo_action(self):
+        article_id = self._pending()
+        self._publish(article_id)
+
+        self.assertTrue(db.delete_article(article_id))
+        self.assertTrue(db.restore_article(article_id))
+        self.assertEqual(db.query_articles()["total"], 1)
+        self.assertEqual(db.query_articles(deleted=True)["total"], 0)
+
     def test_legacy_summary_decoder(self):
         self.assertEqual(db.decode_summary_details("['하나', '둘']"), ["하나", "둘"])
         self.assertEqual(db.decode_summary_details("not a list"), [])
