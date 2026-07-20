@@ -883,8 +883,6 @@ if (!_READER_FONTS.includes(_readerFont)) _readerFont = 'sans';
 
 function applyReaderFont() {
   document.body.dataset.readerFont = _readerFont;
-  const sel = document.getElementById('sumFontSelect');
-  if (sel && sel.value !== _readerFont) sel.value = _readerFont;
 }
 function setReaderFont(key) {
   if (!_READER_FONTS.includes(key)) return;
