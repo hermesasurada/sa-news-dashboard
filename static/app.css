@@ -1,4 +1,12 @@
 /* SA Breaking News — 뉴모피즘 (soft UI) 테마 */
+/* ── 요약 본문 글꼴 선택용 웹폰트 (website-monitor 이식) ── */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700&family=Song+Myung&display=swap');
+@font-face {
+  font-family: "Chosunilbo_myungjo";
+  src: url("/static/fonts/ChosunilboNM.woff") format("woff");
+  font-display: swap;
+}
 :root {
   --mono: "SF Mono", "JetBrains Mono", "Roboto Mono", ui-monospace, Menlo, Consolas, monospace;
 
@@ -595,6 +603,75 @@ body {
   overflow-wrap: break-word;
   word-break: keep-all;
 }
+
+/* ── 요약 본문 글꼴 선택 (website-monitor 이식) ──
+   body[data-reader-font=key] → 카드 요약 본문(.card-details/.card-summary)에 적용.
+   localStorage 'saReaderFont' 공유. 'sans'(기본)는 규칙 없음 → 기본 폰트 상속. */
+body[data-reader-font="noto"] .card-details,
+body[data-reader-font="noto"] .card-summary {
+  font-family: 'Noto Sans KR', sans-serif; }
+body[data-reader-font="chosun"] .card-details,
+body[data-reader-font="chosun"] .card-summary {
+  font-family: "Chosunilbo_myungjo", "Gowun Batang", "Nanum Myeongjo", "Noto Serif KR", serif;
+  letter-spacing: -.01em; word-break: keep-all; line-height: 1.75; }
+body[data-reader-font="serif"] .card-details,
+body[data-reader-font="serif"] .card-summary {
+  font-family: "Noto Serif KR", "Apple Myungjo", Georgia, serif; word-break: keep-all; line-height: 1.72; }
+body[data-reader-font="gowun"] .card-details,
+body[data-reader-font="gowun"] .card-summary {
+  font-family: "Gowun Batang", "Nanum Myeongjo", "Song Myung", "Noto Serif KR", serif;
+  letter-spacing: -.01em; word-break: keep-all; line-height: 1.72; }
+body[data-reader-font="nanum"] .card-details,
+body[data-reader-font="nanum"] .card-summary {
+  font-family: "Nanum Myeongjo", "Gowun Batang", "Noto Serif KR", serif;
+  letter-spacing: -.01em; word-break: keep-all; line-height: 1.72; }
+body[data-reader-font="song"] .card-details,
+body[data-reader-font="song"] .card-summary {
+  font-family: "Song Myung", "Gowun Batang", "Nanum Myeongjo", "Noto Serif KR", serif;
+  letter-spacing: -.01em; word-break: keep-all; line-height: 1.72; }
+body[data-reader-font="system"] .card-details,
+body[data-reader-font="system"] .card-summary {
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", sans-serif; }
+body[data-reader-font="mono"] .card-details,
+body[data-reader-font="mono"] .card-summary {
+  font-family: var(--mono); letter-spacing: -.01em; }
+
+/* PC: 검색바 드롭다운 (뉴모피즘) */
+.sum-font-ctrl {
+  display: inline-flex; align-items: center; height: 35px; padding: 0 6px 0 12px;
+  border-radius: 16px; background: var(--surface); box-shadow: var(--nm-raised-sm);
+}
+.sum-font-ctrl select {
+  appearance: none; -webkit-appearance: none; border: 0; background: transparent;
+  color: var(--ink-2); font-family: inherit; font-size: 13px; font-weight: 600;
+  height: 100%; padding: 0 16px 0 0; cursor: pointer; outline: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%237b8393' d='M1 1l4 4 4-4'/></svg>");
+  background-repeat: no-repeat; background-position: right 2px center;
+}
+/* 모바일: Aa 버튼 (PC 숨김) */
+.font-btn {
+  display: none; background: var(--surface); border: none; color: var(--ink-2);
+  height: 35px; min-width: 40px; padding: 0 12px; border-radius: 16px; cursor: pointer;
+  font-family: Georgia, "Times New Roman", serif; font-size: 15px; font-weight: 700;
+  box-shadow: var(--nm-raised-sm); align-items: center; justify-content: center; flex: 0 0 auto;
+}
+.font-btn:active { box-shadow: var(--nm-inset-sm); }
+@media (max-width: 640px) {
+  .sum-font-ctrl { display: none; }
+  .font-btn { display: inline-flex; }
+}
+/* 글꼴 선택 시트 (모바일) */
+.font-list { display: grid; gap: 6px; padding: 2px 18px 18px; }
+.font-opt {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--surface); border: none; box-shadow: var(--nm-raised-sm); border-radius: 4px;
+  padding: 12px 14px; cursor: pointer; font-size: 15px; color: var(--ink-2); text-align: left;
+  font-family: inherit;
+}
+.font-opt:active { box-shadow: var(--nm-inset-sm); }
+.font-opt .fo-sample { color: var(--muted); font-size: 13.5px; }
+.font-opt.sel { color: var(--accent); font-weight: 700; box-shadow: var(--nm-inset-sm); }
+.font-opt.sel .fo-check { color: var(--accent); }
 
 /* ── Card Footer ── */
 .card-footer {

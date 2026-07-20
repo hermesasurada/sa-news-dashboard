@@ -856,10 +856,62 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   hideTickerPopover();
   closeTickerModal();
+  closeFontPicker();
 });
+
+/* ── 요약 본문 글꼴 선택 (website-monitor 이식) ──
+   PC는 검색바 select, 모바일은 Aa 버튼 → 시트. 상태 = localStorage 'saReaderFont'.
+   body[data-reader-font]로 카드 요약 본문(.card-details/.card-summary)에 적용. */
+const _READER_FONTS = ['sans', 'noto', 'chosun', 'serif', 'gowun', 'nanum', 'song', 'system', 'mono'];
+const _FONT_LABELS = {
+  sans: '기본', noto: 'Noto Sans KR', chosun: '조선일보명조', serif: 'Noto Serif KR',
+  gowun: '고운바탕', nanum: '나눔명조', song: '송명', system: '시스템', mono: '고정폭',
+};
+const _FONT_STACKS = {
+  sans: '-apple-system, "Noto Sans KR", sans-serif',
+  noto: "'Noto Sans KR', sans-serif",
+  chosun: '"Chosunilbo_myungjo", serif',
+  serif: '"Noto Serif KR", serif',
+  gowun: '"Gowun Batang", serif',
+  nanum: '"Nanum Myeongjo", serif',
+  song: '"Song Myung", serif',
+  system: '-apple-system, BlinkMacSystemFont, sans-serif',
+  mono: 'var(--mono)',
+};
+let _readerFont = localStorage.getItem('saReaderFont') || 'sans';
+if (!_READER_FONTS.includes(_readerFont)) _readerFont = 'sans';
+
+function applyReaderFont() {
+  document.body.dataset.readerFont = _readerFont;
+  const sel = document.getElementById('sumFontSelect');
+  if (sel && sel.value !== _readerFont) sel.value = _readerFont;
+}
+function setReaderFont(key) {
+  if (!_READER_FONTS.includes(key)) return;
+  _readerFont = key;
+  localStorage.setItem('saReaderFont', key);
+  applyReaderFont();
+  if (document.getElementById('font-modal').classList.contains('show')) renderFontList();
+}
+function renderFontList() {
+  document.getElementById('font-list').innerHTML = _READER_FONTS.map(k => `
+    <button type="button" class="font-opt ${k === _readerFont ? 'sel' : ''}" onclick="setReaderFont('${k}')">
+      <span>${escapeHTML(_FONT_LABELS[k])}</span>
+      <span class="fo-sample" style="font-family:${_FONT_STACKS[k]}">본문 가나다 AaBb</span>
+      ${k === _readerFont ? '<span class="fo-check">✓</span>' : ''}
+    </button>`).join('');
+}
+function openFontPicker() {
+  renderFontList();
+  document.getElementById('font-modal').classList.add('show');
+}
+function closeFontPicker() {
+  document.getElementById('font-modal').classList.remove('show');
+}
 
 /* ── Init ── */
 async function init() {
+  applyReaderFont();               // 저장된 글꼴을 로드 시점에 반영
   await loadFilters();             // 먼저 ticker 옵션 로드
   loadPrefs();                     // 로컬에 저장된 검색조건 기본값 적용
   const savedOffset = restoreFromURL(); // URL이 있으면 우선 (공유 링크)
