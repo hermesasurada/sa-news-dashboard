@@ -51,6 +51,69 @@ def is_preferred_dividend(subject: str, ticker: str) -> bool:
     return bool(_PREFERRED_TICKER_RE.search(ticker or '') or _PREFERRED_SUBJECT_RE.search(s))
 
 
+# 실적발표 '예정/프리뷰' 필터 — 실적 이벤트 자체가 주제인 기사만 제외.
+# ⚠️ 'ahead of earnings'는 넣지 않는다: 실제 뉴스의 꼬리 문구인 경우가 대부분
+#    (예: 'Tesla adds robotaxi cities ahead of earnings', 'Wedbush ups PT ahead of earnings').
+_EARNINGS_PREVIEW_RE = re.compile(
+    r'earnings\s+preview'
+    r'|earnings\s+setup'
+    r'|here\s+are\s+the\s+major\s+earnings'
+    r'|earnings\s+(?:are\s+|is\s+)?estimated\s+to'
+    r'|upcoming\s+earnings'
+    r'|next\s+earnings\s+call'
+    r'|heads?\s+into\s+(?:\S+\s+){0,3}earnings'
+    r'|enters\s+earnings'
+    r'|all\s+eyes\s+on\b[^;]{0,60}\bearnings'
+    r'|earnings\s+to\s+shed\s+light'
+    r'|may\s+move\s+[\d.]+%\s+on\s+earnings'
+    r'|post-earnings\s+swing'
+    r'|what\s+will\b[^?]{0,60}\bearnings\s+call'
+    r'|what\s+to\s+expect\b[^?]{0,60}\bearnings'
+    r'|earnings\s+approach',
+    re.I,
+)
+
+
+def is_earnings_preview(subject: str) -> bool:
+    """실적발표 예정/프리뷰 뉴스인가 → 수집 제외 대상.
+    실제 실적 발표 결과(‘Q2 earnings beat’, ‘after earnings’ 등)는 제외하지 않음."""
+    return bool(_EARNINGS_PREVIEW_RE.search(subject or ''))
+
+
+# 펀드·전략의 분기 보유종목 변경/수익률 공시 필터.
+# 펀드명은 항상 고유명사가 앞에 붙는다는 점을 이용 — 사명이 'Strategy'인 MSTR
+# ('Strategy didn't buy or sell any bitcoin') 같은 실제 기업 뉴스 오탐 방지.
+_FUND_ENTITY = (
+    r"(?:(?:[A-Z][\w.&'-]*\s+){1,5}"
+    r"(?:Fund|Strategy|Composite|Portfolio|Partners|Capital|Trust|Advisers?|Management)"
+    r"|Fundsmith)"
+)
+_FUND_HOLDINGS_RE = re.compile(
+    rf'{_FUND_ENTITY}\b[^:]{{0,80}}?\b(?:adds?|buys?|initiates?|boosts?|exits?|sells?|trims?)\b'
+    rf'.{{0,120}}\b(?:exits?|adds?|buys?|sells?|trims?|positions?|holdings?|stakes?)\b'
+    rf'|{_FUND_ENTITY}\b.{{0,80}}\b(?:returned|gained|posts?|returns?)\b.{{0,40}}\d+(?:\.\d+)?%'
+    rf'|{_FUND_ENTITY}\b.{{0,60}}\bQ[1-4]\s+(?:moves|commentary|letter|update)\b'
+)
+
+
+def is_fund_holdings_news(subject: str) -> bool:
+    """펀드·전략의 분기 보유종목 변경·수익률 공시인가 → 수집 제외 대상.
+    (예: 'Polaris Global Equity Composite adds new holdings, exits positions in Q2')
+    티커가 펀드 자체(PGVFX)이거나 편입 종목 나열이라 개별 종목 뉴스 가치가 낮음."""
+    return bool(_FUND_HOLDINGS_RE.search(subject or ''))
+
+
+def excluded_reason(subject: str, ticker: str) -> str | None:
+    """수집 제외 대상이면 사유 라벨, 아니면 None."""
+    if is_preferred_dividend(subject, ticker):
+        return '우선주배당'
+    if is_earnings_preview(subject):
+        return '실적프리뷰'
+    if is_fund_holdings_news(subject):
+        return '펀드공시'
+    return None
+
+
 def ticker_from_subject(subject: str) -> str:
     """envelope subject prefix에서 ticker 추출. 없으면 'NONE'.
     다중 ticker는 공백 제거 후 'A,B' 형태로 보존."""
@@ -145,6 +208,7 @@ def main():
     duplicated = 0
     skipped = 0
     filtered = 0
+    filtered_by: dict[str, int] = {}
 
     for line in lines:
         parts = line.split('\t')
@@ -162,10 +226,13 @@ def main():
             skipped += 1
             continue
         ticker = ticker_from_subject(original_title)
-        # 우선주 배당 공시 → 수집 제외 (INSERT 없이 seen 처리, 재수집 방지)
-        if is_preferred_dividend(original_title, ticker):
+        # 저가치 뉴스(우선주 배당·실적 프리뷰·펀드 공시) → 수집 제외
+        # (INSERT 없이 seen 처리해 재수집 방지)
+        reason = excluded_reason(original_title, ticker)
+        if reason:
             processed_ids.append(eid_str.strip())
             filtered += 1
+            filtered_by[reason] = filtered_by.get(reason, 0) + 1
             continue
         aid = db.insert_pending_article(
             email_id=eid_str.strip(),
@@ -186,7 +253,10 @@ def main():
     now = datetime.datetime.now().strftime('%H:%M')
     total = inserted + duplicated + skipped + filtered
     seen_label = "" if seen_ok else "/seen실패"
-    filtered_label = f"/우선주배당 {filtered}" if filtered else ""
+    filtered_label = ""
+    if filtered:
+        detail = '·'.join(f'{k} {v}' for k, v in sorted(filtered_by.items()))
+        filtered_label = f"/제외 {filtered}({detail})"
     print(
         f'SA collect: {total}건 '
         f'(신규 {inserted}/중복 {duplicated}/스킵 {skipped}{filtered_label}{seen_label}) / {now}'
