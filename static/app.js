@@ -44,7 +44,7 @@ async function loadFilters() {
 // 해외상장 티커는 자국 표기(삼성전자 / AIR.PA)로 보여 가독성↑
 function tickerDisplay(raw) {
   const fl = FOREIGN_LISTINGS[raw];
-  return fl ? (fl.kr ? fl.name : fl.home) : raw;
+  return fl ? (fl.byName ? fl.name : fl.home) : raw;
 }
 function updateTickerLabel() {
   const val = document.getElementById('ticker-filter').value;
@@ -84,7 +84,7 @@ function renderTickerList() {
   }
   const chips = matched.map(t => {
     const fl = FOREIGN_LISTINGS[t];
-    const sub = fl ? `<span class="sub">${escapeHTML(fl.kr ? fl.name : fl.home)}</span>` : '';
+    const sub = fl ? `<span class="sub">${escapeHTML(fl.byName ? fl.name : fl.home)}</span>` : '';
     return `<div class="tk-chip ${t === cur ? 'active' : ''}" data-ticker="${escapeAttr(t)}" onclick="setTicker(this.dataset.ticker)">${escapeHTML(t)}${sub}</div>`;
   }).join('');
   document.getElementById('ticker-list').innerHTML = allChip + chips;
@@ -163,14 +163,14 @@ const canonTicker = (t) => TICKER_ALIASES[t.toUpperCase()] || t;
 
 // 외국 기업의 미국 티커(대부분 OTC ADR, 일부 NYSE ADR)를 자국 시장 티커로 매핑.
 // 배지 표기와 시세 조회(quote) 모두 이 자국 티커를 사용한다.
-//   kr:true  → 한글명 배지 + 마우스오버 티커 (한국 기업)
-//   kr:false → 자국 티커 배지 + 마우스오버 영문 기업명 (그 외 외국 기업)
+//   byName:true → 기업명 배지 (한국·일본 종목: 삼성전자 / Sony)
+//   (기본)      → 자국 티커 배지 + 마우스오버 영문 기업명 (그 외 외국 기업)
 const FOREIGN_LISTINGS = {
   // 🇰🇷 한국
-  SSNLF:{home:'005930.KS', name:'삼성전자', kr:true},
-  HXSCL:{home:'000660.KS', name:'SK하이닉스', kr:true},
-  LGEIY:{home:'066570.KS', name:'LG전자', kr:true},
-  NHNCF:{home:'035420.KS', name:'네이버', kr:true},
+  SSNLF:{home:'005930.KS', name:'삼성전자', byName:true},
+  HXSCL:{home:'000660.KS', name:'SK하이닉스', byName:true},
+  LGEIY:{home:'066570.KS', name:'LG전자', byName:true},
+  NHNCF:{home:'035420.KS', name:'네이버', byName:true},
   // 🇪🇺 유럽
   EADSY:{home:'AIR.PA', name:'Airbus'}, EADSF:{home:'AIR.PA', name:'Airbus'},
   ADDYY:{home:'ADS.DE', name:'Adidas'},
@@ -194,11 +194,11 @@ const FOREIGN_LISTINGS = {
   // 🇯🇵 일본
   // SONY는 NYSE 정식 상장이지만 자국(도쿄) 표기가 자연스럽고, 포트폴리오도
   // 6758.T로만 시세를 제공(ADR 'SONY'는 미보유) → 자국 티커로 매핑.
-  SONY:{home:'6758.T', name:'Sony Group'}, SNEJF:{home:'6758.T', name:'Sony Group'},
-  NTDOY:{home:'7974.T', name:'Nintendo'}, NTDOF:{home:'7974.T', name:'Nintendo'},
-  SFTBY:{home:'9984.T', name:'SoftBank Group'}, SFTBF:{home:'9984.T', name:'SoftBank Group'},
-  NINOY:{home:'7731.T', name:'Nikon'},
-  HTHIY:{home:'6501.T', name:'Hitachi'}, HTHIF:{home:'6501.T', name:'Hitachi'},
+  SONY:{home:'6758.T', name:'Sony', byName:true}, SNEJF:{home:'6758.T', name:'Sony', byName:true},
+  NTDOY:{home:'7974.T', name:'Nintendo', byName:true}, NTDOF:{home:'7974.T', name:'Nintendo', byName:true},
+  SFTBY:{home:'9984.T', name:'SoftBank', byName:true}, SFTBF:{home:'9984.T', name:'SoftBank', byName:true},
+  NINOY:{home:'7731.T', name:'Nikon', byName:true},
+  HTHIY:{home:'6501.T', name:'Hitachi', byName:true}, HTHIF:{home:'6501.T', name:'Hitachi', byName:true},
   // 🇨🇳🇹🇼🇭🇰
   BYDDY:{home:'1211.HK', name:'BYD'}, BYDDF:{home:'1211.HK', name:'BYD'},
   HNHPF:{home:'2317.TW', name:'Hon Hai (Foxconn)'},
@@ -273,7 +273,7 @@ function renderCard(a) {
     const color = i === 0 ? (a.ticker_color || 'blue') : 'gray';
     const fl = FOREIGN_LISTINGS[t.ticker];
     let label, companyName, quoteTicker;
-    if (fl && fl.kr)   { label = fl.name; companyName = fl.name; quoteTicker = fl.home; }
+    if (fl && fl.byName)   { label = fl.name; companyName = fl.name; quoteTicker = fl.home; }
     else if (fl)       { label = fl.home; companyName = fl.name || t.name; quoteTicker = fl.home; }
     else               { label = t.ticker; companyName = t.name || t.ticker; quoteTicker = t.ticker; }
     const attrs = [
