@@ -200,11 +200,11 @@ const FOREIGN_LISTINGS = {
   NINOY:{home:'7731.T', name:'Nikon', byName:true},
   HTHIY:{home:'6501.T', name:'Hitachi', byName:true}, HTHIF:{home:'6501.T', name:'Hitachi', byName:true},
   // 🇨🇳🇹🇼🇭🇰
-  BYDDY:{home:'1211.HK', name:'BYD'}, BYDDF:{home:'1211.HK', name:'BYD'},
-  HNHPF:{home:'2317.TW', name:'Hon Hai (Foxconn)'},
-  FXCOF:{home:'2354.TW', name:'Foxconn Technology'},
-  IVBIY:{home:'1801.HK', name:'Innovent Biologics'}, IVBXF:{home:'1801.HK', name:'Innovent Biologics'},
-  LNVGY:{home:'0992.HK', name:'Lenovo'},
+  BYDDY:{home:'1211.HK', name:'BYD', byName:true}, BYDDF:{home:'1211.HK', name:'BYD', byName:true},
+  HNHPF:{home:'2317.TW', name:'Foxconn', byName:true},
+  FXCOF:{home:'2354.TW', name:'Foxconn Tech', byName:true},
+  IVBIY:{home:'1801.HK', name:'Innovent', byName:true}, IVBXF:{home:'1801.HK', name:'Innovent', byName:true},
+  LNVGY:{home:'0992.HK', name:'Lenovo', byName:true},
   // 🌏 기타
   QABSY:{home:'QAN.AX', name:'Qantas'},
   SYAAF:{home:'SYR.AX', name:'Syrah Resources'}, SRHYY:{home:'SYR.AX', name:'Syrah Resources'},
@@ -497,6 +497,8 @@ window.addEventListener('resize', hideTickerPopover);
 function attachSwipeHandlers() {
   if (trashView) return;  // 휴지통 뷰: 스와이프 없음 (read-btn 부재)
   document.querySelectorAll('.swipe-row').forEach((row) => {
+    if (row.dataset.swipeBound) return;   // 보충 렌더 시 리스너 중복 누적 방지
+    row.dataset.swipeBound = '1';
     const card = row.querySelector('.card');
     const left = row.querySelector('.swipe-action.left');
     const right = row.querySelector('.swipe-action.right');
@@ -588,7 +590,10 @@ async function toggleRead(id, btn) {
       if (document.getElementById('unread-filter').classList.contains('active')) {
         card.style.transition = 'opacity 0.3s';
         card.style.opacity = '0';
-        setTimeout(() => (card.closest('.swipe-row') || card).remove(), 300);
+        setTimeout(() => {
+          (card.closest('.swipe-row') || card).remove();
+          refillGrid();
+        }, 300);
       }
     } else {
       card.classList.add('card-unread');
@@ -611,7 +616,9 @@ function deleteCard(articleId, element) {
   fetch(`/api/articles/${articleId}`, { method: 'DELETE' })
     .then(res => {
       if (res.ok) {
-        card.remove();
+        // .card만 지우면 .swipe-row 래퍼가 빈 그리드 칸으로 남는다 → 래퍼째 제거 후 보충
+        (card.closest('.swipe-row') || card).remove();
+        refillGrid();
         // 확인창 없이 즉시 삭제하고, 하단 토스트에서만 복원 기회를 제공한다.
         showToast(
           '기사를 삭제했습니다',
@@ -739,6 +746,45 @@ function startNotificationPolling() {
 }
 
 /* ── Search ── */
+// 상단 통계줄 구성 — search()와 refillGrid()가 공유
+function queueBadges(qData) {
+  if (trashView) return '';
+  const pending = qData.pending > 0 ? ` <span class="pending-badge">대기 ${qData.pending}건</span>` : '';
+  const unread = qData.unread > 0 ? ` <span class="unread-badge">안읽음 ${qData.unread}건</span>` : '';
+  return pending + unread;
+}
+function statsLine(total, offset, shown, badges) {
+  const trashLabel = trashView ? '🗑 휴지통 · ' : '';
+  return trashLabel + `${total}건 (${offset + 1}~${Math.min(offset + shown, total)}번째)` + badges;
+}
+
+/* ── 카드 1건이 빠진 자리를 다음 기사로 자동 보충 ──
+   삭제·복원·(미읽음 필터에서의)읽음처리로 카드가 사라져도 페이지가 비지 않도록,
+   전체 재렌더 없이 서버에서 다음 순번 1건만 가져와 뒤에 덧붙인다. */
+async function refillGrid() {
+  const cardsEl = document.getElementById('cards');
+  const shown = cardsEl.querySelectorAll('.card').length;
+  if (shown >= PAGE_SIZE) return;   // 이미 가득 참
+  const params = getParams(currentOffset + shown);
+  params.set('limit', 1);
+  try {
+    const [data, qData] = await Promise.all([
+      fetchJSON('/api/articles?' + params.toString()),
+      fetchJSON('/api/queue_stats'),
+    ]);
+    const filled = shown + data.items.length;
+    document.getElementById('stats').innerHTML =
+      statsLine(data.total, currentOffset, filled, queueBadges(qData));
+    renderPagination(data.total, currentOffset);
+    if (!data.items.length) return;   // 마지막 페이지 — 보충할 기사 없음
+    cardsEl.insertAdjacentHTML('beforeend', renderCard(data.items[0]));
+    attachSwipeHandlers();
+    attachTickerQuoteHandlers();
+  } catch (e) {
+    console.error('카드 보충 실패', e);
+  }
+}
+
 async function search(offset = 0) {
   currentOffset = offset;
   const params = getParams(offset);
@@ -756,14 +802,7 @@ async function search(offset = 0) {
       fetchJSON('/api/queue_stats'),
     ]);
 
-    const pendingBadge = qData.pending > 0
-      ? ` <span class="pending-badge">대기 ${qData.pending}건</span>`
-      : '';
-    const unreadBadge = qData.unread > 0
-      ? ` <span class="unread-badge">안읽음 ${qData.unread}건</span>`
-      : '';
-    const badges = trashView ? '' : (pendingBadge + unreadBadge);
-    const trashLabel = trashView ? '🗑 휴지통 · ' : '';
+    const badges = queueBadges(qData);
 
     if (data.items.length === 0) {
       const hasFilter = !!(document.getElementById('q').value.trim()
@@ -779,7 +818,7 @@ async function search(offset = 0) {
       return;
     }
 
-    statsEl.innerHTML = trashLabel + `${data.total}건 (${offset+1}~${Math.min(offset+PAGE_SIZE, data.total)}번째)` + badges;
+    statsEl.innerHTML = statsLine(data.total, offset, data.items.length, badges);
     cardsEl.innerHTML = data.items.map(renderCard).join('');
     attachSwipeHandlers();
     attachTickerQuoteHandlers();
@@ -838,7 +877,8 @@ function restoreCard(articleId, element) {
   fetch(`/api/articles/${articleId}/restore`, { method: 'POST' })
     .then(res => {
       if (res.ok) {
-        card.remove();
+        (card.closest('.swipe-row') || card).remove();
+        refillGrid();
       } else {
         card.classList.remove('card-deleting');
         delete card.dataset.restoring;
