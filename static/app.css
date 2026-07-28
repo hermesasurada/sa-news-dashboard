@@ -595,6 +595,9 @@ body {
   color: #58616f;
   line-height: 1.45;   /* bullet 내부(줄바꿈) 줄간격 */
   margin-top: 4px;
+  /* 남는 세로 공간을 본문이 흡수 → 티커칩이 본문이 아닌 하단(푸터) 쪽에 붙음.
+     본문이 짧은 카드는 본문과 티커칩 사이에 여백이 생긴다. */
+  flex: 1 1 auto;
 }
 .card-details strong { color: var(--ink-2); }
 .card-details ul { padding-left: 16px; margin-top: 4px; }
