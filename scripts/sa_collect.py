@@ -103,6 +103,30 @@ def is_fund_holdings_news(subject: str) -> bool:
     return bool(_FUND_HOLDINGS_RE.search(subject or ''))
 
 
+# 애널리스트 커버리지 개시 필터.
+# ⚠️ 'coverage'는 보험·의약품 급여, 통신망 커버리지로도 쓰이므로 반드시 애널리스트
+#    동사(starts/initiates/launches/resumes/assumes)와 함께일 때만 매치시킨다.
+#    'initiates'도 기업 행위(구조조정·감원 착수)에 쓰이므로 coverage 없이는
+#    'initiated at/with/by' 또는 'initiated <등급>' 형태만 인정.
+_COVERAGE_INIT_RE = re.compile(
+    r'\b(?:starts?|initiat(?:es?|ed|ing)|launch(?:es|ed)|resum(?:es|ed)|assum(?:es|ed))\b'
+    r'[^.;]{0,45}\bcoverage\b'
+    r'|\bnew\s+coverage\b'
+    r'|\bcoverage\s+(?:initiated|launched|assumed|resumed)\b'
+    r'|\binitiated\s+(?:at|with|by)\b'
+    r'|\binitiated\s+(?:Overweight|Underweight|Buy|Sell|Hold|Neutral|Outperform'
+    r'|Underperform|Equal[-\s]?Weight|Market\s+Perform)\b'
+    r'|\banalyst\s+initiations?\b',
+    re.I,
+)
+
+
+def is_coverage_initiation(subject: str) -> bool:
+    """증권사·기관의 커버리지 개시 뉴스인가 → 수집 제외 대상.
+    등급 상·하향(upgrade/downgrade)과 목표주가 변경은 견해 '변화'라 제외하지 않음."""
+    return bool(_COVERAGE_INIT_RE.search(subject or ''))
+
+
 def excluded_reason(subject: str, ticker: str) -> str | None:
     """수집 제외 대상이면 사유 라벨, 아니면 None."""
     if is_preferred_dividend(subject, ticker):
@@ -111,6 +135,8 @@ def excluded_reason(subject: str, ticker: str) -> str | None:
         return '실적프리뷰'
     if is_fund_holdings_news(subject):
         return '펀드공시'
+    if is_coverage_initiation(subject):
+        return '커버리지개시'
     return None
 
 

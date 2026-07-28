@@ -89,12 +89,47 @@ class FundHoldingsFilterTests(unittest.TestCase):
             self.assertFalse(sa_collect.is_fund_holdings_news(subject), msg=f"should keep: {subject}")
 
 
+class CoverageInitiationFilterTests(unittest.TestCase):
+    def test_coverage_initiation_is_filtered(self):
+        drop = [
+            "CRWD: CrowdStrike in focus as Loop Capital starts coverage with Buy rating",
+            "Rigetti, IonQ, D-Wave Quantum in focus as Benchmark starts coverage",
+            "ARM: Arteris receives Outperform rating as Oppenheimer initiates coverage",
+            "VRT: Vertiv rated Outperform in new coverage at Baird on data center demand",
+            "BWXT: BWX Technologies initiated Overweight at J.P. Morgan",
+            "CRWV: CoreWeave, Nebius initiated with Outperform ratings at Baird",
+            "TSLA: Tesla initiated at Market Perform on concerns over near-term AI",
+            "SPCX: SpaceX sinks despite flurry of bullish analyst initiations",
+        ]
+        for subject in drop:
+            self.assertTrue(sa_collect.is_coverage_initiation(subject), msg=f"should filter: {subject}")
+
+    def test_other_coverage_and_initiates_are_kept(self):
+        keep = [
+            # 보험·의약품 급여, 통신망 커버리지
+            "LLY: Cigna reportedly dropping GLP-1 obesity drug coverage for its own employees",
+            "CVS Health reintroduces coverage for Lilly's Zepbound",
+            "UNH: Guardant Health rises following UnitedHealth coverage of Shield test",
+            "AT&T reaffirms profit targets, goal of 60M fiber internet coverage by 2030",
+            # 기업 행위로서의 initiates / initiatives
+            "BSX: Boston Scientific initiates new restructuring plan",
+            "INTC: Intel initiates new round of layoffs centering on its data center group",
+            "AAPL: India commits about $20B for chip, smartphone initiatives",
+            # 등급 변경·목표주가는 유지
+            "AT&T upgraded by Wolfe Research as improving fundamentals outweigh competitive risks",
+            "STX: Seagate, Western Digital in focus as Wedbush ups price targets",
+        ]
+        for subject in keep:
+            self.assertFalse(sa_collect.is_coverage_initiation(subject), msg=f"should keep: {subject}")
+
+
 class ExcludedReasonTests(unittest.TestCase):
     def test_reason_labels(self):
         cases = [
             ("BAC.PR.S", "BAC: Bank of America 4.750% DP PFD SS declares $0.2968 dividend", "우선주배당"),
             ("HLT", "HLT: Hilton Worldwide Q2 2026 Earnings Preview", "실적프리뷰"),
             ("PGVFX", "ADBE: Polaris Global Equity Composite adds new holdings, exits positions in Q2", "펀드공시"),
+            ("CRWD", "CRWD: CrowdStrike in focus as Loop Capital starts coverage with Buy rating", "커버리지개시"),
             ("AAPL", "AAPL: Apple unveils new MacBook Pro lineup", None),
         ]
         for ticker, subject, expected in cases:
