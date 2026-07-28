@@ -161,7 +161,8 @@ function getParams(offset) {
 let TICKER_ALIASES = {};
 const canonTicker = (t) => TICKER_ALIASES[t.toUpperCase()] || t;
 
-// 미국 메인거래소(나스닥/NYSE) 미상장 — OTC ADR/해외상장 티커를 자국 시장 티커로 매핑.
+// 외국 기업의 미국 티커(대부분 OTC ADR, 일부 NYSE ADR)를 자국 시장 티커로 매핑.
+// 배지 표기와 시세 조회(quote) 모두 이 자국 티커를 사용한다.
 //   kr:true  → 한글명 배지 + 마우스오버 티커 (한국 기업)
 //   kr:false → 자국 티커 배지 + 마우스오버 영문 기업명 (그 외 외국 기업)
 const FOREIGN_LISTINGS = {
@@ -191,6 +192,9 @@ const FOREIGN_LISTINGS = {
   HEINY:{home:'HEIA.AS', name:'Heineken'},
   RNMBF:{home:'RHM.DE', name:'Rheinmetall'}, RNMBY:{home:'RHM.DE', name:'Rheinmetall'},
   // 🇯🇵 일본
+  // SONY는 NYSE 정식 상장이지만 자국(도쿄) 표기가 자연스럽고, 포트폴리오도
+  // 6758.T로만 시세를 제공(ADR 'SONY'는 미보유) → 자국 티커로 매핑.
+  SONY:{home:'6758.T', name:'Sony Group'}, SNEJF:{home:'6758.T', name:'Sony Group'},
   NTDOY:{home:'7974.T', name:'Nintendo'}, NTDOF:{home:'7974.T', name:'Nintendo'},
   SFTBY:{home:'9984.T', name:'SoftBank Group'}, SFTBF:{home:'9984.T', name:'SoftBank Group'},
   NINOY:{home:'7731.T', name:'Nikon'},
