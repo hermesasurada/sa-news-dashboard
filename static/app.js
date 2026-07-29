@@ -214,6 +214,13 @@ const FOREIGN_LISTINGS = {
   TAKOF:{home:'FLT.V', name:'Volatus Aerospace'},
 };
 
+// 동일 기업의 복수 상장 — 기본 티커를 '교체'하는 FOREIGN_LISTINGS와 달리,
+// 기본 칩은 그대로 두고 다른 시장 상장 칩을 '추가'로 노출한다.
+// (예: Ferrari — NYSE RACE + 프랑크푸르트 2FE.DE)
+const EXTRA_LISTINGS = {
+  RACE: [{ ticker: '2FE.DE', name: 'Ferrari' }],
+};
+
 function extractTickers(a) {
   // LLM이 관련성 판단해 선별한 ticker 필드만 사용
   // ($TICKER 정규식 무조건 수집은 제거 — 스치는 언급까지 배지로 붙는 문제)
@@ -223,6 +230,12 @@ function extractTickers(a) {
     const tks = rawTicker.split(/[,·\s]+/).map(t => t.trim()).filter(t => /^[A-Z0-9.^-]{1,12}$/.test(t));
     const names = (a.company_name || '').split(/·/).map(n => n.trim()).filter(Boolean);
     tks.forEach((t, i) => { const c = canonTicker(t); if (c && !map.has(c)) map.set(c, names[i] || names[0] || ''); });
+  }
+  // 복수 상장 칩 추가 (원본 순회 중 변경 방지를 위해 키 스냅샷 사용)
+  for (const t of [...map.keys()]) {
+    for (const ex of (EXTRA_LISTINGS[t] || [])) {
+      if (!map.has(ex.ticker)) map.set(ex.ticker, ex.name || '');
+    }
   }
   return [...map.entries()].map(([ticker, name]) => ({ ticker, name }));
 }
