@@ -217,9 +217,18 @@ const FOREIGN_LISTINGS = {
 // 동일 기업의 복수 상장 — 기본 티커를 '교체'하는 FOREIGN_LISTINGS와 달리,
 // 기본 칩은 그대로 두고 다른 시장 상장 칩을 '추가'로 노출한다.
 // (예: Ferrari — NYSE RACE + 프랑크푸르트 2FE.DE)
+// HXSCL(→000660.KS)·SSNLF(→005930.KS)처럼 FOREIGN_LISTINGS가 이미 자국 상장으로
+// 바꿔주는 티커는 여기에 넣지 않는다(중복 칩).
 const EXTRA_LISTINGS = {
-  RACE: [{ ticker: '2FE.DE', name: 'Ferrari' }],
+  RACE: [{ ticker: '2FE.DE', name: 'Ferrari' }],           // NYSE + 프랑크푸르트
+  TSM:  [{ ticker: '2330.TW', name: 'TSMC' }],             // NYSE + 대만
+  SKHY: [{ ticker: '000660.KS', name: 'SK하이닉스', byName: true }],  // 미국 OTC + 한국
 };
+// 추가 상장 티커 → 표기 정보 역인덱스 (한국 종목은 기업명 표기 관례를 따름)
+const EXTRA_BY_TICKER = {};
+for (const list of Object.values(EXTRA_LISTINGS)) {
+  for (const ex of list) EXTRA_BY_TICKER[ex.ticker] = ex;
+}
 
 function extractTickers(a) {
   // LLM이 관련성 판단해 선별한 ticker 필드만 사용
@@ -231,10 +240,19 @@ function extractTickers(a) {
     const names = (a.company_name || '').split(/·/).map(n => n.trim()).filter(Boolean);
     tks.forEach((t, i) => { const c = canonTicker(t); if (c && !map.has(c)) map.set(c, names[i] || names[0] || ''); });
   }
-  // 복수 상장 칩 추가 (원본 순회 중 변경 방지를 위해 키 스냅샷 사용)
-  for (const t of [...map.keys()]) {
+  // 복수 상장 칩 추가. 중복 판정은 '실제 조회 티커' 기준 —
+  // 예: 한 기사에 SKHY와 HXSCL이 함께 태깅되면 HXSCL이 이미 000660.KS로
+  //     조회되므로 SKHY의 추가 칩(000660.KS)은 붙이지 않는다.
+  const covered = new Set();
+  for (const t of map.keys()) {
+    const fl = FOREIGN_LISTINGS[t];
+    covered.add(fl ? fl.home : t);
+  }
+  for (const t of [...map.keys()]) {   // 순회 중 변경 방지를 위해 키 스냅샷
     for (const ex of (EXTRA_LISTINGS[t] || [])) {
-      if (!map.has(ex.ticker)) map.set(ex.ticker, ex.name || '');
+      if (covered.has(ex.ticker) || map.has(ex.ticker)) continue;
+      map.set(ex.ticker, ex.name || '');
+      covered.add(ex.ticker);
     }
   }
   return [...map.entries()].map(([ticker, name]) => ({ ticker, name }));
@@ -288,7 +306,13 @@ function renderCard(a) {
     let label, companyName, quoteTicker;
     if (fl && fl.byName)   { label = fl.name; companyName = fl.name; quoteTicker = fl.home; }
     else if (fl)       { label = fl.home; companyName = fl.name || t.name; quoteTicker = fl.home; }
-    else               { label = t.ticker; companyName = t.name || t.ticker; quoteTicker = t.ticker; }
+    else {
+      // 추가 상장 칩 중 byName 지정분(한국 등)은 기업명으로 표기
+      const ex = EXTRA_BY_TICKER[t.ticker];
+      label = (ex && ex.byName && ex.name) ? ex.name : t.ticker;
+      companyName = t.name || t.ticker;
+      quoteTicker = t.ticker;
+    }
     const attrs = [
       `data-ticker="${escapeAttr(t.ticker)}"`,
       `data-quote-ticker="${escapeAttr(quoteTicker)}"`,
