@@ -7,7 +7,11 @@
 | 항목 | 이유 | 상태 |
 |---|---|---|
 | 삭제·발행 상태 전이 원자화 | 늦게 끝난 worker가 삭제 기사를 되살릴 수 있었음 | 완료 |
-| Claude subprocess 실제 timeout | stdout 대기 중에는 기존 timeout이 작동하지 않았음 | 완료 |
+| Claude timeout·배치 예외 격리 | timeout 뒤 grok 폴백을 보장하고 한 기사의 예외가 후속 기사를 굶기지 않게 함 | 완료 |
+| collect/publish 종료코드 구분 | 성공 `0`, 인프라 실패 `1`, 기록된 부분 실패 `2`를 운영자가 구분할 수 있게 함 | 완료 |
+| 검색 Enter 단일 바인딩 | inline·JS 이중 바인딩으로 같은 검색이 두 번 실행되던 문제 제거 | 완료 |
+| 모델 라벨 일반화 | 이동 별칭의 `claude-opus-5`와 날짜 suffix 모델도 버전이 보이게 함 | 완료 |
+| 배포 경로 정합성 | repo 셔임·문서의 폐기된 `~/Documents` 경로를 실제 경로로 교정 | 완료 |
 | FTS5 검색어 정규화 | 따옴표·연산자 입력이 API 500을 만들 수 있었음 | 완료 |
 | 외부 기사/LLM 문자열 HTML escape | 저장형 XSS 가능성 차단 | 완료 |
 | 기사 URL scheme 제한 | `javascript:` 등 비정상 링크 차단 | 완료 |
@@ -30,23 +34,29 @@
 3. 운영 관측성
    - `/api/health`를 launchd health check에 연결합니다.
    - collect/publish의 배치 ID, 처리 시간, 실패 유형을 구조화 로그로 남기고 pending/failed 임계치 알림을 추가합니다.
+   - 현재 cron 로그는 50회(30분 주기 기준 약 25시간)만 보존되므로, 공급자별 시도·결과를 append-only
+     `processing_attempts` 테이블에도 남겨 성공 후 지워지는 실패 원인을 보존합니다.
    - 예상 효과: 조용한 cron 실패 탐지 시간 단축. 난이도: 낮음~중간.
 
 ## P2 — 구조 개선
 
-1. `db.py` 분해
+1. 티커 규칙 단일화
+   - `FOREIGN_LISTINGS`, `EXTRA_LISTINGS`, 별칭을 `instrument_catalog.py`로 모으고 `/api/filters`로 배포합니다.
+   - 현재 규모에서는 `article_instruments` 정규화보다 이 작업이 비용 대비 효과가 큽니다.
+
+2. `db.py` 분해
    - `schema`, `article_repository`, `publish_queue`, `statistics`로 나눕니다.
    - 외부 스크립트가 `db.py`를 직접 import하므로 기존 함수는 facade로 한 릴리스 유지합니다.
 
-2. 프런트 이벤트 모듈화
+3. 프런트 이벤트 모듈화
    - 현재 HTML inline handler 때문에 강한 Content-Security-Policy 적용이 어렵습니다.
    - 이벤트 위임 방식으로 전환하고 검색·카드·시세·스와이프 모듈을 분리합니다.
 
-3. 레거시 컬럼 정리
+4. 레거시 컬럼 정리
    - `summary_core`, `tag`, `tag_color` 사용량을 확인한 뒤 백업 DB에서 제거 migration을 검증합니다.
    - SQLite 테이블 재작성 작업이므로 P0/P1보다 뒤에 둡니다.
 
-4. Chart.js 로컬 고정
+5. Chart.js 로컬 고정
    - 통계 화면이 jsDelivr 장애와 외부 네트워크에 의존하지 않도록 검증된 파일을 정적 자산으로 고정합니다.
 
 ## P3 — 개발 경험

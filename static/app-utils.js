@@ -48,6 +48,22 @@
     return { text: `${number > 0 ? '+' : ''}${number.toFixed(2)}%`, cls };
   }
 
+  function formatSummaryModel(value) {
+    const model = String(value || '');
+    if (!model) return '';
+    const claude = model.match(/^claude-(opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-|$)/i);
+    if (claude) {
+      const family = claude[1][0].toUpperCase() + claude[1].slice(1).toLowerCase();
+      const version = claude[3] ? `${claude[2]}.${claude[3]}` : claude[2];
+      return `Claude ${family} ${version}`;
+    }
+    if (model.startsWith('claude')) return 'Claude';
+    const grok = model.match(/^grok-([\d.]+)/);
+    if (grok) return `Grok ${grok[1]}`;
+    if (model.startsWith('grok')) return 'Grok';
+    return model;
+  }
+
   const api = {
     escapeHTML,
     escapeAttr: escapeHTML,
@@ -55,6 +71,7 @@
     formatTime,
     formatPrice,
     formatChangePct,
+    formatSummaryModel,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

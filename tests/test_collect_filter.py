@@ -1,4 +1,7 @@
+import contextlib
+import io
 import unittest
+from unittest.mock import patch
 
 from scripts import sa_collect
 
@@ -134,6 +137,46 @@ class ExcludedReasonTests(unittest.TestCase):
         ]
         for ticker, subject, expected in cases:
             self.assertEqual(sa_collect.excluded_reason(subject, ticker), expected, msg=subject)
+
+
+class CollectExitCodeTests(unittest.TestCase):
+    def test_extract_failure_returns_infrastructure_exit(self):
+        with (
+            patch.object(sa_collect, "run_extract", return_value=None),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(sa_collect.main(), sa_collect.EXIT_INFRA_FAILURE)
+
+    def test_no_unread_returns_success(self):
+        with (
+            patch.object(sa_collect, "run_extract", return_value=["NO_UNREAD_SA_EMAILS"]),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(sa_collect.main(), sa_collect.EXIT_OK)
+
+    def test_seen_failure_returns_partial_exit(self):
+        line = "9401\t2026-08-01 01:00 KST\tAAPL: test\thttps://seekingalpha.com/news/9401-test"
+        with (
+            patch.object(sa_collect, "run_extract", return_value=[line]),
+            patch.object(sa_collect.db, "insert_pending_article", return_value=1),
+            patch.object(sa_collect, "mark_seen", return_value=False),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(sa_collect.main(), sa_collect.EXIT_PARTIAL_FAILURE)
+
+    def test_article_extract_error_returns_partial_exit(self):
+        lines = [
+            "9501\t2026-08-01 01:00 KST\tAAPL: failed\tERROR_TEMPORARY",
+            "9502\t2026-08-01 01:01 KST\tMSFT: ok\thttps://seekingalpha.com/news/9502-test",
+        ]
+        with (
+            patch.object(sa_collect, "run_extract", return_value=lines),
+            patch.object(sa_collect.db, "insert_pending_article", return_value=1),
+            patch.object(sa_collect, "mark_seen", return_value=True),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            self.assertEqual(sa_collect.main(), sa_collect.EXIT_PARTIAL_FAILURE)
 
 
 if __name__ == "__main__":

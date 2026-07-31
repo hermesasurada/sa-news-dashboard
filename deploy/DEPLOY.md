@@ -6,12 +6,12 @@ hermes gateway 쪽에 있습니다. 머신 재구성/이전 시 이 문서로 �
 ## 구성 요소
 | 구분 | 위치 |
 |---|---|
-| 코드 | `~/Documents/sa-dashboard/` (이 repo) |
+| 코드 | `~/projects/sa-dashboard/` (이 repo) |
 | 실행 셔임(활성) | `~/.hermes/scripts/sa_{collect,publish,purge}.sh` |
 | 셔임 버전관리 사본 | `deploy/hermes-scripts/` (이 디렉토리) — 활성본과 동기 유지 |
 | 스케줄 | hermes cron (`hermes cron list`) |
 | 웹서버 | launchd `com.user.sa-dashboard` (port 8181) |
-| Python | `~/Documents/sa-dashboard/venv/bin/python3` (collect/publish/purge 모두 venv 통일) |
+| Python | `~/projects/sa-dashboard/venv/bin/python3` (collect/publish/purge 모두 venv 통일) |
 | 상태 확인 | `GET http://127.0.0.1:8181/api/health` |
 
 ## cron 작업 (hermes)
@@ -25,6 +25,8 @@ hermes gateway 쪽에 있습니다. 머신 재구성/이전 시 이 문서로 �
   틱 겹침을 방지(`scripts/sa_lock.py`) — 이전 배치가 돌고 있으면 다음 틱은 skip.
 - no-agent + deliver=local: **스크립트 stdout이 곧 전달 페이로드**. 요약/진단 출력은
   stdout(사람이 볼 요약) vs stderr(오류/skip)로 분리. purge는 0건이면 무음.
+- collect/publish 종료코드: `0` 성공·처리할 항목 없음, `1` DB·메일 조회 등 인프라 실패,
+  `2` 일부 항목 실패가 기록됐지만 나머지 배치는 계속 처리됨.
 
 ## 셔임 재등록 (복원 시)
 ```bash

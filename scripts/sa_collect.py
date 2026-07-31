@@ -29,6 +29,10 @@ sys.path.insert(0, str(REPO_ROOT))
 import db  # noqa: E402
 from sa_lock import single_instance  # noqa: E402
 
+EXIT_OK = 0
+EXIT_INFRA_FAILURE = 1
+EXIT_PARTIAL_FAILURE = 2
+
 TICKER_PREFIX = re.compile(r'^([A-Z0-9][A-Z0-9.,\s]{0,40}[A-Z0-9])\s*:\s')
 
 # 우선주 배당 공시 필터 — 시리즈별로 쏟아지는 저가치 뉴스(예: BAC.PR.S declares $0.29 dividend) 제외.
@@ -215,19 +219,19 @@ def mark_seen(email_ids: list[str]) -> bool:
     return True
 
 
-def main():
+def main() -> int:
     lines = run_extract()
     if lines is None:
         # 진짜 실패(himalaya/IMAP 오류 등) — '미읽음 없음'과 구분해 명확히 표면화
         print(f'SA collect: ⚠️ extract 실패 — 수집 건너뜀 / {datetime.datetime.now().strftime("%H:%M")}')
-        return
+        return EXIT_INFRA_FAILURE
     if not lines:
         print('SA collect: 0건 (no output)')
-        return
+        return EXIT_OK
     # 헤더가 있으면 첫 줄에 'NO_UNREAD_SA_EMAILS' 또는 'FOUND_UNREAD'
     if any('NO_UNREAD_SA_EMAILS' in ln for ln in lines):
         print(f'SA collect: 0건 / {datetime.datetime.now().strftime("%H:%M")}')
-        return
+        return EXIT_OK
 
     processed_ids: list[str] = []
     inserted = 0
@@ -235,6 +239,7 @@ def main():
     skipped = 0
     filtered = 0
     filtered_by: dict[str, int] = {}
+    had_item_failure = False
 
     for line in lines:
         parts = line.split('\t')
@@ -250,6 +255,7 @@ def main():
             # extract_sa_urls 일시 오류 → seen 처리 하지 않고 다음 사이클에 재시도
             print(f'SA collect: skip seen (일시 오류) eid={eid_str.strip()} reason={article_url[:120]}', file=sys.stderr)
             skipped += 1
+            had_item_failure = True
             continue
         ticker = ticker_from_subject(original_title)
         # 저가치 뉴스(우선주 배당·실적 프리뷰·펀드 공시) → 수집 제외
@@ -287,6 +293,7 @@ def main():
         f'SA collect: {total}건 '
         f'(신규 {inserted}/중복 {duplicated}/스킵 {skipped}{filtered_label}{seen_label}) / {now}'
     )
+    return EXIT_PARTIAL_FAILURE if had_item_failure or not seen_ok else EXIT_OK
 
 
 if __name__ == '__main__':
@@ -294,5 +301,7 @@ if __name__ == '__main__':
     with single_instance("sa-collect") as ok:
         if not ok:
             print("SA collect: 이전 수집 실행 중 — skip", file=sys.stderr)
+            exit_code = EXIT_OK
         else:
-            main()
+            exit_code = main()
+    raise SystemExit(exit_code)

@@ -60,6 +60,15 @@ class DatabaseWorkflowTests(unittest.TestCase):
         self.assertEqual(result["pub_status"], db.STATUS_PUBLISHED)
         self.assertEqual(db.query_articles()["total"], 1)
 
+    def test_pending_article_reaches_failed_at_retry_limit(self):
+        article_id = self._pending()
+
+        result = db.mark_attempt_failed(article_id, "provider failure", max_retry=1)
+
+        self.assertEqual(result["retry_count"], 1)
+        self.assertEqual(result["pub_status"], db.STATUS_FAILED)
+        self.assertNotIn(article_id, [row["id"] for row in db.get_pending_due()])
+
     def test_deleted_article_cannot_be_revived_by_late_worker_failure(self):
         article_id = self._pending()
         self._publish(article_id)

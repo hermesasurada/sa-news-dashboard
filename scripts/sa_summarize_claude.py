@@ -12,8 +12,10 @@ db.publish_article() 또는 db.mark_attempt_failed()를 호출한다.
 import argparse
 import json
 import re
+import sqlite3
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -72,6 +74,37 @@ _TICKER_RE = re.compile(r"^[A-Z0-9.^-]{1,12}$")
 _HAN_RE = re.compile(r"[\u4e00-\u9fff]")
 _KANA_RE = re.compile(r"[\u3040-\u30ff]")
 _MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)]\([^)]+\)")
+
+EXIT_OK = 0
+EXIT_INFRA_FAILURE = 1
+EXIT_PARTIAL_FAILURE = 2
+
+
+@dataclass(frozen=True)
+class AttemptSuccess:
+    """파싱·요약·검증은 완료됐지만 아직 DB에 반영하지 않은 결과."""
+
+    ticker: str | None
+    company_name: str
+    headline: str
+    summary_details: list[str]
+    ticker_color: str
+    parse_method: str | None
+    summary_model: str | None
+
+
+@dataclass(frozen=True)
+class AttemptFailure:
+    """DB에 정확히 한 번 기록해야 할 기사 단위 실패."""
+
+    reason: str
+
+
+@dataclass(frozen=True)
+class BatchResult:
+    attempted: int
+    succeeded: int
+    failed: int
 
 
 def _plain_text(value) -> str:
@@ -147,8 +180,8 @@ def parse_article(article_id: int) -> tuple[str | None, str | None, list, str | 
 
 # ── 단일 기사 처리 ─────────────────────────────────────────────────────────
 
-def process_article(row: dict) -> bool:
-    """기사 1건 처리. 성공 True / 실패 False."""
+def attempt_article(row: dict) -> AttemptSuccess | AttemptFailure:
+    """기사 1건을 파싱·요약·검증하되 DB 상태는 변경하지 않는다."""
     article_id = row["id"]
     ticker = row.get("ticker", "")
     orig = (row.get("original_title") or "")[:60]
@@ -159,9 +192,7 @@ def process_article(row: dict) -> bool:
     if not content:
         reason = parse_err or "PARSE_FAIL"
         print(f"     파싱 실패: {reason}", file=sys.stderr)
-        res = db.mark_attempt_failed(article_id, reason[:200])
-        print(f"     → {res}")
-        return False
+        return AttemptFailure(reason[:200])
 
     # 2. Claude로 한국어 요약 생성 — SA 공식 태깅 티커가 있으면 후보 화이트리스트로 주입
     candidates = ""
@@ -189,8 +220,7 @@ def process_article(row: dict) -> bool:
     if not response:
         reason = "Claude/grok CLI 응답 없음"
         print(f"\n     {reason}", file=sys.stderr)
-        db.mark_attempt_failed(article_id, reason)
-        return False
+        return AttemptFailure(reason)
     print(f" 완료 ({summary_model})")
 
     # 3. JSON 추출 및 검증
@@ -198,26 +228,22 @@ def process_article(row: dict) -> bool:
     if not data:
         reason = f"JSON 파싱 실패: {response[:120]}"
         print(f"     {reason}", file=sys.stderr)
-        db.mark_attempt_failed(article_id, reason[:200])
-        return False
+        return AttemptFailure(reason[:200])
 
     try:
         data = validate(data)
     except ValueError as exc:
         reason = f"출력 검증 실패: {exc}"
         print(f"     {reason}", file=sys.stderr)
-        db.mark_attempt_failed(article_id, reason)
-        return False
+        return AttemptFailure(reason)
     if not data["headline"] or not data["summary_details"]:
         reason = f"필수 필드 누락: headline={bool(data['headline'])} summary_details={bool(data['summary_details'])}"
         print(f"     {reason}", file=sys.stderr)
-        db.mark_attempt_failed(article_id, reason[:200])
-        return False
+        return AttemptFailure(reason[:200])
 
-    # 4. DB 발행 (ticker가 추출됐으면 교체, 없으면 Stage 1 값 유지)
+    # DB 반영은 process_article()이 단 한 번만 담당한다.
     new_ticker = data.get("ticker") or ""
-    ok = db.publish_article(
-        article_id,
+    return AttemptSuccess(
         ticker=new_ticker if new_ticker else None,
         company_name=data["company_name"],
         headline=data["headline"],
@@ -226,8 +252,38 @@ def process_article(row: dict) -> bool:
         parse_method=parse_method,
         summary_model=summary_model,
     )
+
+
+def process_article(row: dict) -> bool:
+    """기사 1건 처리. 기사 실패는 한 번 기록하고, DB 장애는 호출자로 올린다."""
+    article_id = row["id"]
+    try:
+        outcome = attempt_article(row)
+    except sqlite3.Error:
+        raise
+    except Exception as exc:
+        reason = f"예상하지 못한 처리 오류: {type(exc).__name__}: {exc}"
+        print(f"     {reason}", file=sys.stderr)
+        outcome = AttemptFailure(reason[:200])
+
+    if isinstance(outcome, AttemptFailure):
+        result = db.mark_attempt_failed(article_id, outcome.reason)
+        print(f"     → {result}")
+        return False
+
+    # DB 발행 (ticker가 추출됐으면 교체, 없으면 Stage 1 값 유지)
+    ok = db.publish_article(
+        article_id,
+        ticker=outcome.ticker,
+        company_name=outcome.company_name,
+        headline=outcome.headline,
+        summary_details=outcome.summary_details,
+        ticker_color=outcome.ticker_color,
+        parse_method=outcome.parse_method,
+        summary_model=outcome.summary_model,
+    )
     if ok:
-        print(f"     ✓ published: {data['headline'][:70]}")
+        print(f"     ✓ published: {outcome.headline[:70]}")
     else:
         print("     publish 실패 (삭제/영구정리 상태 또는 동시 변경)", file=sys.stderr)
     return ok
@@ -235,11 +291,11 @@ def process_article(row: dict) -> bool:
 
 # ── 배치 실행 ──────────────────────────────────────────────────────────────
 
-def run_batch(batch_size: int) -> None:
+def run_batch(batch_size: int) -> BatchResult:
     rows = db.get_pending_due(batch_size=batch_size)
     if not rows:
         print("SA summarize (claude): pending 없음")
-        return
+        return BatchResult(attempted=0, succeeded=0, failed=0)
     print(f"SA summarize (claude): {len(rows)}건 처리 시작")
     ok = fail = 0
     for row in rows:
@@ -248,9 +304,10 @@ def run_batch(batch_size: int) -> None:
         else:
             fail += 1
     print(f"SA summarize (claude): 완료 — 성공 {ok}건 / 실패 {fail}건")
+    return BatchResult(attempted=len(rows), succeeded=ok, failed=fail)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="SA Stage 2 — Claude CLI 요약")
     p.add_argument(
         "--batch",
@@ -259,29 +316,34 @@ def main() -> None:
         help=f"일괄 처리 건수 (기본 {settings.PUBLISH_BATCH_SIZE})",
     )
     p.add_argument("--id", type=int, dest="article_id", help="특정 article_id 강제 처리")
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
-    if args.article_id:
-        # due 조건 무시하고 직접 조회 (수동 단건 — 락 불필요)
-        with db.get_conn() as conn:
-            r = conn.execute(
-                "SELECT id, ticker, original_title, article_url, retry_count "
-                "FROM articles WHERE id = ? "
-                "AND pub_status IN ('pending', 'published', 'failed')",
-                (args.article_id,),
-            ).fetchone()
-        if not r:
-            print(f"article_id {args.article_id} 없음 또는 처리 불가 상태", file=sys.stderr)
-            sys.exit(1)
-        process_article(dict(r))
-    else:
+    try:
+        if args.article_id:
+            # due 조건 무시하고 직접 조회 (수동 단건 — 락 불필요)
+            with db.get_conn() as conn:
+                r = conn.execute(
+                    "SELECT id, ticker, original_title, article_url, retry_count "
+                    "FROM articles WHERE id = ? "
+                    "AND pub_status IN ('pending', 'published', 'failed')",
+                    (args.article_id,),
+                ).fetchone()
+            if not r:
+                print(f"article_id {args.article_id} 없음 또는 처리 불가 상태", file=sys.stderr)
+                return EXIT_INFRA_FAILURE
+            return EXIT_OK if process_article(dict(r)) else EXIT_PARTIAL_FAILURE
+
         # cron 틱 겹침 방지 — 이전 배치가 아직 돌고 있으면 skip
         with single_instance("sa-publish") as ok:
             if not ok:
                 print("SA summarize (claude): 이전 배치 실행 중 — skip", file=sys.stderr)
-                return
-            run_batch(args.batch)
+                return EXIT_OK
+            result = run_batch(args.batch)
+            return EXIT_PARTIAL_FAILURE if result.failed else EXIT_OK
+    except sqlite3.Error as exc:
+        print(f"SA summarize (claude): DB 오류 — {exc}", file=sys.stderr)
+        return EXIT_INFRA_FAILURE
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

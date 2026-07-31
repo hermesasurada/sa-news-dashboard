@@ -21,6 +21,7 @@ const {
   formatTime,
   formatPrice: fmtPrice,
   formatChangePct: fmtChangePct,
+  formatSummaryModel: summaryModelLabel,
 } = window.SAUtils;
 
 async function fetchJSON(url, options) {
@@ -265,19 +266,6 @@ function parseMethodLabel(m) {
   if (m.startsWith('jina')) return 'Jina';
   if (m.startsWith('playwright')) return 'Playwright';
   if (m.startsWith('curl_cffi')) return 'curl';
-  return m;
-}
-
-// summary_model(db) → 요약한 LLM+버전 라벨. NULL(기존행)이면 빈값.
-function summaryModelLabel(m) {
-  if (!m) return '';
-  let mm;
-  if ((mm = m.match(/^claude-opus-(\d+)-(\d+)/)))   return `Claude Opus ${mm[1]}.${mm[2]}`;
-  if ((mm = m.match(/^claude-sonnet-(\d+)/)))        return `Claude Sonnet ${mm[1]}`;
-  if ((mm = m.match(/^claude-haiku-(\d+)-(\d+)/)))   return `Claude Haiku ${mm[1]}.${mm[2]}`;
-  if (m.startsWith('claude'))                        return 'Claude';
-  if ((mm = m.match(/^grok-([\d.]+)/)))              return `Grok ${mm[1]}`;
-  if (m.startsWith('grok'))                          return 'Grok';
   return m;
 }
 

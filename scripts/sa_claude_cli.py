@@ -8,7 +8,7 @@ sa_summarize_claude.py 가 사용:
 
 환경변수:
   CLAUDE_BIN / CLAUDE_CODE_BIN — 바이너리 경로 override
-  CLAUDE_MODEL — 모델명 (기본 'opus' = 현재 claude-opus-4-8)
+  CLAUDE_MODEL — 모델명 (기본 'opus' 이동 별칭, 실제 모델 ID는 응답에서 기록)
 """
 import json
 import os
@@ -119,7 +119,8 @@ def call_claude(
         return _parse_claude_stream(proc.stdout)
 
     except subprocess.TimeoutExpired:
-        proc.kill()
+        # subprocess.run()은 timeout 시 자식 프로세스를 종료한 뒤 예외를 발생시킨다.
+        # 아직 대입되지 않은 proc를 참조하면 UnboundLocalError로 배치가 중단된다.
         print("     Claude CLI 타임아웃", file=sys.stderr)
         return None, None
     except Exception as e:
