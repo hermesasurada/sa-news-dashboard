@@ -62,10 +62,10 @@ class QuoteServiceTests(unittest.TestCase):
         },
     )
     def test_large_after_hours_move_keeps_both_lines(self, _fetch, _name):
-        """애프터장 변동이 커도 장외 병기가 사라지지 않고, 전일대비는 표시가 기준."""
+        """애프터장 변동이 커도 장외 병기가 유지되고, 전일대비는 정규장 구간만."""
         result = quote_service.get_price_quote("PLTR")
-        # 전일대비는 raw.change_pct(2.10, 정규장 구간)가 아니라 표시가 기준
-        self.assertAlmostEqual(result["change_pct"], 16.7398, places=3)
+        self.assertEqual(result["current_price"], 143.66)      # 표시 가격은 장외가
+        self.assertAlmostEqual(result["change_pct"], 2.1046, places=3)   # 정규장분만
         self.assertAlmostEqual(result["extended_change_pct"], 14.3334, places=3)
 
     @patch.object(quote_service, "_fallback_name", return_value="")

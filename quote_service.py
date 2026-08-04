@@ -95,19 +95,14 @@ def get_price_quote(ticker: str) -> dict[str, Any]:
 
     change_number = _as_float(change)
     previous_number = _as_float(previous)
-    current_number = _as_float(current)
 
-    # 전일대비는 '표시 가격' 기준으로 계산한다. raw의 change/change_pct는 정규장 구간만
-    # 담고 있어(장외 적용 시 current는 장외가) 표시 가격과 어긋나기 때문.
-    #   예: PLTR 전일 123.06 → 정규장 125.65(+2.10%) → 장외 143.66
-    #       raw.change_pct=2.10% 이지만 표시가 기준 실제는 +16.74%
-    if current_number is not None and previous_number not in (None, 0):
-        change_pct = (current_number - previous_number) / previous_number * 100.0
-        change = current_number - previous_number
-    else:
-        change_pct = _as_float(raw.get("change_pct"))
-        if change_number is not None and previous_number not in (None, 0):
-            change_pct = change_number / previous_number * 100.0
+    # 전일대비는 '정규장 구간'만 표기한다(장외분 미포함).
+    # 표시 가격은 장외가지만, 정규장 등락과 장외 등락을 각각 보여주고
+    # 합산은 보는 쪽에 맡기는 편이 해석이 명확하다.
+    #   예: PLTR 전일 123.06 → 정규장 125.65(전일대비 +2.10%) → 장외 143.66(장외 +14.33%)
+    change_pct = _as_float(raw.get("change_pct"))
+    if change_number is not None and previous_number not in (None, 0):
+        change_pct = change_number / previous_number * 100.0
 
     # 장외 등락률(정규장 종가 대비)은 장외 시간대이고 값이 있으면 병기한다.
     # 이전에는 current == extended_price 일치를 요구했는데, 장외 변동이 클수록
