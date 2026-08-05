@@ -4,6 +4,7 @@ import json
 import sqlite3
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -97,6 +98,63 @@ class SummaryPipelineTests(unittest.TestCase):
         ):
             result = sa_claude_cli.call_claude("test", timeout=1)
         self.assertEqual(result, (None, None))
+
+
+class GrokModelDetectionTests(unittest.TestCase):
+    """grok 기본 모델 탐지 — 간헐 실패로 버전('grok-4.5')이 소실되지 않아야 한다."""
+
+    def setUp(self):
+        self._tempdir = tempfile.TemporaryDirectory()
+        self._orig_cache = sa_claude_cli.GROK_MODEL_CACHE
+        sa_claude_cli.GROK_MODEL_CACHE = Path(self._tempdir.name) / "grok_model.json"
+        sa_claude_cli._GROK_DEFAULT_MODEL = None   # 프로세스 메모리 캐시 초기화
+
+    def tearDown(self):
+        sa_claude_cli.GROK_MODEL_CACHE = self._orig_cache
+        sa_claude_cli._GROK_DEFAULT_MODEL = None
+        self._tempdir.cleanup()
+
+    def test_probe_success_is_cached_to_disk(self):
+        with patch.object(sa_claude_cli, "_probe_grok_model", return_value="grok-4.5"):
+            self.assertEqual(sa_claude_cli._grok_default_model(), "grok-4.5")
+        self.assertTrue(sa_claude_cli.GROK_MODEL_CACHE.exists())
+        cached, _fresh = sa_claude_cli._read_grok_model_cache()
+        self.assertEqual(cached, "grok-4.5")
+
+    def test_probe_failure_falls_back_to_stale_cache(self):
+        # 어제 저장된(만료된) 캐시가 있으면 탐지 실패해도 버전을 유지한다.
+        sa_claude_cli.GROK_MODEL_CACHE.write_text(
+            json.dumps({"model": "grok-4.5", "fetched_at": time.time() - 86400 * 5}),
+            encoding="utf-8",
+        )
+        with (
+            patch.object(sa_claude_cli, "_probe_grok_model", return_value=None),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            self.assertEqual(sa_claude_cli._grok_default_model(), "grok-4.5")
+
+    def test_probe_failure_without_cache_marks_unknown(self):
+        with (
+            patch.object(sa_claude_cli, "_probe_grok_model", return_value=None),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            self.assertEqual(sa_claude_cli._grok_default_model(), sa_claude_cli.GROK_MODEL_UNKNOWN)
+
+    def test_fresh_cache_skips_probe(self):
+        sa_claude_cli.GROK_MODEL_CACHE.write_text(
+            json.dumps({"model": "grok-9", "fetched_at": time.time()}), encoding="utf-8"
+        )
+        with patch.object(sa_claude_cli, "_probe_grok_model") as probe:
+            self.assertEqual(sa_claude_cli._grok_default_model(), "grok-9")
+        probe.assert_not_called()
+
+    def test_probe_retries_once_on_transient_failure(self):
+        ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="Default model: grok-4.5\n", stderr="")
+        with patch.object(
+            sa_claude_cli.subprocess, "run",
+            side_effect=[subprocess.TimeoutExpired(cmd="grok", timeout=1), ok],
+        ):
+            self.assertEqual(sa_claude_cli._probe_grok_model(), "grok-4.5")
 
 
 class BatchResilienceTests(unittest.TestCase):

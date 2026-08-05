@@ -34,3 +34,5 @@ __pycache__/
 static/attach/
 ticker_names.json
 .ticker_names.json.*.tmp
+grok_model.json
+.grok_model.json.*.tmp

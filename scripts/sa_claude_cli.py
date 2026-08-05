@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -151,25 +152,82 @@ def extract_json(text: str) -> dict | None:
 
 
 _GROK_DEFAULT_MODEL = None
+# 탐지 결과를 파일로 보존 — cron이 배치마다 새 프로세스를 띄워 메모리 캐시가
+# 매번 비고, 탐지가 간헐 실패하면 버전 없는 'grok'이 DB에 기록되기 때문.
+# (ticker_names.py와 동일한 원자적 쓰기 + TTL 패턴)
+GROK_MODEL_CACHE = Path(__file__).resolve().parent.parent / "grok_model.json"
+GROK_MODEL_CACHE_MAX_AGE_DAYS = 1
+GROK_MODEL_UNKNOWN = "grok"
+
+
+def _read_grok_model_cache() -> tuple[str | None, bool]:
+    """(캐시된 모델명, 신선한지) — 파일이 없거나 깨졌으면 (None, False)."""
+    try:
+        data = json.loads(GROK_MODEL_CACHE.read_text(encoding="utf-8"))
+        model = str(data.get("model") or "").strip()
+        if not model:
+            return None, False
+        age_days = (time.time() - float(data.get("fetched_at") or 0)) / 86400
+        return model, age_days < GROK_MODEL_CACHE_MAX_AGE_DAYS
+    except Exception:
+        return None, False
+
+
+def _write_grok_model_cache(model: str) -> None:
+    tmp = GROK_MODEL_CACHE.with_name(f".{GROK_MODEL_CACHE.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(
+            json.dumps({"model": model, "fetched_at": time.time()}), encoding="utf-8"
+        )
+        tmp.replace(GROK_MODEL_CACHE)   # 원자적 교체
+    except Exception:
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
+
+
+def _probe_grok_model() -> str | None:
+    """`grok models`의 'Default model: X' 파싱. 간헐 실패 대비 1회 재시도."""
+    for _ in range(2):
+        try:
+            proc = subprocess.run(
+                [GROK_BIN, "models"],
+                capture_output=True, text=True, encoding="utf-8",
+                timeout=30, cwd=tempfile.gettempdir(),
+            )
+            m = re.search(r"Default model:\s*(\S+)", proc.stdout or "")
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+    return None
 
 
 def _grok_default_model() -> str:
-    """`grok models`의 'Default model: X' 를 파싱해 기본 모델명 반환(캐시). 실패 시 'grok'."""
+    """grok 기본 모델명. 탐지 실패 시 stale 캐시라도 사용해 버전 소실을 막는다.
+
+    우선순위: 프로세스 메모리 → 신선한 파일 캐시 → 재탐지 → stale 파일 캐시 → 'grok'.
+    """
     global _GROK_DEFAULT_MODEL
     if _GROK_DEFAULT_MODEL is not None:
         return _GROK_DEFAULT_MODEL
-    model = "grok"
-    try:
-        proc = subprocess.run(
-            [GROK_BIN, "models"],
-            capture_output=True, text=True, encoding="utf-8",
-            timeout=30, cwd=tempfile.gettempdir(),
-        )
-        m = re.search(r"Default model:\s*(\S+)", proc.stdout or "")
-        if m:
-            model = m.group(1)
-    except Exception:
-        pass
+
+    cached, fresh = _read_grok_model_cache()
+    if cached and fresh:
+        _GROK_DEFAULT_MODEL = cached
+        return cached
+
+    probed = _probe_grok_model()
+    if probed:
+        _write_grok_model_cache(probed)
+        _GROK_DEFAULT_MODEL = probed
+        return probed
+
+    # 탐지 실패 — 오래된 캐시라도 버전 없는 'grok'보다 정확하다.
+    model = cached or GROK_MODEL_UNKNOWN
+    if not cached:
+        print("     grok 기본 모델 탐지 실패 — 버전 미상으로 기록", file=sys.stderr)
     _GROK_DEFAULT_MODEL = model
     return model
 
