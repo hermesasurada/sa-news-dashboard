@@ -42,6 +42,16 @@ PORTFOLIO_API_BASE = os.environ.get(
 ).rstrip("/")
 PORTFOLIO_API_TIMEOUT_SECONDS = _env_float("PORTFOLIO_API_TIMEOUT_SECONDS", 6.0)
 
+# 요약 모델 라운드로빈 — 기사별로 Claude/grok을 번갈아 1차 모델로 쓴다.
+# 0/false/no/off 로 끄면 항상 Claude 우선(구 동작). 어느 쪽이든 1차 실패 시
+# 다른 모델로 폴백하므로 가용성은 동일하다.
+SUMMARY_ROUND_ROBIN = os.environ.get("SA_SUMMARY_ROUND_ROBIN", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+
 PUBLISH_BATCH_SIZE = _env_int("SA_PUBLISH_BATCH_SIZE", 10)
 PUBLISH_PARSE_TIMEOUT_SECONDS = _env_int("SA_PARSE_TIMEOUT_SECONDS", 200)
 SUMMARY_TIMEOUT_SECONDS = _env_int("SA_SUMMARY_TIMEOUT_SECONDS", 120)

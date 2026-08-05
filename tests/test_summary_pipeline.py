@@ -9,8 +9,39 @@ from pathlib import Path
 from unittest.mock import patch
 
 import db
+import settings
 import ticker_names
 from scripts import sa_claude_cli, sa_summarize_claude
+
+
+class RoundRobinTests(unittest.TestCase):
+    """요약 모델 라운드로빈 배정 — 기사 id 홀짝으로 1차/폴백이 뒤바뀐다."""
+
+    def setUp(self):
+        self._rr = settings.SUMMARY_ROUND_ROBIN
+        settings.SUMMARY_ROUND_ROBIN = True
+
+    def tearDown(self):
+        settings.SUMMARY_ROUND_ROBIN = self._rr
+
+    def test_alternates_primary_by_article_id(self):
+        even = sa_summarize_claude.pick_summarizers(100)
+        odd = sa_summarize_claude.pick_summarizers(101)
+        self.assertEqual(even[0], "Claude")
+        self.assertEqual(even[1], sa_summarize_claude.call_claude)
+        self.assertEqual(even[2], "grok")
+        self.assertEqual(odd[0], "grok")
+        self.assertEqual(odd[1], sa_summarize_claude.call_grok)
+        self.assertEqual(odd[2], "Claude")
+
+    def test_consecutive_ids_alternate(self):
+        picks = [sa_summarize_claude.pick_summarizers(i)[0] for i in range(10, 16)]
+        self.assertEqual(picks, ["Claude", "grok", "Claude", "grok", "Claude", "grok"])
+
+    def test_disabled_always_uses_claude_first(self):
+        settings.SUMMARY_ROUND_ROBIN = False
+        for article_id in (100, 101, 102, 103):
+            self.assertEqual(sa_summarize_claude.pick_summarizers(article_id)[0], "Claude")
 
 
 class SummaryPipelineTests(unittest.TestCase):
@@ -75,8 +106,13 @@ class BatchResilienceTests(unittest.TestCase):
         db.DB_PATH = Path(self._tempdir.name) / "summary.db"
         with contextlib.redirect_stdout(io.StringIO()):
             db.init_db()
+        # 배치 격리·폴백 자체를 검증하는 테스트이므로 1차 모델을 Claude로 고정한다.
+        # (라운드로빈 배정 규칙은 RoundRobinTests에서 별도로 검증)
+        self._rr = settings.SUMMARY_ROUND_ROBIN
+        settings.SUMMARY_ROUND_ROBIN = False
 
     def tearDown(self):
+        settings.SUMMARY_ROUND_ROBIN = self._rr
         db.DB_PATH = self._original_path
         self._tempdir.cleanup()
 

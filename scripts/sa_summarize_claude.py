@@ -180,6 +180,19 @@ def parse_article(article_id: int) -> tuple[str | None, str | None, list, str | 
 
 # ── 단일 기사 처리 ─────────────────────────────────────────────────────────
 
+def pick_summarizers(article_id: int):
+    """기사별 1차/폴백 요약 모델 결정 → (1차 이름, 1차 함수, 폴백 이름, 폴백 함수).
+
+    라운드로빈은 기사 id 홀짝으로 정한다. cron이 배치마다 새 프로세스를 띄우므로
+    메모리 카운터는 배치가 1건일 때 항상 같은 모델만 골라 무의미하기 때문.
+    id는 연속 증가라 실제로는 기사 단위로 번갈아 배정된다.
+    재시도 시에도 같은 1차 모델이 배정되지만, 실패하면 폴백이 받으므로 가용성은 유지된다.
+    """
+    if settings.SUMMARY_ROUND_ROBIN and article_id % 2 == 1:
+        return "grok", call_grok, "Claude", call_claude
+    return "Claude", call_claude, "grok", call_grok
+
+
 def attempt_article(row: dict) -> AttemptSuccess | AttemptFailure:
     """기사 1건을 파싱·요약·검증하되 DB 상태는 변경하지 않는다."""
     article_id = row["id"]
@@ -211,12 +224,13 @@ def attempt_article(row: dict) -> AttemptSuccess | AttemptFailure:
         content=content[: settings.SUMMARY_CONTENT_LIMIT],
         candidates=candidates,
     )
-    print(f"     Claude 요약 중…", end="", flush=True)
-    response, summary_model = call_claude(prompt)
+    primary_name, primary, fallback_name, fallback = pick_summarizers(article_id)
+    print(f"     {primary_name} 요약 중…", end="", flush=True)
+    response, summary_model = primary(prompt)
     if not response:
-        # Claude 실패 → grok CLI 폴백
-        print(" 실패 → grok 폴백…", end="", flush=True)
-        response, summary_model = call_grok(prompt)
+        # 1차 실패 → 다른 모델로 폴백
+        print(f" 실패 → {fallback_name} 폴백…", end="", flush=True)
+        response, summary_model = fallback(prompt)
     if not response:
         reason = "Claude/grok CLI 응답 없음"
         print(f"\n     {reason}", file=sys.stderr)
