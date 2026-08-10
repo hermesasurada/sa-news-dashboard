@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>📊 SA News 통계</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- Chart.js 4.4.1 — 로컬 vendoring(외부 CDN 차단·지연 영향 제거).
+     갱신 시: curl -sSL -o static/vendor/chart.umd.min.js \
+       https://cdn.jsdelivr.net/npm/chart.js@<버전>/dist/chart.umd.min.js -->
+<script src="/static/vendor/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
