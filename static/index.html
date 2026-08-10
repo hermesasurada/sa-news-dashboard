@@ -5,6 +5,35 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>SA Breaking News Dashboard</title>
 <link rel="stylesheet" href="/static/app.css">
+<script>
+// 요약 본문 명조 계열(Google Fonts)은 '실제로 필요할 때만' 주입한다.
+// app.css에서 @import 하면 렌더 블로킹 + 직렬 로드라 기본 글꼴 사용자에게도
+// 페이지 로드가 ~950ms 늘어난다(측정치). 여기서는 JS 주입이라 논블로킹.
+//   - 저장된 글꼴이 명조 계열이면 시작 시 1회 주입
+//   - 글꼴 선택 시트를 열 때도 주입(미리보기를 실제 글꼴로 보여주기 위해)
+// 기본/시스템/고정폭/조선일보명조(로컬 woff)는 외부 요청이 0건.
+(function (w) {
+  var NEEDS_WEB_FONT = { noto: 1, serif: 1, gowun: 1, nanum: 1, song: 1 };
+  var HREF = 'https://fonts.googleapis.com/css2'
+    + '?family=Noto+Sans+KR:wght@400;500;700'
+    + '&family=Noto+Serif+KR:wght@400;600;700'
+    + '&family=Gowun+Batang:wght@400;700'
+    + '&family=Nanum+Myeongjo:wght@400;700'
+    + '&family=Song+Myung&display=swap';
+  var injected = false;
+  w.ensureReaderWebFonts = function () {
+    if (injected) return;
+    injected = true;
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = HREF;
+    document.head.appendChild(link);
+  };
+  try {
+    if (NEEDS_WEB_FONT[localStorage.getItem('saReaderFont')]) w.ensureReaderWebFonts();
+  } catch (e) {}
+})(window);
+</script>
 </head>
 <body>
 
@@ -33,7 +62,7 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
       <span class="btn-txt">미읽음만</span>
     </button>
-    <button type="button" class="btn-sort" id="font-btn" onclick="openFontPicker()" title="요약 본문 글꼴" aria-label="요약 본문 글꼴">
+    <button type="button" class="btn-sort" id="font-btn" onclick="ensureReaderWebFonts();openFontPicker()" title="요약 본문 글꼴" aria-label="요약 본문 글꼴">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
       <span class="btn-txt">글꼴</span>
     </button>

@@ -21,6 +21,8 @@ const {
   formatTime,
   formatPrice: fmtPrice,
   formatChangePct: fmtChangePct,
+  formatExtendedMarketState,
+  isExtendedMarketState,
   formatSummaryModel: summaryModelLabel,
 } = window.SAUtils;
 
@@ -460,18 +462,21 @@ function renderTickerPopoverContent(el, companyFallback, quoteTicker, packed) {
   const { text, cls } = fmtChangePct(d.change_pct);
   chg.textContent = text;
   chg.className = `tqp-chg ${cls}`;
-  // 애프터/프리장: 전일대비 + 장외 등락 병기
-  if (d.extended_change_pct != null) {
-    const e = fmtChangePct(d.extended_change_pct);
-    extLabel.textContent = d.market_label || '장외';
-    extChg.textContent = e.text;
-    extChg.className = `tqp-ext-chg ${e.cls}`;
+  // 장외 상태값(PRE/POST 등)과 정규장 종가 대비 등락을 병기한다.
+  const hasExtendedState = isExtendedMarketState(d.extended_market_state);
+  if (hasExtendedState || (!d.extended_market_state && d.extended_change_pct != null)) {
+    extLabel.textContent = formatExtendedMarketState(d.extended_market_state, d.market_label);
+    if (d.extended_change_pct != null) {
+      const e = fmtChangePct(d.extended_change_pct);
+      extChg.textContent = e.text;
+      extChg.className = `tqp-ext-chg ${e.cls}`;
+    } else {
+      extChg.textContent = '';
+      extChg.className = 'tqp-ext-chg flat';
+    }
     ext.hidden = false;
   }
-  const bits = [];
-  if (d.market_label) bits.push(d.market_label);
-  bits.push('전일대비');
-  meta.textContent = bits.join(' · ');
+  meta.textContent = '';
 }
 
 async function showTickerQuote(badge) {
@@ -592,43 +597,62 @@ function attachSwipeHandlers() {
 }
 
 /* ── Read Toggle ── */
+const READ_FADE_MS = 160;
+
+// 카드의 읽음 표시(dot·테두리·버튼 아이콘)를 즉시 반영. 낙관적 갱신과 실패 원복에 공용.
+function applyReadState(card, btn, read) {
+  card.dataset.read = read ? '1' : '0';
+  card.classList.toggle('card-unread', !read);
+  const dot = card.querySelector('.unread-dot');
+  if (read) {
+    if (dot) dot.remove();
+  } else if (!dot) {
+    const titleRow = card.querySelector('.card-title-row');
+    if (titleRow) titleRow.insertAdjacentHTML('afterbegin', '<span class="unread-dot" title="미읽음"></span>');
+  }
+  if (btn) {
+    btn.className = read ? 'read-btn done' : 'read-btn';
+    btn.title = read ? '읽음 취소' : '읽음 처리';
+    btn.innerHTML = read ? SVG_EYE_OFF : SVG_EYE;
+  }
+}
+
 async function toggleRead(id, btn) {
   const card = btn.closest('.card');
-  const isCurrentlyRead = card.dataset.read === '1';
-  const newRead = !isCurrentlyRead;
+  const wasRead = card.dataset.read === '1';
+  const newRead = !wasRead;
+
+  // 낙관적 갱신 — 서버 왕복을 기다리지 않고 먼저 반영한다.
+  // (기존에는 응답 후에야 아이콘이 바뀌어, 모바일/Tailscale의 RTT가 그대로 체감 지연이 됐다)
+  applyReadState(card, btn, newRead);
+
+  let ok = false;
   try {
     const res = await fetch(`/api/articles/${id}/read`, {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({is_read: newRead}),
     });
-    if (!res.ok) return;
-    card.dataset.read = newRead ? '1' : '0';
-    if (newRead) {
-      card.classList.remove('card-unread');
-      const dot = card.querySelector('.unread-dot');
-      if (dot) dot.remove();
-      btn.className = 'read-btn done';
-      btn.title = '읽음 취소';
-      btn.innerHTML = SVG_EYE_OFF;
-      // #2: 미읽음 필터 활성 중이면 카드 즉시 제거 (swipe-row 래퍼째)
-      if (document.getElementById('unread-filter').classList.contains('active')) {
-        card.style.transition = 'opacity 0.3s';
-        card.style.opacity = '0';
-        setTimeout(() => {
-          (card.closest('.swipe-row') || card).remove();
-          refillGrid();
-        }, 300);
-      }
-    } else {
-      card.classList.add('card-unread');
-      const titleRow = card.querySelector('.card-title-row');
-      if (titleRow) titleRow.insertAdjacentHTML('afterbegin', '<span class="unread-dot" title="미읽음"></span>');
-      btn.className = 'read-btn';
-      btn.title = '읽음 처리';
-      btn.innerHTML = SVG_EYE;
-    }
-  } catch(e) { console.error('읽음 상태 변경 실패', e); }
+    ok = res.ok;
+  } catch (e) {
+    console.error('읽음 상태 변경 실패', e);
+  }
+
+  if (!ok) {
+    applyReadState(card, btn, wasRead);   // 실패 → 화면 원복
+    showToast('읽음 상태 변경 실패', null, null);
+    return;
+  }
+
+  // 미읽음 필터 중이면 카드 제거 (swipe-row 래퍼째) 후 다음 기사로 보충
+  if (newRead && document.getElementById('unread-filter').classList.contains('active')) {
+    card.style.transition = `opacity ${READ_FADE_MS}ms`;
+    card.style.opacity = '0';
+    setTimeout(() => {
+      (card.closest('.swipe-row') || card).remove();
+      refillGrid();
+    }, READ_FADE_MS);
+  }
 }
 
 /* ── #6: Delete (즉시 삭제) ── */

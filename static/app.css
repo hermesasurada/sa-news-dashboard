@@ -1,7 +1,9 @@
 /* SA Breaking News — 뉴모피즘 (soft UI) 테마 */
 /* ── 요약 본문 글꼴 선택용 웹폰트 (website-monitor 이식) ── */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700&family=Song+Myung&display=swap');
+/* ⚠️ 명조 계열 웹폰트는 여기서 @import 하지 않는다.
+   CSS @import는 렌더 블로킹 + 직렬 로드라(app.css 파싱 후에야 요청 시작)
+   기본 글꼴 사용자에게도 페이지 로드가 ~950ms 늘어났다.
+   index.html의 ensureReaderWebFonts()가 '웹폰트가 실제로 필요할 때만' 주입한다. */
 @font-face {
   font-family: "Chosunilbo_myungjo";
   src: url("/static/fonts/ChosunilboNM.woff") format("woff");
