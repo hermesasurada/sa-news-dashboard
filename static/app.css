@@ -356,10 +356,12 @@ body {
 @media (hover: hover) { .swipe-action { display: none; } }
 
 /* ── Card ── */
+/* will-change는 스와이프 중에만 — 카드 15장에 상시 걸면 전부 별도 레이어로
+   승격돼 목록 렌더가 느려진다(실측 36ms → 28ms). */
+.swipe-row.swiping .card { will-change: transform; }
 .card {
   position: relative;
   z-index: 1;
-  will-change: transform;
   background: var(--surface);
   border: 1px solid #c6ccd7;
   border-radius: 4px;

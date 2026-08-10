@@ -35,12 +35,32 @@ async function fetchJSON(url, options) {
 /* ── Filters ── */
 let allTickers = [];
 
+const FILTERS_CACHE_KEY = 'sa_filters';
+
 async function loadFilters() {
   try {
     const data = await fetchJSON('/api/filters');
     allTickers = data.tickers || [];
     TICKER_ALIASES = data.aliases || {};   // db가 단일 소스
+    try {
+      localStorage.setItem(FILTERS_CACHE_KEY,
+        JSON.stringify({ tickers: allTickers, aliases: TICKER_ALIASES }));
+    } catch (e) {}
   } catch(e) { console.error('필터 로드 실패', e); }
+}
+
+// 캐시된 필터를 '동기'로 먼저 적용 → 목록 요청을 /api/filters 응답까지 기다리지 않아도
+// 첫 렌더에서 티커 별칭(GOOGL→GOOG)이 정상 적용된다. 성공 시 true.
+function loadFiltersFromCache() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(FILTERS_CACHE_KEY) || 'null');
+    if (cached && cached.aliases) {
+      allTickers = cached.tickers || [];
+      TICKER_ALIASES = cached.aliases;
+      return true;
+    }
+  } catch (e) {}
+  return false;
 }
 
 /* ── 티커 선택 모달 ── */
@@ -1003,7 +1023,11 @@ function closeFontPicker() {
 /* ── Init ── */
 async function init() {
   applyReaderFont();               // 저장된 글꼴을 로드 시점에 반영
-  await loadFilters();             // 먼저 ticker 옵션 로드
+  // 필터를 await하면 목록 요청이 그 뒤에야 시작돼 직렬이 된다(실측 11ms→69ms).
+  // 캐시가 있으면 동기로 적용하고 목록을 즉시 요청, 최신 필터는 병렬로 갱신.
+  const hasCache = loadFiltersFromCache();
+  const filtersReady = loadFilters();     // 병렬 시작 (await하지 않음)
+  if (!hasCache) await filtersReady;      // 최초 방문만 대기 (티커 별칭 확보)
   loadPrefs();                     // 로컬에 저장된 검색조건 기본값 적용
   const savedOffset = restoreFromURL(); // URL이 있으면 우선 (공유 링크)
   search(savedOffset);
