@@ -200,6 +200,9 @@ const FOREIGN_LISTINGS = {
   BMWKY:{home:'BMW.DE', name:'BMW'},
   VWAGY:{home:'VOW3.DE', name:'Volkswagen'},
   SIEGY:{home:'SIE.DE', name:'Siemens'},
+  // Siemens Energy는 Siemens AG와 별개 회사. 미국 OTC(SMEGF/SMNEY)는 시세가 없어
+  // 프랑크푸르트 ENR.DE로 매핑해야 칩에 가격이 뜬다.
+  SMEGF:{home:'ENR.DE', name:'Siemens Energy'}, SMNEY:{home:'ENR.DE', name:'Siemens Energy'},
   DLAKF:{home:'LHA.DE', name:'Lufthansa'}, DLAKY:{home:'LHA.DE', name:'Lufthansa'},
   DHER:{home:'DHER.DE', name:'Delivery Hero'},
   SAFRF:{home:'SAF.PA', name:'Safran'}, SAFRY:{home:'SAF.PA', name:'Safran'},
