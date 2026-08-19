@@ -60,6 +60,7 @@ def _empty_quote(ticker: str) -> dict[str, Any]:
         "change": None,
         "change_pct": None,
         "extended_change_pct": None,
+        "extended_market_state": None,
         "market_label": "",
         "market_status": "",
         "is_regular": None,
@@ -120,8 +121,13 @@ def get_price_quote(ticker: str) -> dict[str, Any]:
     ):
         extended_change_pct = None
 
+    # 기업명은 포트폴리오의 표시명칭(display_name)을 그대로 쓴다.
+    # 예전에는 '이름이 티커와 같으면 미상'으로 보고 로컬 표로 덮었는데,
+    # 표시명칭이 티커와 같은 종목(ASML 등)까지 'ASML Holding'으로 바뀌었다.
+    # 미등록 티커는 API가 category 없이 name=ticker를 돌려주므로 그때만 폴백한다.
     name = raw.get("name") or ""
-    if not name or str(name).upper() == clean:
+    registered = bool(raw.get("category")) or raw.get("current_price") is not None
+    if not name or (str(name).upper() == clean and not registered):
         name = _fallback_name(clean) or name or clean
 
     return {
@@ -134,6 +140,7 @@ def get_price_quote(ticker: str) -> dict[str, Any]:
         "change": change,
         "change_pct": change_pct,
         "extended_change_pct": extended_change_pct,
+        "extended_market_state": raw.get("extended_market_state") or None,
         "market_label": market.get("label") or "",
         "market_status": market.get("status") or "",
         "is_regular": bool(market.get("is_regular")) if market else None,
