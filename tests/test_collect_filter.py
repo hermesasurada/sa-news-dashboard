@@ -126,6 +126,39 @@ class CoverageInitiationFilterTests(unittest.TestCase):
             self.assertFalse(sa_collect.is_coverage_initiation(subject), msg=f"should keep: {subject}")
 
 
+class EtfDistributionFilterTests(unittest.TestCase):
+    def test_etf_payout_is_filtered(self):
+        drop = [
+            "Palantir (PLTR) Yield Shares Purpose ETF declares $0.50 dividend",
+            "META (META) Yield Shares Purpose ETF declares $0.35 dividend",
+            "Tesla (TSLA) Yield Shares Purpose ETF - ETF Units declares $0.50 dividend",
+            "Purpose SpaceX (SPCX) Yield Shares ETF declares $0.50 dividend",
+            "SOXX: iShares PHLX Semiconductor ETF declares quarterly distribution of $0.19",
+            "SCHD: Schwab U.S. Dividend Equity ETF declares quarterly distribution of $0.26",
+            "QLD: ProShares Ultra QQQ declares quarterly distribution of $0.0607",
+        ]
+        for subject in drop:
+            self.assertTrue(sa_collect.is_etf_distribution(subject), msg=f"should filter: {subject}")
+
+    def test_company_payouts_and_offerings_are_kept(self):
+        keep = [
+            # 개별 기업 배당
+            "NOC: Northrop Grumman declares $2.47 dividend",
+            "AAPL: Apple Inc. declares $0.25 dividend",
+            "Realty Income declares $0.271 dividend",
+            # 리츠 — 이름에 Trust가 있어도 실제 기업
+            "DLR: Digital Realty Trust declares $1.22 dividend",
+            # 유상증자(ATM) — 'distribution'이지만 declares가 아님
+            "RKLB: Rocket Lab enters up to $1.94B equity distribution pact",
+            "Joby Aviation enters up to $750M equity distribution pact",
+            # 사업상 유통망
+            "CVX: Chevron boosts North American base oils distribution network in deals",
+            "AAPL: Apple to change iOS app distribution and payments in Brazil",
+        ]
+        for subject in keep:
+            self.assertFalse(sa_collect.is_etf_distribution(subject), msg=f"should keep: {subject}")
+
+
 class ExcludedReasonTests(unittest.TestCase):
     def test_reason_labels(self):
         cases = [
@@ -133,6 +166,7 @@ class ExcludedReasonTests(unittest.TestCase):
             ("HLT", "HLT: Hilton Worldwide Q2 2026 Earnings Preview", "실적프리뷰"),
             ("PGVFX", "ADBE: Polaris Global Equity Composite adds new holdings, exits positions in Q2", "펀드공시"),
             ("CRWD", "CRWD: CrowdStrike in focus as Loop Capital starts coverage with Buy rating", "커버리지개시"),
+            ("NONE", "Palantir (PLTR) Yield Shares Purpose ETF declares $0.50 dividend", "ETF배당"),
             ("AAPL", "AAPL: Apple unveils new MacBook Pro lineup", None),
         ]
         for ticker, subject, expected in cases:

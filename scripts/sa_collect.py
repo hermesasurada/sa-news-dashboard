@@ -131,6 +131,27 @@ def is_coverage_initiation(subject: str) -> bool:
     return bool(_COVERAGE_INIT_RE.search(subject or ''))
 
 
+# ETF·펀드의 배당/분배 선언 필터 (커버드콜 ETF 등).
+# ⚠️ 리츠(Digital Realty Trust)·일반주 배당, 그리고 'equity distribution pact'(유상증자)는
+#    실제 기업 뉴스이므로 '배당/분배 선언' + 'ETF·운용사' 표지가 함께 있을 때만 매치한다.
+#    금액에 마침표가 들어가므로($0.50) 사이 구간에서 '.'을 배제하면 안 된다.
+_ETF_PAYOUT_RE = re.compile(r'\bdeclares?\b.{0,80}?\b(?:dividend|distribution)\b', re.I)
+_ETF_VEHICLE_RE = re.compile(
+    r'\bETF\b|\bYield\s+Shares\b|\bCovered\s+Call\b'
+    r'|\biShares\b|\bProShares\b|\bSPDR\b|\bInvesco\b|\bVanguard\b|\bDirexion\b|\bGlobal\s+X\b'
+    r'|\bIncome\s+Fund\b|\bClosed[-\s]?End\s+Fund\b',
+    re.I,
+)
+
+
+def is_etf_distribution(subject: str) -> bool:
+    """ETF·펀드의 배당/분배 선언인가 → 수집 제외 대상.
+    (예: 'Palantir (PLTR) Yield Shares Purpose ETF declares $0.50 dividend')
+    개별 기업 배당(NOC·Realty Income)과 리츠(Digital Realty Trust)는 제외하지 않음."""
+    s = subject or ''
+    return bool(_ETF_PAYOUT_RE.search(s) and _ETF_VEHICLE_RE.search(s))
+
+
 def excluded_reason(subject: str, ticker: str) -> str | None:
     """수집 제외 대상이면 사유 라벨, 아니면 None."""
     if is_preferred_dividend(subject, ticker):
@@ -141,6 +162,8 @@ def excluded_reason(subject: str, ticker: str) -> str | None:
         return '펀드공시'
     if is_coverage_initiation(subject):
         return '커버리지개시'
+    if is_etf_distribution(subject):
+        return 'ETF배당'
     return None
 
 
