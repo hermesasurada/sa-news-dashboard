@@ -37,9 +37,10 @@
 html { overflow-x: hidden; }
 body {
   background: var(--bg);
-  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--ink-2);
-  line-height: 1.6;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
   padding: 16px;
   overflow-x: hidden;
   max-width: 100vw;
@@ -69,8 +70,7 @@ body {
 /* ── Header ── */
 .header {
   max-width: 1400px;
-  margin: 0 auto 22px;
-  padding-bottom: 4px;
+  margin: 0 auto 28px;   /* WM과 동일 */
 }
 /* 브랜드 영역 — website-monitor와 동일한 로고 타일 + 제목/부제 구성 */
 .brand {
