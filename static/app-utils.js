@@ -48,6 +48,18 @@
     return { text: `${number > 0 ? '+' : ''}${number.toFixed(2)}%`, cls };
   }
 
+  function formatExtendedMarketState(value, fallbackLabel) {
+    const state = String(value || '').trim().toUpperCase();
+    if (state.startsWith('PRE')) return 'PRE';
+    if (state.includes('POST')) return 'POST';
+    return String(fallbackLabel || '').trim() || '장외';
+  }
+
+  function isExtendedMarketState(value) {
+    const state = String(value || '').trim().toUpperCase();
+    return state.startsWith('PRE') || state.includes('POST');
+  }
+
   function formatSummaryModel(value) {
     const model = String(value || '');
     if (!model) return '';
@@ -71,6 +83,8 @@
     formatTime,
     formatPrice,
     formatChangePct,
+    formatExtendedMarketState,
+    isExtendedMarketState,
     formatSummaryModel,
   };
 

@@ -14,7 +14,7 @@ tags: [sa-news, seeking-alpha, fastapi, dashboard, monitor]
 ```text
 Stage 1 Collect
   himalaya envelope/message
-  → scripts/extract_sa_urls.py
+  → scripts/extract_sa_urls.py (URL)
   → db.insert_pending_article()
   → 이메일 seen 처리
 
@@ -31,7 +31,7 @@ Stage 2 Publish
 | URL 추출 | `scripts/extract_sa_urls.py` | himalaya 출력과 SA click URL 해석 |
 | 발행기 | `scripts/sa_summarize_claude.py` | 파싱·요약·검증·DB 발행 |
 | LLM 어댑터 | `scripts/sa_claude_cli.py` | Claude stream-json 및 Grok plain 응답 처리 |
-| 파서 | `sa_article_parser.py` | SA API → Jina → Playwright → curl_cffi |
+| 파서 | `sa_article_parser.py` | 로그인 쿠키 전문 → 비로그인 프리뷰 폴백 |
 | DB | `db.py` | SQLite/FTS5와 기사 상태 전이 |
 | 대시보드 | `app.py`, `static/` | FastAPI API와 카드/통계 UI |
 
@@ -52,6 +52,7 @@ Stage 2 Publish
 - LLM과 SA 페이지에 접근하지 않는다.
 - `himalaya envelope list`의 plain-text `*` 표시를 미읽음 기준으로 사용한다.
 - 발신자에 `SA Breaking News`가 포함된 메일만 처리한다.
+- 주간 헤드라인·Catalyst Watch 모음·Earnings Scorecard·Key deals this week·갭핑 라운드업은 수집하지 않는다.
 - 한 번에 기본 10건, 안전 상한 20건이며 오래된 UID부터 처리한다.
 - `email_id` UNIQUE로 중복 INSERT를 막는다.
 - himalaya 명령의 non-zero return code는 실패로 처리한다. 실패를 “미읽음 없음”으로 간주하지 않는다.
@@ -59,9 +60,12 @@ Stage 2 Publish
 
 ## Stage 2 규칙
 
-발행기는 기본 10건의 due 행을 처리한다.
+발행기는 기본 10건의 due 행을 처리한다. 기사와 기사 사이에 `SA_ARTICLE_GAP_SECONDS`(기본 20초)를 두어 Playwright 연속 요청을 줄인다. `--id` 단건은 대기하지 않는다.
 
 1. `sa_publish.py parse <id>` subprocess로 본문과 `PARSE_METHOD`, `SA_TICKERS`를 받는다.
+   본문은 `article_url`로 SA 사이트에서 가져오고 `source_text`에 저장한다.
+   미리보기(700자 미만 또는 `isMpwLocked`)는 성공이 아니며 발행하지 않는다.
+   `--reuse-source` 이면 저장된 본문만 재요약한다.
 2. SA 공식 primary ticker는 확정값이 아닌 후보 whitelist로 LLM에 전달한다.
 3. Claude 모델 기본값은 `opus`; 실제 stream-json model ID를 DB에 기록한다.
 4. Claude 실패 또는 빈 응답이면 Grok CLI로 한 번 폴백한다.
@@ -72,10 +76,8 @@ Stage 2 Publish
 - `ticker`: 실질 관련 상장기업, `, ` 구분
 - `company_name`: ticker 순서에 맞춘 영문 정식명, `·` 구분
 - `headline`: 구체적인 한국어 제목
-- `summary_details`: 4~6개 한국어 완결 문장
+- `summary_details`: SA 수집 본문의 핵심만. 체언 종결 단문, 항목 수를 맞추지 않음 (짧으면 1~2개)
 - `ticker_color`: `blue|green|red|orange|yellow|purple|gray`
-
-`summary_core`, `tag`, `tag_color`는 레거시 데이터 표시 호환용이며 새 발행에서 생성하지 않는다.
 
 저장 전 검증:
 
@@ -99,14 +101,27 @@ Stage 2 Publish
 
 ## SA 파서
 
+`sa_cookies.json`에 로그인 쿠키(`user_id` / `user_remember_token` 등)가 있으면 그 세션으로 전문을 먼저 시도한다. 구독자가 볼 수 있는 본문만 가져오며 페이월을 우회하지 않는다.
+
 순서:
 
-1. SA 내부 `/api/v3/news/{id}?include=primaryTickers`
-2. Jina Reader
-3. Playwright stealth persistent profile
-4. curl_cffi impersonation rotation
+1. 로그인 쿠키 + Playwright persistent profile (`playwright_auth`)
+2. 같은 쿠키 + curl_cffi HTML
+3. 같은 쿠키 + SA 내부 API. `isMpwLocked` 프리뷰면 성공으로 치지 않음
+4. Jina Reader
+5. 비로그인 경로는 `SA_ALLOW_ANON_FETCH=1` 일 때만. 미리보기는 발행 금지
 
-내부 API가 주는 `primaryTickers`는 ETF/테마 기사에서 과다할 수 있으므로 본문 관련성 판단 없이 그대로 저장하지 않는다. 모든 경로는 인증 없는 프리뷰 범위만 사용하며 페이월 우회를 시도하지 않는다.
+내부 API가 주는 `primaryTickers`는 ETF/테마 기사에서 과다할 수 있으므로 본문 관련성 판단 없이 그대로 저장하지 않는다.
+
+세션이 만료되면 프리뷰만 돌아온다. 갱신:
+
+```bash
+venv/bin/python3 scripts/sa_refresh_login.py
+```
+
+설치된 Google Chrome이 열린다(번들 Chromium은 SA가 봇으로 차단한다).
+로그인한 뒤 터미널에서 Enter. 쿠키만 `sa_cookies.json`에 저장하고 비밀번호는 저장하지 않는다.
+`To continue, please prove you are not a robot` 이 뜨면 그 창에서 확인을 통과한 다음 로그인한다.
 
 차단 판단:
 
@@ -135,14 +150,20 @@ venv/bin/python3 scripts/sa_publish.py list --batch 10
 # 특정 DB id 파싱
 venv/bin/python3 scripts/sa_publish.py parse 490
 
-# 특정 DB id 강제 재요약
+# 특정 DB id 강제 재요약 (SA 재접속)
 venv/bin/python3 scripts/sa_summarize_claude.py --id 490
+
+# 저장된 본문만 재요약
+venv/bin/python3 scripts/sa_summarize_claude.py --id 490 --reuse-source
 
 # pending 배치
 venv/bin/python3 scripts/sa_summarize_claude.py --batch 5
 
 # 30일 지난 deleted 정리
 venv/bin/python3 scripts/sa_purge_deleted.py --days 30
+
+# SA 로그인 세션 갱신 (headed 브라우저)
+venv/bin/python3 scripts/sa_refresh_login.py
 ```
 
 ## 검증

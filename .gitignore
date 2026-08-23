@@ -12,6 +12,7 @@ sa_cookies.json
 
 # Playwright browser profile
 pw_profile/
+pw_login_profile/
 
 # Python
 venv/

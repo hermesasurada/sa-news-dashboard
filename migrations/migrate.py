@@ -78,25 +78,12 @@ def parse_cards(html):
             m = re.search(r'class="card-title">([^<]+)<', card_html)
         card['headline'] = m.group(1).strip() if m else ''
 
-        # tag
-        m = re.search(r'class="tag tag-(\w+)">([^<]+)<', card_html)
-        if m:
-            card['tag_color'] = m.group(1)
-            card['tag'] = m.group(2).strip()
-        else:
-            card['tag'] = '일반'
-            card['tag_color'] = 'blue'
-
-        # summary_core (핵심 텍스트 — <strong>핵심</strong>&nbsp; 이후)
+        details = re.findall(r'<li>([^<]+)</li>', card_html)
         m = re.search(r'<strong>핵심</strong>&nbsp;\s*(.+?)(?=</div>|<div)', card_html, re.DOTALL)
         if m:
             core = re.sub(r'<[^>]+>', '', m.group(1)).strip()
-            card['summary_core'] = core
-        else:
-            card['summary_core'] = ''
-
-        # summary_details (li 항목들)
-        details = re.findall(r'<li>([^<]+)</li>', card_html)
+            if core:
+                details = [core] + details
         card['summary_details'] = [d.strip() for d in details if d.strip()]
 
         # article_url
@@ -137,16 +124,14 @@ def migrate(reports_dir: Path = DEFAULT_REPORTS_DIR):
                     cursor = conn.execute(
                         """INSERT INTO articles
                            (email_id, ticker, company_name, headline,
-                            summary_core, summary_details, tag, tag_color,
-                            ticker_color, article_url, email_time_et, last_modified,
+                            summary_details, ticker_color, article_url,
+                            email_time_et, last_modified,
                             pub_status, retry_count, is_read)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'published', 0, 1)""",
+                           VALUES (?,?,?,?,?,?,?,?,?, 'published', 0, 1)""",
                         (
                             pseudo_email_id, card['ticker'],
                             card['company_name'], card['headline'],
-                            card['summary_core'],
                             json.dumps(card['summary_details'], ensure_ascii=False),
-                            card['tag'], card['tag_color'],
                             card['ticker_color'], card['article_url'],
                             card['email_time_et'] or created_at, created_at,
                         )

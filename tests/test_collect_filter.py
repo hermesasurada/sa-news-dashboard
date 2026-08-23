@@ -159,6 +159,34 @@ class EtfDistributionFilterTests(unittest.TestCase):
             self.assertFalse(sa_collect.is_etf_distribution(subject), msg=f"should keep: {subject}")
 
 
+class RoundupFilterTests(unittest.TestCase):
+    def test_roundups_are_filtered(self):
+        drop = [
+            "AVGO: Notable tech headlines for the week: Nvidia, Micron, Broadcom in focus",
+            "Notable healthcare headlines for the week: Eli Lilly, Hims & Hers Health, and Merck in focus",
+            "AMD: Catalyst Watch: Nvidia blockbuster, Warsh at Jackson Hole, and the Humanoid Robot Games",
+            "Catalyst Watch: Inflation reads, AMAT earnings, Google Pixel event, and MLB on Netflix",
+            "AMD: 16 out of 16 technology stocks deliver EPS wins this week: Earnings Scorecard",
+            "Key deals this week: Stripe, IBM, Repligen, LXP Industrial Trust and more",
+            "ANET: At a glance: stocks gapping up premarket",
+            "Big movers after the closing bell: COST, NVCR, PNW",
+            "NVDA: Midday Need to Know: SpaceX makes historic debut, Copper rallies & more",
+        ]
+        for subject in drop:
+            self.assertTrue(sa_collect.is_roundup_news(subject), msg=f"should filter: {subject}")
+
+    def test_company_news_is_kept(self):
+        keep = [
+            "AMAT: Applied Materials in spotlight as Citi adds 90-day catalyst watch",
+            "WFC: Wells Fargo on positive catalyst watch at J.P. Morgan ahead of Q2 earnings",
+            "AAPL: Apple WWDC 2026 preview: Siri, AI, and more",
+            "TSLA: Tesla adds Orlando and Tampa to robotaxi service network ahead of earnings",
+            "ABNB: Airbnb CEO Brian Chesky aims to be 'Amazon for services,' adds hotels, car rentals and more",
+        ]
+        for subject in keep:
+            self.assertFalse(sa_collect.is_roundup_news(subject), msg=f"should keep: {subject}")
+
+
 class ExcludedReasonTests(unittest.TestCase):
     def test_reason_labels(self):
         cases = [
@@ -167,6 +195,7 @@ class ExcludedReasonTests(unittest.TestCase):
             ("PGVFX", "ADBE: Polaris Global Equity Composite adds new holdings, exits positions in Q2", "펀드공시"),
             ("CRWD", "CRWD: CrowdStrike in focus as Loop Capital starts coverage with Buy rating", "커버리지개시"),
             ("NONE", "Palantir (PLTR) Yield Shares Purpose ETF declares $0.50 dividend", "ETF배당"),
+            ("AVGO", "AVGO: Notable tech headlines for the week: Nvidia, Micron, Broadcom in focus", "라운드업"),
             ("AAPL", "AAPL: Apple unveils new MacBook Pro lineup", None),
         ]
         for ticker, subject, expected in cases:

@@ -1,32 +1,38 @@
 #!/usr/bin/env python3
 """
-SA 기사 파서 (4단계 fallback, 인증 없음)
+SA 기사 파서 (로그인 세션 우선, 실패 시 비로그인 폴백)
 
-Fallback 순서 (v6 — SA 내부 API 우선):
-1. SA 내부 API — 노이즈 없는 본문과 공식 primary ticker 후보
-2. Jina Reader — 외부 reader proxy로 로컬 IP 평판 보호
-3. Playwright stealth + persistent profile
-4. curl_cffi impersonate 로테이션 (chrome124 → safari17_2 → edge99)
+순서:
+1. 로그인 쿠키 + Playwright persistent profile
+2. 같은 쿠키 + curl_cffi HTML (짧은 본문은 폐기)
+3. 같은 쿠키 + SA API. 미터링 페이월 프리뷰면 성공으로 치지 않음
+4. Jina Reader
+5. 비로그인 경로는 SA_ALLOW_ANON_FETCH 일 때만
 
-세션 쿠키/Google OAuth 의존성 제거. 모든 단계가 인증 없이 동작.
-
-이유: Playwright/curl_cffi가 우리 단일 로컬 IP를 사용 → 차단되면 다음 시도도 같은 IP라
-무용지물. Jina는 자체 인프라(분리된 IP pool)라 1순위로 시도해 로컬 평판을 보전.
+쿠키는 `sa_cookies.json`(Playwright export 형식). 세션 갱신은
+`scripts/sa_refresh_login.py`. 구독자가 볼 수 있는 본문만 가져오며
+페이월을 우회하지 않는다.
 """
 
 import html
 import json
 import os
 import re
+import sys
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Iterable, List, Optional
 
 from curl_cffi import requests as curl_requests
+
+import settings
 # playwright는 lazy import (parse_with_playwright_stealth 내부).
 # system python처럼 playwright 미설치 환경에서도 Jina/curl_cffi fallback이 동작하도록 모듈 로드를 막지 않음.
 
 PW_PROFILE_DIR = str(Path(__file__).resolve().parent / "pw_profile")
+COOKIES_PATH = Path(os.environ.get("SA_COOKIES_PATH") or Path(__file__).resolve().parent / "sa_cookies.json")
+LOGIN_COOKIE_NAMES = {"user_remember_token", "user_id", "_sapi_session_id", "gk_user_access"}
+AUTH_PREVIEW_LIMIT = 700
 
 STEALTH_INIT = """
 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
@@ -40,6 +46,64 @@ Object.defineProperty(navigator, 'permissions', {
 
 IMPERSONATES = ["chrome124", "safari17_2", "edge99"]
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+
+def cookies_path() -> Path:
+    return Path(os.environ.get("SA_COOKIES_PATH") or COOKIES_PATH)
+
+
+def load_sa_cookies() -> List[Dict[str, Any]]:
+    """seekingalpha.com 쿠키만, 만료분은 제외. 값은 로그에 남기지 않는다."""
+    path = cookies_path()
+    if not path.is_file():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(raw, list):
+        return []
+    now = time.time()
+    out: List[Dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        domain = str(item.get("domain") or "")
+        if "seekingalpha.com" not in domain:
+            continue
+        exp = item.get("expires")
+        if isinstance(exp, (int, float)) and exp > 0 and exp < now:
+            continue
+        name = item.get("name")
+        value = item.get("value")
+        if not name or value is None:
+            continue
+        same_site = item.get("sameSite") or "Lax"
+        if same_site not in ("Strict", "Lax", "None"):
+            same_site = "Lax"
+        cookie = {
+            "name": str(name),
+            "value": str(value),
+            "domain": domain,
+            "path": item.get("path") or "/",
+            "httpOnly": bool(item.get("httpOnly")),
+            "secure": bool(item.get("secure")),
+            "sameSite": same_site,
+        }
+        if isinstance(exp, (int, float)) and exp > 0:
+            cookie["expires"] = exp
+        out.append(cookie)
+    return out
+
+
+def has_login_cookies(cookies: Iterable[Dict[str, Any]] | None = None) -> bool:
+    cookies = list(cookies) if cookies is not None else load_sa_cookies()
+    names = {c.get("name") for c in cookies}
+    return bool(names & LOGIN_COOKIE_NAMES)
+
+
+def cookie_header(cookies: Iterable[Dict[str, Any]]) -> str:
+    return "; ".join(f"{c['name']}={c['value']}" for c in cookies if c.get("name"))
 
 
 def strip_utm(url: str) -> str:
@@ -122,23 +186,32 @@ def _parse_html(html_content: str, method: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def parse_with_sa_api(url: str) -> Optional[Dict[str, Any]]:
-    """0단계(우선): SA 내부 API /api/v3/news/{id}.
+def parse_with_sa_api(
+    url: str,
+    cookies: Optional[List[Dict[str, Any]]] = None,
+    reject_locked_preview: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """SA 내부 API /api/v3/news/{id}.
 
     페이지 HTML/Jina 대비 이점:
       (a) 네비게이션·'Recommended For You'·관련종목 노이즈 0 → 순수 본문만.
       (b) primaryTickers = SA가 직접 태깅한 후보 종목(심볼↔회사명 정확) 동봉.
-    본문 길이는 다른 경로와 동일(비로그인 프리뷰 ~300자) — 페이월 우회는 아님.
+    비로그인은 프리뷰(~300자). 로그인 쿠키를 붙여도 isMpwLocked면 같은
+    프리뷰가 온다 — 그때는 성공으로 치지 않고 Playwright에 기회를 준다.
     news 형식이 아니거나(예: /article/) 응답 이상 시 None → 다음 폴백.
     """
     m = re.search(r'/news/(\d+)', url)
     if not m:
         return None
     nid = m.group(1)
+    headers = {"User-Agent": UA, "Accept": "application/json"}
+    if cookies:
+        headers["Cookie"] = cookie_header(cookies)
+        headers["Referer"] = f"https://seekingalpha.com/news/{nid}"
     try:
         resp = curl_requests.get(
             f"https://seekingalpha.com/api/v3/news/{nid}?include=primaryTickers",
-            headers={"User-Agent": UA, "Accept": "application/json"},
+            headers=headers,
             impersonate="chrome124", timeout=25,
         )
         if resp.status_code != 200:
@@ -153,6 +226,7 @@ def parse_with_sa_api(url: str) -> Optional[Dict[str, Any]]:
     body = re.sub(r"\s+", " ", body).strip()
     if len(body) < 80:
         return None  # 본문 과소 → 폴백에 기회
+    locked = bool(attrs.get("isMpwLocked") or attrs.get("isPaywalled") or attrs.get("isLockedPro"))
     title = (attrs.get("title") or "").strip()
 
     # primaryTickers → [{symbol, name}] (included의 tag 노드에서 해석)
@@ -168,15 +242,27 @@ def parse_with_sa_api(url: str) -> Optional[Dict[str, Any]]:
             tickers.append({"symbol": sym, "name": (a.get("company") or "").strip()})
 
     full = f"{title}\n\n{body}" if title else body
-    return {"title": title, "content": full[:10000], "method": "sa_api", "tickers": tickers}
+    method = "sa_api_auth" if cookies else "sa_api"
+    result = {
+        "title": title,
+        "content": full[:10000],
+        "method": method,
+        "tickers": tickers,
+        "locked": locked,
+    }
+    if reject_locked_preview and locked and len(body) < AUTH_PREVIEW_LIMIT:
+        result["rejected"] = True
+    return result
 
 
-def parse_with_playwright_stealth(url: str) -> Optional[Dict[str, Any]]:
-    """1단계: Playwright + stealth init + persistent profile (인증 없음)
+def parse_with_playwright_stealth(
+    url: str,
+    cookies: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Playwright + stealth init + persistent profile.
 
-    누적된 브라우저 상태(LocalStorage/IndexedDB/cookies)가 프로필 디렉토리에
-    저장되어 다음 실행에서도 재사용됨. PerimeterX의 fingerprint-based 신뢰도
-    축적에 유리.
+    sa_cookies.json 로그인 쿠키가 있으면 페이지에 주입한다. 프로필 디렉토리의
+    LocalStorage/IndexedDB도 재사용한다.
     """
     try:
         from playwright.sync_api import sync_playwright  # lazy: 미설치 시 이 fallback만 건너뜀
@@ -191,15 +277,30 @@ def parse_with_playwright_stealth(url: str) -> Optional[Dict[str, Any]]:
                 user_agent=UA,
             )
             ctx.add_init_script(STEALTH_INIT)
+            if cookies:
+                try:
+                    ctx.add_cookies(cookies)
+                except Exception:
+                    pass
             page = ctx.new_page()
             # SA가 느릴 수 있어 로드 35s 허용. JS SPA라 본문은 load 이후 XHR로 렌더 → 3s 추가 대기.
             page.goto(url, timeout=35000, wait_until="load")
             time.sleep(3)
             html_content = page.content()
             ctx.close()
-        return _parse_html(html_content, "playwright_stealth")
-    except Exception:
-        return None
+        method = "playwright_auth" if cookies else "playwright_stealth"
+        result = _parse_html(html_content, method)
+        if result:
+            result["locked"] = len(result.get("content") or "") < AUTH_PREVIEW_LIMIT
+        return result
+    except Exception as exc:
+        method = "playwright_auth" if cookies else "playwright_stealth"
+        return {
+            "method": method,
+            "content": "",
+            "locked": True,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
 
 def parse_with_jina_reader(url: str) -> Optional[Dict[str, Any]]:
@@ -262,12 +363,11 @@ def parse_with_jina_reader(url: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def parse_with_curl_cffi_rotated(url: str) -> Optional[Dict[str, Any]]:
-    """3단계: curl_cffi impersonate 로테이션.
-
-    같은 라이브러리지만 TLS/JA3 fingerprint를 다양화. PerimeterX의
-    fingerprint 패턴 학습 회피.
-    """
+def parse_with_curl_cffi_rotated(
+    url: str,
+    cookies: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[Dict[str, Any]]:
+    """curl_cffi impersonate 로테이션. 로그인 쿠키가 있으면 Cookie 헤더를 붙인다."""
     headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
@@ -281,12 +381,18 @@ def parse_with_curl_cffi_rotated(url: str) -> Optional[Dict[str, Any]]:
         "Sec-Fetch-Site": "cross-site",
         "Sec-Fetch-User": "?1",
     }
+    if cookies:
+        headers["Cookie"] = cookie_header(cookies)
+        headers["Referer"] = "https://seekingalpha.com/"
+    suffix = "_auth" if cookies else ""
     for imp in IMPERSONATES:
         try:
             resp = curl_requests.get(url, headers=headers, impersonate=imp, timeout=30)
             if resp.status_code == 200:
-                result = _parse_html(resp.text, f"curl_cffi_{imp}")
+                result = _parse_html(resp.text, f"curl_cffi_{imp}{suffix}")
                 if result:
+                    if cookies and len(result.get("content") or "") < AUTH_PREVIEW_LIMIT:
+                        continue
                     return result
         except Exception:
             pass
@@ -320,40 +426,119 @@ def _og_lead(url: str) -> str:
         return ""
 
 
-def parse_sa_article(url: str) -> Dict[str, Any]:
-    """SA 기사 파싱 (4단계 fallback, 인증 없음).
+def _acceptable_source(result: Optional[Dict[str, Any]]) -> bool:
+    """미리보기·잠금·파서 오류는 성공으로 치지 않는다."""
+    if not result or result.get("rejected") or result.get("error"):
+        return False
+    content = (result.get("content") or "").strip()
+    if len(content) < AUTH_PREVIEW_LIMIT:
+        return False
+    if result.get("locked"):
+        return False
+    return True
 
-    Returns:
-        {
-            "success": bool,
-            "title": str,
-            "content": str,           # 본문 (요약 재료) — 앞에 og 리드 prepend
-            "method": str or None,
-            "error": str or None
-        }
+
+def _warn_no_login() -> None:
+    """SA 로그인 세션이 없을 때 원인을 stderr로 표면화한다.
+
+    쿠키 파일 유무로 '미설정'과 '만료/무효'를 구분해 안내한다.
+    (load_sa_cookies가 만료분을 걸러내므로, 파일은 있는데 로그인 쿠키가 없으면 만료로 본다)
+    """
+    path = cookies_path()
+    if not path.is_file():
+        detail = f"쿠키 파일 없음 ({path})"
+    else:
+        detail = "로그인 쿠키 만료/무효"
+    print(
+        f"     ⚠️ SA 로그인 세션 없음 — {detail}. 본문이 프리뷰로 잘립니다. "
+        f"복구: python3 scripts/sa_refresh_login.py",
+        file=sys.stderr,
+    )
+
+
+def parse_sa_article(url: str) -> Dict[str, Any]:
+    """SA 기사 파싱. Playwright 쿠키 세션을 먼저 시도한다.
+
+    비로그인 API 미리보기는 기본 성공으로 치지 않는다.
+    Returns 에 attempts(각 단계 결과)를 포함한다.
     """
     url = strip_utm(url)
-    lead = _og_lead(url)  # #1: 핵심 종목이 담긴 리드 (본문 앞에 붙임)
-    # 우선순위 (v6 — 내부 API 우선): 노이즈 0 본문 + 공식 티커. 실패 시 Jina→PW→curl.
-    for parser in [parse_with_sa_api, parse_with_jina_reader, parse_with_playwright_stealth, parse_with_curl_cffi_rotated]:
-        result = parser(url)
-        if result:
-            body = result.get("content", "")
-            # 핵심 종목이 담긴 og 리드를 항상 본문 앞에 prepend (어떤 파서가 이기든 보장).
-            # 단, 리드 끝부분(설명 핵심)이 이미 본문에 있으면 중복 회피.
-            if lead and (len(lead) < 40 or lead[-40:] not in body):
-                result["content"] = f"{lead}\n\n{body}"
-            result.setdefault("tickers", [])  # API만 채움, 폴백 파서는 빈 목록
-            result["success"] = True
-            result["error"] = None
-            return result
+    lead = _og_lead(url)
+    cookies = load_sa_cookies()
+    steps: List[tuple] = []
+    if not has_login_cookies(cookies):
+        # 인증 경로가 통째로 빠지면 본문이 프리뷰(~300자)로 잘려 품질 게이트에 걸린다.
+        # 원인을 못 찾고 '기사 실패'만 반복되지 않도록 stderr로 분명히 알린다.
+        _warn_no_login()
+    if has_login_cookies(cookies):
+        steps.append(
+            ("playwright_auth", lambda: parse_with_playwright_stealth(url, cookies=cookies))
+        )
+        steps.append(
+            ("curl_cffi_auth", lambda: parse_with_curl_cffi_rotated(url, cookies=cookies))
+        )
+        steps.append(
+            (
+                "sa_api_auth",
+                lambda: parse_with_sa_api(url, cookies=cookies, reject_locked_preview=True),
+            )
+        )
+    steps.append(("jina_reader", lambda: parse_with_jina_reader(url)))
+    if settings.ALLOW_ANON_FETCH:
+        steps.append(("sa_api", lambda: parse_with_sa_api(url)))
+        steps.append(("playwright_stealth", lambda: parse_with_playwright_stealth(url)))
+        steps.append(("curl_cffi", lambda: parse_with_curl_cffi_rotated(url)))
 
+    attempts: List[Dict[str, Any]] = []
+    for name, fn in steps:
+        t0 = time.time()
+        result = None
+        error = None
+        try:
+            result = fn()
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            result = {"method": name, "content": "", "error": error, "locked": True}
+        elapsed_ms = int((time.time() - t0) * 1000)
+        if result is None:
+            result = {"method": name, "content": "", "locked": True}
+        method = result.get("method") or name
+        content = result.get("content") or ""
+        error = result.get("error") or error
+        locked = bool(result.get("locked") or result.get("rejected"))
+        accepted = _acceptable_source(result)
+        attempts.append(
+            {
+                "method": method,
+                "chars": len(content),
+                "locked": locked,
+                "elapsed_ms": elapsed_ms,
+                "error": error,
+                "accepted": accepted,
+            }
+        )
+        if not accepted:
+            continue
+        body = content
+        if lead and (len(lead) < 40 or lead[-40:] not in body):
+            result["content"] = f"{lead}\n\n{body}"
+        result.setdefault("tickers", [])
+        result["success"] = True
+        result["error"] = None
+        result["attempts"] = attempts
+        return result
+
+    max_chars = max((a["chars"] for a in attempts), default=0)
     return {
         "success": False,
         "title": "",
         "content": "",
         "method": None,
-        "error": "All 4 methods failed (strong block or transient failure)",
+        "error": (
+            f"All methods failed or preview-only (max {max_chars} chars, "
+            f"min {AUTH_PREVIEW_LIMIT})"
+        ),
+        "attempts": attempts,
     }
 
 

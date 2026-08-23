@@ -12,7 +12,7 @@ from unittest.mock import patch
 import db
 import settings
 import ticker_names
-from scripts import sa_claude_cli, sa_summarize_claude
+from scripts import sa_claude_cli, sa_publish, sa_summarize_claude
 
 
 class RoundRobinTests(unittest.TestCase):
@@ -61,6 +61,30 @@ class SummaryPipelineTests(unittest.TestCase):
         self.assertEqual(result["headline"], "Alphabet, 서비스 공개")
         self.assertEqual(result["summary_details"], ["첫째", "둘째"])
         self.assertEqual(result["ticker_color"], "green")
+
+    def test_prompt_uses_only_collected_source_and_does_not_pad(self):
+        prompt = sa_summarize_claude._PROMPT_TMPL
+        self.assertIn("SA 사이트 수집본만", prompt)
+        self.assertIn("항목 수를 채우려고 내용을 늘리지 말 것", prompt)
+        self.assertIn("한 항목에 사실 하나만", prompt)
+        self.assertIn("완결형 종결은 쓰지 말 것", prompt)
+        self.assertIn("명사구·체언 종결", prompt)
+        self.assertIn("사전 지식", prompt)
+        self.assertNotIn("4~6개", prompt)
+        self.assertNotIn("핵심 정보를 반드시 포함", prompt)
+        self.assertNotIn("짧은 완결 문장", prompt)
+
+    def test_validate_accepts_one_detail_sentence(self):
+        result = sa_summarize_claude.validate(
+            {
+                "ticker": "WBD",
+                "company_name": "Warner Bros. Discovery",
+                "headline": "Paramount, 월요일 법무장관 회동",
+                "summary_details": ["Variety는 월요일 회동 예정이라고 보도했다."],
+                "ticker_color": "blue",
+            }
+        )
+        self.assertEqual(len(result["summary_details"]), 1)
 
     def test_validate_rejects_han_and_kana(self):
         for contaminated in ("売上 증가", "メーカー 전망"):
@@ -168,9 +192,12 @@ class BatchResilienceTests(unittest.TestCase):
         # (라운드로빈 배정 규칙은 RoundRobinTests에서 별도로 검증)
         self._rr = settings.SUMMARY_ROUND_ROBIN
         settings.SUMMARY_ROUND_ROBIN = False
+        self._gap = settings.ARTICLE_GAP_SECONDS
+        settings.ARTICLE_GAP_SECONDS = 0
 
     def tearDown(self):
         settings.SUMMARY_ROUND_ROBIN = self._rr
+        settings.ARTICLE_GAP_SECONDS = self._gap
         db.DB_PATH = self._original_path
         self._tempdir.cleanup()
 
@@ -211,7 +238,7 @@ class BatchResilienceTests(unittest.TestCase):
             patch.object(
                 sa_summarize_claude,
                 "parse_article",
-                return_value=("article body", "sa_api", [], None),
+                return_value=("article body " * 80, "playwright_auth", [], None),
             ),
             patch.object(
                 sa_summarize_claude,
@@ -244,7 +271,7 @@ class BatchResilienceTests(unittest.TestCase):
             patch.object(
                 sa_summarize_claude,
                 "parse_article",
-                return_value=("article body", "sa_api", [], None),
+                return_value=("article body " * 80, "playwright_auth", [], None),
             ),
             patch.object(
                 sa_summarize_claude,
@@ -325,6 +352,99 @@ class BatchResilienceTests(unittest.TestCase):
         ):
             exit_code = sa_summarize_claude.main(["--batch", "2"])
         self.assertEqual(exit_code, sa_summarize_claude.EXIT_PARTIAL_FAILURE)
+
+    def test_batch_waits_between_articles(self):
+        self._pending("9401", 1)
+        self._pending("9402", 2)
+        settings.ARTICLE_GAP_SECONDS = 20
+        with (
+            patch.object(sa_summarize_claude, "process_article", return_value=True) as proc,
+            patch.object(sa_summarize_claude.time, "sleep") as slept,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            sa_summarize_claude.run_batch(2)
+        self.assertEqual(proc.call_count, 2)
+        slept.assert_called_once_with(20)
+
+
+class ParseUsesSiteTests(unittest.TestCase):
+    def setUp(self):
+        self._original_path = db.DB_PATH
+        self._tempdir = tempfile.TemporaryDirectory()
+        db.DB_PATH = Path(self._tempdir.name) / "parse.db"
+        with contextlib.redirect_stdout(io.StringIO()):
+            db.init_db()
+
+    def tearDown(self):
+        db.DB_PATH = self._original_path
+        self._tempdir.cleanup()
+
+    def test_parse_fetches_article_url(self):
+        article_id = db.insert_pending_article(
+            email_id="6492",
+            ticker="WBD",
+            article_url="https://seekingalpha.com/news/4636039-paramount",
+            original_title="WBD: Paramount to meet California AG",
+            email_time_et="2026-08-22 22:21 KST",
+        )
+        fake = {
+            "success": True,
+            "content": "SITE FULL ARTICLE " * 80,
+            "method": "sa_api_auth",
+            "tickers": [{"symbol": "WBD", "name": "Warner Bros. Discovery"}],
+        }
+        with patch(
+            "sa_article_parser.parse_sa_article", return_value=fake
+        ) as mocked:
+            out = io.StringIO()
+            err = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                sa_publish.cmd_parse(int(article_id))
+        mocked.assert_called_once_with(
+            "https://seekingalpha.com/news/4636039-paramount"
+        )
+        stdout = out.getvalue()
+        stderr = err.getvalue()
+        self.assertIn("SITE FULL ARTICLE", stdout)
+        self.assertIn("PARSE_METHOD: sa_api_auth", stderr)
+        self.assertIn("WBD", stderr)
+        src = db.get_source(int(article_id))
+        self.assertIsNotNone(src)
+        self.assertGreaterEqual(src["chars"], settings.SOURCE_MIN_CHARS)
+        self.assertFalse(src["locked"])
+
+    def test_reuse_source_skips_sa_fetch(self):
+        article_id = db.insert_pending_article(
+            email_id="6493",
+            ticker="MRVL",
+            article_url="https://seekingalpha.com/news/2-test",
+            original_title="MRVL: test",
+            email_time_et="2026-08-22 21:00 KST",
+        )
+        body = "Marvell reported stronger hyperscaler demand. " * 40
+        db.save_source(int(article_id), text=body, method="playwright_auth", locked=False)
+        content, method, tickers, err = sa_summarize_claude.parse_article(
+            int(article_id), reuse_source=True
+        )
+        self.assertIsNone(err)
+        self.assertEqual(method, "playwright_auth")
+        self.assertEqual(content, body)
+        self.assertEqual(tickers, [])
+
+    def test_reuse_source_rejects_locked_preview(self):
+        article_id = db.insert_pending_article(
+            email_id="6494",
+            ticker="WBD",
+            article_url="https://seekingalpha.com/news/3-test",
+            original_title="WBD: test",
+            email_time_et="2026-08-22 21:00 KST",
+        )
+        db.save_source(int(article_id), text="preview only", method="sa_api", locked=True)
+        content, method, tickers, err = sa_summarize_claude.parse_article(
+            int(article_id), reuse_source=True
+        )
+        self.assertIsNone(content)
+        self.assertIn("품질 미달", err)
 
 
 if __name__ == "__main__":

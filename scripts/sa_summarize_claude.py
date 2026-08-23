@@ -15,6 +15,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,7 +35,7 @@ _PROMPT_TMPL = """\
 아래 JSON 형식으로만 응답하세요. JSON 외의 텍스트·설명·마크다운 코드블럭은 절대 출력하지 마세요.
 
 출력 형식 (한 줄, key 순서 고정):
-{{"ticker":"AVGO, NVDA, GOOG, META","company_name":"Broadcom·Nvidia·Alphabet·Meta Platforms","headline":"한국어제목","summary_details":["포인트1","포인트2","포인트3","포인트4"],"ticker_color":"blue"}}
+{{"ticker":"AVGO, NVDA","company_name":"Broadcom·Nvidia","headline":"한국어제목","summary_details":["핵심 이벤트·수치","두 번째 포인트"],"ticker_color":"blue"}}
 
 규칙:
 - ticker: 기사 이벤트에 **실질적으로 관련된 상장 기업만** 추출해 거래소 티커 심볼로.
@@ -53,13 +54,17 @@ _PROMPT_TMPL = """\
   기사에 해당 기업이 없으면 빈 문자열 "".
 - company_name: ticker 순서·개수와 **정확히 동일하게** 정식 영문 기업명을 · 로 연결 (예: "Nvidia·AMD").
   ticker를 N개 넣었으면 company_name도 N개. 한국어 번역·음차 절대 금지. 티커 기호(AAPL 등) 포함 금지.
-- headline: 티커 prefix 금지. 구체적이고 정보량 있는 한국어 제목. 핵심 수치·방향·이벤트 포함.
+- headline: 티커 prefix 금지. 핵심 이벤트와 수치만 담은 짧은 한국어 제목.
   예) 'TSLA: 테슬라 가격 인상' ✗ → 'Tesla, 2년 만에 첫 모델 Y 가격 인상' ✓
-- summary_details: 4~6개 배열. 각 항목 완결 문장. '분석가 X는 Y라고 전망했다' 형식 선호.
-  분석가 이름·목표주가·수치·날짜 등 핵심 정보를 반드시 포함.
-  단, 페이월(paywall)·구독·로그인·본문 접근 제한·내용 잘림 등으로 인한 정보 누락은
-  절대 언급하지 말 것. (예: '페이월로 상세 내용 확인 불가', '구독 필요' 같은 문장 금지)
-  접근 가능한 원문 범위 내에서만 요약하고, 누락 자체를 기술하지 않는다.
+- summary_details: 아래 === 기사 원문 === 에 적힌 SA 사이트 수집본만 근거로 요약.
+  각 항목은 간결한 단문. 한 항목에 사실 하나만. 핵심 이벤트·주체·수치·날짜만 남긴다.
+  '~했다' '~밝혔다' '~보도했다' '~전망했다' 같은 완결형 종결은 쓰지 말 것.
+  명사구·체언 종결로 끝낸다. 예) '월요일 캘리포니아 AG와 면담, 1110억 달러 합병 화해'
+  종목 나열, 세부 시나리오, 컨센서스 병기, 배경 설명, 수식은 빼거나 한 덩어리로 압축한다.
+  원문에 있는 이름·수치·날짜만 쓰고, 없는 사실은 쓰지 않는다.
+  항목 수를 채우려고 내용을 늘리지 말 것. 원문이 짧거나 미리보기면 1~2개가 맞다.
+  사전 지식, 다른 기사, 추정, 일반적인 배경으로 빈칸을 메우지 말 것.
+  원문에 없는 인물·법원·합의조건·발언을 보강하는 것은 금지.
 - ticker_color: blue|green|red|orange|yellow|purple|gray 중 1개.
   상승·긍정=green, 하락·부정=red, 중립·기타=blue
 - 외국 기업·인명·약품명 = 영문 원어 유지. 한국 기업만 한국어 유지.
@@ -144,9 +149,19 @@ def validate(d: dict) -> dict:
 
 # ── SA 파싱 ────────────────────────────────────────────────────────────────
 
-def parse_article(article_id: int) -> tuple[str | None, str | None, list, str | None]:
+def parse_article(
+    article_id: int,
+    *,
+    reuse_source: bool = False,
+) -> tuple[str | None, str | None, list, str | None]:
     """sa_publish.py parse 호출 → (본문, method, 공식티커후보, 오류사유).
+    reuse_source 이면 저장된 source_text 를 쓰고 SA 에 접속하지 않는다.
     성공: (content, method, [{symbol,name}...], None) / 실패: (None, None, [], reason)."""
+    if reuse_source:
+        src = db.get_source(article_id)
+        if src and db.source_quality_ok(src["chars"], src["locked"]):
+            return src["text"], src["method"], [], None
+        return None, None, [], "저장된 본문 없음 또는 품질 미달"
     try:
         result = subprocess.run(
             [sys.executable, str(SCRIPT_DIR / "sa_publish.py"), "parse", str(article_id)],
@@ -195,18 +210,24 @@ def pick_summarizers(article_id: int):
     return "Claude", call_claude, "grok", call_grok
 
 
-def attempt_article(row: dict) -> AttemptSuccess | AttemptFailure:
+def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess | AttemptFailure:
     """기사 1건을 파싱·요약·검증하되 DB 상태는 변경하지 않는다."""
     article_id = row["id"]
     ticker = row.get("ticker", "")
     orig = (row.get("original_title") or "")[:60]
     print(f"  [{article_id}] {ticker} | {orig}")
 
-    # 1. SA 페이지 파싱
-    content, parse_method, sa_tickers, parse_err = parse_article(article_id)
+    # 1. SA 페이지 파싱 (또는 저장된 본문)
+    content, parse_method, sa_tickers, parse_err = parse_article(
+        article_id, reuse_source=reuse_source
+    )
     if not content:
         reason = parse_err or "PARSE_FAIL"
         print(f"     파싱 실패: {reason}", file=sys.stderr)
+        return AttemptFailure(reason[:200])
+    if not db.source_quality_ok(len(content), False):
+        reason = f"본문 품질 미달 ({len(content)}자, 최소 {settings.SOURCE_MIN_CHARS})"
+        print(f"     {reason}", file=sys.stderr)
         return AttemptFailure(reason[:200])
 
     # 2. Claude로 한국어 요약 생성 — SA 공식 태깅 티커가 있으면 후보 화이트리스트로 주입
@@ -270,11 +291,11 @@ def attempt_article(row: dict) -> AttemptSuccess | AttemptFailure:
     )
 
 
-def process_article(row: dict) -> bool:
+def process_article(row: dict, *, reuse_source: bool = False) -> bool:
     """기사 1건 처리. 기사 실패는 한 번 기록하고, DB 장애는 호출자로 올린다."""
     article_id = row["id"]
     try:
-        outcome = attempt_article(row)
+        outcome = attempt_article(row, reuse_source=reuse_source)
     except sqlite3.Error:
         raise
     except Exception as exc:
@@ -314,7 +335,11 @@ def run_batch(batch_size: int) -> BatchResult:
         return BatchResult(attempted=0, succeeded=0, failed=0)
     print(f"SA summarize (claude): {len(rows)}건 처리 시작")
     ok = fail = 0
-    for row in rows:
+    gap = settings.ARTICLE_GAP_SECONDS
+    for i, row in enumerate(rows):
+        if i and gap > 0:
+            print(f"     SA 요청 간격 {gap}s …")
+            time.sleep(gap)
         if process_article(row):
             ok += 1
         else:
@@ -332,6 +357,11 @@ def main(argv: list[str] | None = None) -> int:
         help=f"일괄 처리 건수 (기본 {settings.PUBLISH_BATCH_SIZE})",
     )
     p.add_argument("--id", type=int, dest="article_id", help="특정 article_id 강제 처리")
+    p.add_argument(
+        "--reuse-source",
+        action="store_true",
+        help="저장된 source_text 로만 재요약 (SA 재접속 없음)",
+    )
     args = p.parse_args(argv)
 
     try:
@@ -347,7 +377,11 @@ def main(argv: list[str] | None = None) -> int:
             if not r:
                 print(f"article_id {args.article_id} 없음 또는 처리 불가 상태", file=sys.stderr)
                 return EXIT_INFRA_FAILURE
-            return EXIT_OK if process_article(dict(r)) else EXIT_PARTIAL_FAILURE
+            return (
+                EXIT_OK
+                if process_article(dict(r), reuse_source=args.reuse_source)
+                else EXIT_PARTIAL_FAILURE
+            )
 
         # cron 틱 겹침 방지 — 이전 배치가 아직 돌고 있으면 skip
         with single_instance("sa-publish") as ok:

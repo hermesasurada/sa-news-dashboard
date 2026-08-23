@@ -4,6 +4,8 @@ let currentOffset = 0;
 let currentSort = 'email_time_et';
 let currentOrder = 'desc';   // desc=최신순 / asc=과거순
 let trashView = false;
+let currentListTotal = null;
+let currentQueue = { pending: 0, failed: 0, unread: 0 };
 
 /* ── SVG Icons ── */
 const SVG_EYE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
@@ -353,9 +355,7 @@ function renderCard(a) {
   </div>
   ${originalTitle}
   <hr class="card-divider">
-  ${a.summary_core ? `<div class="card-summary"><strong>핵심</strong>&nbsp;${escapeHTML(a.summary_core)}</div>` : ''}
   <div class="card-details">
-    ${a.summary_core ? '<strong>상세</strong>' : ''}
     <ul>${details}</ul>
   </div>
   ${combinedBadges ? `<div class="card-tickers">${combinedBadges}</div>` : ''}
@@ -644,10 +644,28 @@ async function toggleRead(id, btn) {
   const card = btn.closest('.card');
   const wasRead = card.dataset.read === '1';
   const newRead = !wasRead;
+  const removeFromUnread = newRead
+    && document.getElementById('unread-filter').classList.contains('active');
+  const row = card.closest('.swipe-row') || card;
+  let removalFrame = null;
+  let removalTimer = null;
+  let finishRemoval = null;
+  let removalDone = Promise.resolve();
 
   // 낙관적 갱신 — 서버 왕복을 기다리지 않고 먼저 반영한다.
   // (기존에는 응답 후에야 아이콘이 바뀌어, 모바일/Tailscale의 RTT가 그대로 체감 지연이 됐다)
   applyReadState(card, btn, newRead);
+  if (removeFromUnread) {
+    removalDone = new Promise(resolve => {
+      finishRemoval = resolve;
+      row.style.transition = `opacity ${READ_FADE_MS}ms`;
+      removalFrame = requestAnimationFrame(() => { row.style.opacity = '0'; });
+      removalTimer = setTimeout(() => {
+        row.remove();
+        resolve();
+      }, READ_FADE_MS);
+    });
+  }
 
   let ok = false;
   try {
@@ -662,19 +680,28 @@ async function toggleRead(id, btn) {
   }
 
   if (!ok) {
-    applyReadState(card, btn, wasRead);   // 실패 → 화면 원복
+    if (removalFrame !== null) cancelAnimationFrame(removalFrame);
+    if (removalTimer !== null) clearTimeout(removalTimer);
+    if (finishRemoval) finishRemoval();
+    if (row.isConnected) {
+      row.style.transition = '';
+      row.style.opacity = '';
+      applyReadState(card, btn, wasRead);
+    } else {
+      search(currentOffset);
+    }
     showToast('읽음 상태 변경 실패', null, null);
     return;
   }
 
-  // 미읽음 필터 중이면 카드 제거 (swipe-row 래퍼째) 후 다음 기사로 보충
-  if (newRead && document.getElementById('unread-filter').classList.contains('active')) {
-    card.style.transition = `opacity ${READ_FADE_MS}ms`;
-    card.style.opacity = '0';
-    setTimeout(() => {
-      (card.closest('.swipe-row') || card).remove();
-      refillGrid();
-    }, READ_FADE_MS);
+  adjustCurrentListMeta(removeFromUnread ? -1 : 0, newRead ? -1 : 1);
+
+  // 페이드는 요청과 동시에 진행했으므로 성공 응답 뒤 추가 대기가 없다.
+  if (removeFromUnread) {
+    await removalDone;
+    refillGrid();
+  } else {
+    renderCurrentListMeta();
   }
 }
 
@@ -688,6 +715,7 @@ function deleteCard(articleId, element) {
   fetch(`/api/articles/${articleId}`, { method: 'DELETE' })
     .then(res => {
       if (res.ok) {
+        adjustCurrentListMeta(-1, card.dataset.read === '0' ? -1 : 0);
         // .card만 지우면 .swipe-row 래퍼가 빈 그리드 칸으로 남는다 → 래퍼째 제거 후 보충
         (card.closest('.swipe-row') || card).remove();
         refillGrid();
@@ -758,15 +786,15 @@ function renderPagination(total, offset) {
   const currentPage = Math.floor(offset / PAGE_SIZE);
   if (totalPages <= 1) { pag.innerHTML = ''; return; }
 
-  let html = `<button onclick="search(${(currentPage-1)*PAGE_SIZE})" ${currentPage===0?'disabled':''}>◀ 이전</button>`;
+  let html = `<button onclick="search(${(currentPage-1)*PAGE_SIZE}, false)" ${currentPage===0?'disabled':''}>◀ 이전</button>`;
   // 한 번에 최대 10개씩 블록 단위로 노출 (1~10, 11~20 …)
   const BLOCK = 10;
   const start = Math.floor(currentPage / BLOCK) * BLOCK;
   const end = Math.min(totalPages - 1, start + BLOCK - 1);
   for (let i = start; i <= end; i++) {
-    html += `<button class="${i===currentPage?'active':''}" onclick="search(${i*PAGE_SIZE})">${i+1}</button>`;
+    html += `<button class="${i===currentPage?'active':''}" onclick="search(${i*PAGE_SIZE}, false)">${i+1}</button>`;
   }
-  html += `<button onclick="search(${(currentPage+1)*PAGE_SIZE})" ${currentPage===totalPages-1?'disabled':''}>다음 ▶</button>`;
+  html += `<button onclick="search(${(currentPage+1)*PAGE_SIZE}, false)" ${currentPage===totalPages-1?'disabled':''}>다음 ▶</button>`;
   html += `<span class="page-info">${total}건 / ${totalPages}페이지</span>`;
   pag.innerHTML = html;
 }
@@ -809,7 +837,7 @@ function startNotificationPolling() {
   setInterval(async () => {
     if (lastKnownTotal === 0) return;
     try {
-      const { total } = await fetchJSON('/api/articles?limit=1&sort_by=last_modified');
+      const { total } = await fetchJSON('/api/articles/state');
       if (total > lastKnownTotal) {
         showNewArticlesBanner(total - lastKnownTotal);
       }
@@ -830,6 +858,24 @@ function statsLine(total, offset, shown, badges) {
   return trashLabel + `${total}건 (${offset + 1}~${Math.min(offset + shown, total)}번째)` + badges;
 }
 
+function adjustCurrentListMeta(totalDelta = 0, unreadDelta = 0) {
+  if (currentListTotal !== null) {
+    currentListTotal = Math.max(0, currentListTotal + totalDelta);
+  }
+  currentQueue = {
+    ...currentQueue,
+    unread: Math.max(0, currentQueue.unread + unreadDelta),
+  };
+}
+
+function renderCurrentListMeta() {
+  if (currentListTotal === null) return;
+  const shown = document.getElementById('cards').querySelectorAll('.card').length;
+  document.getElementById('stats').innerHTML =
+    statsLine(currentListTotal, currentOffset, shown, queueBadges(currentQueue));
+  renderPagination(currentListTotal, currentOffset);
+}
+
 /* ── 카드 1건이 빠진 자리를 다음 기사로 자동 보충 ──
    삭제·복원·(미읽음 필터에서의)읽음처리로 카드가 사라져도 페이지가 비지 않도록,
    전체 재렌더 없이 서버에서 다음 순번 1건만 가져와 뒤에 덧붙인다. */
@@ -839,15 +885,14 @@ async function refillGrid() {
   if (shown >= PAGE_SIZE) return;   // 이미 가득 참
   const params = getParams(currentOffset + shown);
   params.set('limit', 1);
+  params.set('include_total', 'false');
+  params.set('include_queue', 'false');
   try {
-    const [data, qData] = await Promise.all([
-      fetchJSON('/api/articles?' + params.toString()),
-      fetchJSON('/api/queue_stats'),
-    ]);
+    const data = await fetchJSON('/api/articles?' + params.toString());
     const filled = shown + data.items.length;
     document.getElementById('stats').innerHTML =
-      statsLine(data.total, currentOffset, filled, queueBadges(qData));
-    renderPagination(data.total, currentOffset);
+      statsLine(currentListTotal, currentOffset, filled, queueBadges(currentQueue));
+    renderPagination(currentListTotal, currentOffset);
     if (!data.items.length) return;   // 마지막 페이지 — 보충할 기사 없음
     cardsEl.insertAdjacentHTML('beforeend', renderCard(data.items[0]));
     attachSwipeHandlers();
@@ -857,24 +902,27 @@ async function refillGrid() {
   }
 }
 
-async function search(offset = 0) {
+async function search(offset = 0, refreshMeta = true) {
   currentOffset = offset;
   const params = getParams(offset);
 
   // #9: URL 동기화
   syncURL(params);
+  if (!refreshMeta && currentListTotal !== null) {
+    params.set('include_total', 'false');
+    params.set('include_queue', 'false');
+  }
 
   const cardsEl = document.getElementById('cards');
   const statsEl = document.getElementById('stats');
   cardsEl.innerHTML = '<div class="empty-state">불러오는 중...</div>';
 
   try {
-    const [data, qData] = await Promise.all([
-      fetchJSON('/api/articles?' + params.toString()),
-      fetchJSON('/api/queue_stats'),
-    ]);
+    const data = await fetchJSON('/api/articles?' + params.toString());
+    if (typeof data.total === 'number') currentListTotal = data.total;
+    if (data.queue) currentQueue = data.queue;
 
-    const badges = queueBadges(qData);
+    const badges = queueBadges(currentQueue);
 
     if (data.items.length === 0) {
       const hasFilter = !!(document.getElementById('q').value.trim()
@@ -890,18 +938,18 @@ async function search(offset = 0) {
       return;
     }
 
-    statsEl.innerHTML = statsLine(data.total, offset, data.items.length, badges);
+    statsEl.innerHTML = statsLine(currentListTotal, offset, data.items.length, badges);
     cardsEl.innerHTML = data.items.map(renderCard).join('');
     attachSwipeHandlers();
     attachTickerQuoteHandlers();
-    renderPagination(data.total, offset);
+    renderPagination(currentListTotal, offset);
 
     // #7: 필터 없는 1페이지 결과로 기준 total 갱신
     const qVal = document.getElementById('q').value.trim();
     const tVal = document.getElementById('ticker-filter').value;
     const uVal = document.getElementById('unread-filter').classList.contains('active');
     if (!qVal && !tVal && !uVal && offset === 0) {
-      lastKnownTotal = data.total;
+      lastKnownTotal = currentListTotal;
       document.getElementById('new-articles-banner').style.display = 'none';
     }
   } catch(e) {
@@ -949,6 +997,7 @@ function restoreCard(articleId, element) {
   fetch(`/api/articles/${articleId}/restore`, { method: 'POST' })
     .then(res => {
       if (res.ok) {
+        adjustCurrentListMeta(-1, 0);
         (card.closest('.swipe-row') || card).remove();
         refillGrid();
       } else {
@@ -1026,11 +1075,10 @@ function closeFontPicker() {
 /* ── Init ── */
 async function init() {
   applyReaderFont();               // 저장된 글꼴을 로드 시점에 반영
-  // 필터를 await하면 목록 요청이 그 뒤에야 시작돼 직렬이 된다(실측 11ms→69ms).
-  // 캐시가 있으면 동기로 적용하고 목록을 즉시 요청, 최신 필터는 병렬로 갱신.
-  const hasCache = loadFiltersFromCache();
-  const filtersReady = loadFilters();     // 병렬 시작 (await하지 않음)
-  if (!hasCache) await filtersReady;      // 최초 방문만 대기 (티커 별칭 확보)
+  // 첫 방문도 필터 목록과 기사 목록을 병렬로 요청한다. 발행 시 티커가 이미
+  // 정규화되므로 필터 응답이 카드 첫 렌더를 막을 이유가 없다.
+  loadFiltersFromCache();
+  loadFilters();
   loadPrefs();                     // 로컬에 저장된 검색조건 기본값 적용
   const savedOffset = restoreFromURL(); // URL이 있으면 우선 (공유 링크)
   search(savedOffset);

@@ -54,6 +54,16 @@ SUMMARY_ROUND_ROBIN = os.environ.get("SA_SUMMARY_ROUND_ROBIN", "1").strip().lowe
 
 PUBLISH_BATCH_SIZE = _env_int("SA_PUBLISH_BATCH_SIZE", 10)
 PUBLISH_PARSE_TIMEOUT_SECONDS = _env_int("SA_PARSE_TIMEOUT_SECONDS", 200)
+# 기사와 기사 사이 Playwright 요청 간격. SA 차단 완화. 0이면 대기 없음.
+ARTICLE_GAP_SECONDS = _env_int("SA_ARTICLE_GAP_SECONDS", 20, minimum=0)
+SOURCE_MIN_CHARS = _env_int("SA_SOURCE_MIN_CHARS", 700)
+ALLOW_ANON_FETCH = os.environ.get("SA_ALLOW_ANON_FETCH", "0").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+    "",
+}
 SUMMARY_TIMEOUT_SECONDS = _env_int("SA_SUMMARY_TIMEOUT_SECONDS", 120)
 SUMMARY_CONTENT_LIMIT = _env_int("SA_SUMMARY_CONTENT_LIMIT", 10_000)
 MAX_RETRY = _env_int("SA_MAX_RETRY", 5)

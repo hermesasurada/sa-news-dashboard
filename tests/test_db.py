@@ -95,6 +95,98 @@ class DatabaseWorkflowTests(unittest.TestCase):
     def test_health_check(self):
         self.assertEqual(db.health_check(), {"status": "ok", "database": "ok"})
 
+    def test_article_list_includes_queue_stats(self):
+        article_id = self._pending()
+        self._publish(article_id)
+
+        result = db.query_articles()
+
+        self.assertEqual(result["queue"]["pending"], 0)
+        self.assertEqual(result["queue"]["failed"], 0)
+        self.assertEqual(result["queue"]["unread"], 1)
+
+    def test_article_list_can_skip_metadata_and_projects_card_fields(self):
+        article_id = self._pending()
+        self._publish(article_id)
+
+        result = db.query_articles(include_total=False, include_queue=False)
+
+        self.assertNotIn("total", result)
+        self.assertNotIn("queue", result)
+        self.assertEqual(set(result["items"][0]), set(db.ARTICLE_LIST_COLUMNS))
+
+    def test_published_article_count_excludes_non_published_rows(self):
+        published_id = self._pending("9001")
+        self._publish(published_id)
+        self._pending("9002")
+
+        self.assertEqual(db.get_published_article_count(), 1)
+
+    def test_list_sort_uses_composite_index(self):
+        with db.get_conn() as conn:
+            plan = conn.execute(
+                """
+                EXPLAIN QUERY PLAN
+                SELECT * FROM articles
+                WHERE pub_status = 'published' AND is_read = 0
+                ORDER BY email_time_et DESC, CAST(email_id AS INTEGER) DESC
+                LIMIT 15
+                """
+            ).fetchall()
+
+        detail = " ".join(str(row[3]) for row in plan)
+        self.assertIn("idx_status_unread_email_time", detail)
+        self.assertNotIn("TEMP B-TREE", detail)
+
+    def test_read_state_update_does_not_reindex_fts(self):
+        article_id = self._pending()
+        self._publish(article_id)
+
+        with db.get_conn() as conn:
+            before = conn.total_changes
+            conn.execute("UPDATE articles SET is_read = 1 WHERE id = ?", (article_id,))
+            changed_rows = conn.total_changes - before
+
+        self.assertEqual(changed_rows, 1)
+
+    def test_init_db_drops_legacy_columns(self):
+        path = Path(self._tempdir.name) / "legacy.db"
+        import sqlite3
+        conn = sqlite3.connect(path)
+        conn.executescript(
+            """
+            CREATE TABLE articles (
+                id INTEGER PRIMARY KEY,
+                email_id TEXT UNIQUE,
+                ticker TEXT NOT NULL DEFAULT 'X',
+                article_url TEXT NOT NULL DEFAULT '',
+                original_title TEXT,
+                company_name TEXT,
+                headline TEXT,
+                summary_details TEXT,
+                ticker_color TEXT DEFAULT 'blue',
+                summary_core TEXT,
+                tag TEXT,
+                tag_color TEXT DEFAULT 'blue',
+                email_body TEXT,
+                pub_status TEXT DEFAULT 'pending',
+                email_time_et TEXT,
+                last_modified TEXT,
+                is_read INTEGER DEFAULT 0,
+                retry_count INTEGER DEFAULT 0
+            );
+            """
+        )
+        conn.close()
+        db.DB_PATH = path
+        db.init_db()
+        with db.get_conn() as conn:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(articles)")}
+        for name in ("summary_core", "tag", "tag_color", "email_body"):
+            self.assertNotIn(name, cols)
+        self.assertIn("source_text", cols)
+        self.assertIn("summary_details", cols)
+
 
 if __name__ == "__main__":
     unittest.main()

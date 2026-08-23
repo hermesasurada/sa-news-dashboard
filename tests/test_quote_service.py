@@ -58,6 +58,7 @@ class QuoteServiceTests(unittest.TestCase):
             "change_pct": 2.1046,
             "extended_price": 143.66,
             "extended_change_pct": 14.3334,
+            "extended_market_state": "POST",
             "market": {"is_regular": False, "label": "장외", "status": "open"},
         },
     )
@@ -67,6 +68,7 @@ class QuoteServiceTests(unittest.TestCase):
         self.assertEqual(result["current_price"], 143.66)      # 표시 가격은 장외가
         self.assertAlmostEqual(result["change_pct"], 2.1046, places=3)   # 정규장분만
         self.assertAlmostEqual(result["extended_change_pct"], 14.3334, places=3)
+        self.assertEqual(result["extended_market_state"], "POST")
 
     @patch.object(quote_service, "_fallback_name", return_value="")
     @patch.object(

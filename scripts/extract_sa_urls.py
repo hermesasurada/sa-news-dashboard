@@ -2,11 +2,10 @@
 """Extract article URLs from Seeking Alpha emails using himalaya CLI.
 
 SA emails contain base64-encoded click-tracker URLs. This script:
-1. Lists all emails via plain text output and finds unread SA Breaking News ones
-2. Parses email received date (DATE column) → email_time_kst (KST 변환)
+1. Lists unread SA Breaking News emails
+2. Parses received date → email_time_kst
 3. Captures envelope subject → original_title
-4. Extracts article URLs from each unread SA email
-5. Identifies the main article URL (utm_content/position 파라미터 제거)
+4. Extracts the main article URL (utm_content/position 제거)
 
 Usage: python3 extract_sa_urls.py
 
@@ -291,8 +290,45 @@ def extract_urls(email_id: int, subject: str = '') -> dict:
     }
 
 
-
 BATCH_SIZE = int(os.environ.get('SA_BATCH_SIZE', '10'))  # 한 사이클 처리 한도. 환경변수로 override 가능.
+
+
+def collect_unread_items():
+    """미읽음 SA 메일을 읽어 URL을 반환. IMAP 실패는 예외."""
+    unread_sa_emails, true_total = get_unread_sa_emails()
+    if not unread_sa_emails:
+        return []
+    batch = unread_sa_emails[:BATCH_SIZE]
+    items = []
+    for email in batch:
+        eid = email['id']
+        title = email['subject'].replace('\t', ' ').replace('\n', ' ')
+        try:
+            info = extract_urls(eid, subject=title)
+            url = info['main_url'] or ''
+            if not url:
+                url = f"NO_MAIN_ARTICLE (found {len(info['all_urls'])} related links)"
+            elif info.get('subject_mismatch'):
+                print(
+                    f"WARN: eid={eid} subject tokens did not match any candidate URL "
+                    f"(best_score={info.get('subject_match_score', 0)}) — priority fallback used. "
+                    f"Verify before insert.",
+                    file=sys.stderr,
+                )
+            items.append({
+                "email_id": str(eid),
+                "email_time_kst": email.get('email_time_kst') or '',
+                "title": title,
+                "article_url": url,
+            })
+        except Exception as exc:
+            items.append({
+                "email_id": str(eid),
+                "email_time_kst": email.get('email_time_kst') or '',
+                "title": title,
+                "article_url": f"ERROR - {exc}",
+            })
+    return items
 
 
 def main():

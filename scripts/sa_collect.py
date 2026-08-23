@@ -152,10 +152,44 @@ def is_etf_distribution(subject: str) -> bool:
     return bool(_ETF_PAYOUT_RE.search(s) and _ETF_VEHICLE_RE.search(s))
 
 
+_ROUNDUP_BODY_RE = re.compile(
+    r"^Notable\s+\w+\s+headlines\s+for\s+the\s+week\b"
+    r"|^Catalyst\s+[Ww]atch\s*:",
+    re.I,
+)
+_ROUNDUP_ANY_RE = re.compile(
+    r"\bEarnings\s+Scorecard\b"
+    r"|\bKey deals this week\b"
+    r"|At a glance:\s*stocks gapping"
+    r"|Big movers after the closing bell"
+    r"|Midday Need to Know",
+    re.I,
+)
+
+
+def _subject_body(subject: str) -> str:
+    """티커 prefix를 뺀 제목 본문."""
+    if not subject:
+        return ""
+    m = TICKER_PREFIX.match(subject)
+    return subject[m.end():].strip() if m else subject.strip()
+
+
+def is_roundup_news(subject: str) -> bool:
+    """특정 기업 뉴스가 아닌 주간 모음·스코어카드·갭핑 라운드업인가."""
+    s = subject or ""
+    body = _subject_body(s)
+    if _ROUNDUP_BODY_RE.search(body):
+        return True
+    return bool(_ROUNDUP_ANY_RE.search(s) or _ROUNDUP_ANY_RE.search(body))
+
+
 def excluded_reason(subject: str, ticker: str) -> str | None:
     """수집 제외 대상이면 사유 라벨, 아니면 None."""
     if is_preferred_dividend(subject, ticker):
         return '우선주배당'
+    if is_roundup_news(subject):
+        return '라운드업'
     if is_earnings_preview(subject):
         return '실적프리뷰'
     if is_fund_holdings_news(subject):
@@ -179,30 +213,49 @@ def ticker_from_subject(subject: str) -> str:
 
 
 def run_extract():
-    """extract_sa_urls.py 실행 → stdout 줄 리스트.
-    himalaya/IMAP 간헐 실패 대비: rc!=0 또는 빈 출력이면 최대 2회 시도.
-    최종 실패 시 None 반환(호출측이 '0건'으로 오인하지 않도록 구분)."""
+    """미읽음 SA 메일에서 URL·본문을 읽는다.
+    himalaya/IMAP 간헐 실패 대비 최대 2회. 최종 실패 시 None.
+    테스트는 TSV 문자열 리스트를 그대로 주입할 수 있다."""
+    import extract_sa_urls as extract
     last_err = ""
     for attempt in (1, 2):
         try:
-            result = subprocess.run(
-                [sys.executable, str(SCRIPT_DIR / 'extract_sa_urls.py')],
-                capture_output=True, text=True, timeout=180,
-            )
+            return extract.collect_unread_items()
         except subprocess.TimeoutExpired:
             last_err = "timeout(180s)"
             print(f'SA collect: extract 타임아웃 (attempt {attempt})', file=sys.stderr)
             _forensic_log(attempt, "TIMEOUT(180s)", "", "")
             continue
-        # 성공: rc==0 이고 stdout이 비어있지 않음 (NO_UNREAD_SA_EMAILS 도 비어있지 않음)
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.splitlines()
-        last_err = f"rc={result.returncode} stderr={(result.stderr or '').strip()[-300:]}"
-        print(f'SA collect: extract 실패 (attempt {attempt}) {last_err}', file=sys.stderr)
-        # 포렌식: 실제 cron 실패의 rc/stderr/stdout 전체를 파일로 보존
-        _forensic_log(attempt, f"rc={result.returncode}", result.stderr or "", result.stdout or "")
+        except Exception as exc:
+            last_err = str(exc)[-300:]
+            print(f'SA collect: extract 실패 (attempt {attempt}) {last_err}', file=sys.stderr)
+            _forensic_log(attempt, f"exc={type(exc).__name__}", str(exc), "")
     print(f'SA collect: extract 최종 실패 — {last_err}', file=sys.stderr)
     return None
+
+
+def _iter_extracted(payload):
+    """run_extract 결과: dict 리스트(운영) 또는 TSV 줄(테스트)."""
+    if not payload:
+        return
+    first = payload[0]
+    if isinstance(first, dict):
+        for item in payload:
+            yield item
+        return
+    for line in payload:
+        if 'NO_UNREAD_SA_EMAILS' in line or line.startswith('FOUND_UNREAD'):
+            continue
+        parts = line.split('\t')
+        if len(parts) != 4:
+            continue
+        eid_str, email_time_kst, original_title, article_url = parts
+        yield {
+            "email_id": eid_str.strip(),
+            "email_time_kst": email_time_kst,
+            "title": original_title,
+            "article_url": article_url,
+        }
 
 
 def _forensic_log(attempt, summary, stderr_text, stdout_text):
@@ -243,16 +296,16 @@ def mark_seen(email_ids: list[str]) -> bool:
 
 
 def main() -> int:
+    db.init_db()
     lines = run_extract()
     if lines is None:
         # 진짜 실패(himalaya/IMAP 오류 등) — '미읽음 없음'과 구분해 명확히 표면화
         print(f'SA collect: ⚠️ extract 실패 — 수집 건너뜀 / {datetime.datetime.now().strftime("%H:%M")}')
         return EXIT_INFRA_FAILURE
     if not lines:
-        print('SA collect: 0건 (no output)')
+        print(f'SA collect: 0건 / {datetime.datetime.now().strftime("%H:%M")}')
         return EXIT_OK
-    # 헤더가 있으면 첫 줄에 'NO_UNREAD_SA_EMAILS' 또는 'FOUND_UNREAD'
-    if any('NO_UNREAD_SA_EMAILS' in ln for ln in lines):
+    if isinstance(lines[0], str) and any('NO_UNREAD_SA_EMAILS' in ln for ln in lines if isinstance(ln, str)):
         print(f'SA collect: 0건 / {datetime.datetime.now().strftime("%H:%M")}')
         return EXIT_OK
 
@@ -264,11 +317,11 @@ def main() -> int:
     filtered_by: dict[str, int] = {}
     had_item_failure = False
 
-    for line in lines:
-        parts = line.split('\t')
-        if len(parts) != 4:
-            continue  # 헤더/빈줄
-        eid_str, email_time_kst, original_title, article_url = parts
+    for item in _iter_extracted(lines):
+        eid_str = item["email_id"]
+        email_time_kst = item.get("email_time_kst") or ""
+        original_title = item.get("title") or ""
+        article_url = item.get("article_url") or ""
         if article_url.startswith('NO_MAIN_ARTICLE'):
             # 메인 기사 없는 메일 → DB INSERT 없이 seen 처리 (정상 케이스)
             processed_ids.append(eid_str.strip())

@@ -7,6 +7,7 @@ import datetime as dt
 import json
 import re
 import sqlite3
+import sys
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -61,20 +62,24 @@ CREATE TABLE IF NOT EXISTS articles (
     email_id        TEXT UNIQUE,
     ticker          TEXT NOT NULL,
     original_title  TEXT,
-    company_name    TEXT,            -- collect 단계 NULL, publish에서 채움
-    headline        TEXT,            -- ↑
-    summary_core    TEXT,            -- ↑
-    summary_details TEXT,            -- ↑ JSON array of strings
-    tag             TEXT,            -- ↑
+    company_name    TEXT,
+    headline        TEXT,
+    summary_details TEXT,
     ticker_color    TEXT NOT NULL DEFAULT 'blue',
-    tag_color       TEXT NOT NULL DEFAULT 'blue',
     article_url     TEXT NOT NULL,
     email_time_et   TEXT,
     last_modified   TEXT,
-    pub_status      TEXT NOT NULL DEFAULT 'pending',  -- 'pending'|'published'|'failed'|'deleted'|'purged'(30일경과 영구삭제,행만유지)
+    is_read         INTEGER NOT NULL DEFAULT 0,
+    pub_status      TEXT NOT NULL DEFAULT 'pending',
     retry_count     INTEGER NOT NULL DEFAULT 0,
     last_attempt    TEXT,
-    fail_reason     TEXT
+    fail_reason     TEXT,
+    parse_method    TEXT,
+    summary_model   TEXT,
+    source_text     TEXT,
+    source_method   TEXT,
+    source_chars    INTEGER,
+    source_locked   INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_time  ON articles(email_time_et DESC);
@@ -83,37 +88,46 @@ CREATE INDEX IF NOT EXISTS idx_ticker      ON articles(ticker);
 CREATE INDEX IF NOT EXISTS idx_company     ON articles(company_name);
 CREATE INDEX IF NOT EXISTS idx_pub_status  ON articles(pub_status);
 
+-- 목록 조회의 WHERE + ORDER BY를 한 인덱스에서 처리한다. email_id는 문자열
+-- 컬럼이므로 실제 정렬식과 동일한 expression index를 사용한다.
+CREATE INDEX IF NOT EXISTS idx_status_email_time ON articles(
+    pub_status, email_time_et DESC, CAST(email_id AS INTEGER) DESC
+);
+CREATE INDEX IF NOT EXISTS idx_status_last_mod ON articles(
+    pub_status, last_modified DESC, CAST(email_id AS INTEGER) DESC
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
     ticker,
     company_name,
     headline,
-    summary_core,
     summary_details,
     original_title,
     content='articles',
     content_rowid='id'
 );
 
--- FTS 트리거: pending 상태에서는 한국어 컬럼이 NULL일 수 있어 COALESCE로 보호
 CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
-    INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_core, summary_details, original_title)
+    INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_details, original_title)
     VALUES (new.id, new.ticker, COALESCE(new.company_name,''), COALESCE(new.headline,''),
-            COALESCE(new.summary_core,''), COALESCE(new.summary_details,''), COALESCE(new.original_title,''));
+            COALESCE(new.summary_details,''), COALESCE(new.original_title,''));
 END;
 
 CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
-    INSERT INTO articles_fts(articles_fts, rowid, ticker, company_name, headline, summary_core, summary_details, original_title)
+    INSERT INTO articles_fts(articles_fts, rowid, ticker, company_name, headline, summary_details, original_title)
     VALUES ('delete', old.id, old.ticker, COALESCE(old.company_name,''), COALESCE(old.headline,''),
-            COALESCE(old.summary_core,''), COALESCE(old.summary_details,''), COALESCE(old.original_title,''));
+            COALESCE(old.summary_details,''), COALESCE(old.original_title,''));
 END;
 
-CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
-    INSERT INTO articles_fts(articles_fts, rowid, ticker, company_name, headline, summary_core, summary_details, original_title)
+CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE OF
+    ticker, company_name, headline, summary_details, original_title
+ON articles BEGIN
+    INSERT INTO articles_fts(articles_fts, rowid, ticker, company_name, headline, summary_details, original_title)
     VALUES ('delete', old.id, old.ticker, COALESCE(old.company_name,''), COALESCE(old.headline,''),
-            COALESCE(old.summary_core,''), COALESCE(old.summary_details,''), COALESCE(old.original_title,''));
-    INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_core, summary_details, original_title)
+            COALESCE(old.summary_details,''), COALESCE(old.original_title,''));
+    INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_details, original_title)
     VALUES (new.id, new.ticker, COALESCE(new.company_name,''), COALESCE(new.headline,''),
-            COALESCE(new.summary_core,''), COALESCE(new.summary_details,''), COALESCE(new.original_title,''));
+            COALESCE(new.summary_details,''), COALESCE(new.original_title,''));
 END;
 """
 
@@ -134,7 +148,6 @@ def get_conn():
     )
     conn.row_factory = sqlite3.Row
     conn.execute(f"PRAGMA busy_timeout={settings.DB_BUSY_TIMEOUT_MS}")
-    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
@@ -145,37 +158,78 @@ DROP TRIGGER IF EXISTS articles_au;
 DROP TABLE  IF EXISTS articles_fts;
 
 CREATE VIRTUAL TABLE articles_fts USING fts5(
-    ticker, company_name, headline, summary_core, summary_details, original_title,
+    ticker, company_name, headline, summary_details, original_title,
     content='articles', content_rowid='id'
 );
 
 CREATE TRIGGER articles_ai AFTER INSERT ON articles BEGIN
-    INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_core, summary_details, original_title)
+    INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_details, original_title)
     VALUES (new.id, new.ticker, COALESCE(new.company_name,''), COALESCE(new.headline,''),
-            COALESCE(new.summary_core,''), COALESCE(new.summary_details,''), COALESCE(new.original_title,''));
+            COALESCE(new.summary_details,''), COALESCE(new.original_title,''));
 END;
 
 CREATE TRIGGER articles_ad AFTER DELETE ON articles BEGIN
-    INSERT INTO articles_fts(articles_fts, rowid, ticker, company_name, headline, summary_core, summary_details, original_title)
+    INSERT INTO articles_fts(articles_fts, rowid, ticker, company_name, headline, summary_details, original_title)
     VALUES ('delete', old.id, old.ticker, COALESCE(old.company_name,''), COALESCE(old.headline,''),
-            COALESCE(old.summary_core,''), COALESCE(old.summary_details,''), COALESCE(old.original_title,''));
+            COALESCE(old.summary_details,''), COALESCE(old.original_title,''));
 END;
 
-CREATE TRIGGER articles_au AFTER UPDATE ON articles BEGIN
-    INSERT INTO articles_fts(articles_fts, rowid, ticker, company_name, headline, summary_core, summary_details, original_title)
+CREATE TRIGGER articles_au AFTER UPDATE OF
+    ticker, company_name, headline, summary_details, original_title
+ON articles BEGIN
+    INSERT INTO articles_fts(articles_fts, rowid, ticker, company_name, headline, summary_details, original_title)
     VALUES ('delete', old.id, old.ticker, COALESCE(old.company_name,''), COALESCE(old.headline,''),
-            COALESCE(old.summary_core,''), COALESCE(old.summary_details,''), COALESCE(old.original_title,''));
-    INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_core, summary_details, original_title)
+            COALESCE(old.summary_details,''), COALESCE(old.original_title,''));
+    INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_details, original_title)
     VALUES (new.id, new.ticker, COALESCE(new.company_name,''), COALESCE(new.headline,''),
-            COALESCE(new.summary_core,''), COALESCE(new.summary_details,''), COALESCE(new.original_title,''));
+            COALESCE(new.summary_details,''), COALESCE(new.original_title,''));
 END;
 
-INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_core, summary_details, original_title)
+INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_details, original_title)
 SELECT id, ticker,
        COALESCE(company_name,''), COALESCE(headline,''),
-       COALESCE(summary_core,''), COALESCE(summary_details,''), COALESCE(original_title,'')
+       COALESCE(summary_details,''), COALESCE(original_title,'')
 FROM articles WHERE pub_status != 'purged';
 """
+
+_FTS_UPDATE_TRIGGER_SQL = """
+DROP TRIGGER IF EXISTS articles_au;
+CREATE TRIGGER articles_au AFTER UPDATE OF
+    ticker, company_name, headline, summary_details, original_title
+ON articles BEGIN
+    INSERT INTO articles_fts(articles_fts, rowid, ticker, company_name, headline, summary_details, original_title)
+    VALUES ('delete', old.id, old.ticker, COALESCE(old.company_name,''), COALESCE(old.headline,''),
+            COALESCE(old.summary_details,''), COALESCE(old.original_title,''));
+    INSERT INTO articles_fts(rowid, ticker, company_name, headline, summary_details, original_title)
+    VALUES (new.id, new.ticker, COALESCE(new.company_name,''), COALESCE(new.headline,''),
+            COALESCE(new.summary_details,''), COALESCE(new.original_title,''));
+END;
+"""
+
+_LEGACY_ARTICLE_COLS = ("summary_core", "tag", "tag_color", "email_body")
+
+
+def _drop_legacy_article_columns(conn: sqlite3.Connection) -> None:
+    cols = _table_columns(conn, "articles")
+    fts_cols = _table_columns(conn, "articles_fts") if "articles_fts" in {
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    } else set()
+    need_drop = any(name in cols for name in _LEGACY_ARTICLE_COLS)
+    need_fts = "summary_core" in fts_cols or need_drop
+    if not need_drop and not need_fts:
+        return
+    conn.executescript(
+        """
+        DROP TRIGGER IF EXISTS articles_ai;
+        DROP TRIGGER IF EXISTS articles_ad;
+        DROP TRIGGER IF EXISTS articles_au;
+        DROP TABLE IF EXISTS articles_fts;
+        """
+    )
+    for name in _LEGACY_ARTICLE_COLS:
+        if name in _table_columns(conn, "articles"):
+            conn.execute(f"ALTER TABLE articles DROP COLUMN {name}")
+    conn.executescript(_FTS_REBUILD_SQL)
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -185,7 +239,12 @@ def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_conn() as conn:
+        # journal mode 변경은 연결마다 파일 잠금을 수반할 수 있으므로 초기화 때만 수행한다.
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(CREATE_SQL)
+        # 기존 DB의 범용 UPDATE 트리거도 교체한다. 읽음·재시도 상태 변경은
+        # 검색 문서를 바꾸지 않으므로 FTS 삭제/재삽입 대상이 아니다.
+        conn.executescript(_FTS_UPDATE_TRIGGER_SQL)
         cols = _table_columns(conn, "articles")
         if "is_read" not in cols:
             conn.execute("ALTER TABLE articles ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0")
@@ -196,9 +255,48 @@ def init_db() -> None:
             conn.execute("ALTER TABLE articles ADD COLUMN parse_method TEXT")
         if "summary_model" not in cols:
             conn.execute("ALTER TABLE articles ADD COLUMN summary_model TEXT")
+        if "source_text" not in cols:
+            conn.execute("ALTER TABLE articles ADD COLUMN source_text TEXT")
+        if "source_method" not in cols:
+            conn.execute("ALTER TABLE articles ADD COLUMN source_method TEXT")
+        if "source_chars" not in cols:
+            conn.execute("ALTER TABLE articles ADD COLUMN source_chars INTEGER")
+        if "source_locked" not in cols:
+            conn.execute("ALTER TABLE articles ADD COLUMN source_locked INTEGER NOT NULL DEFAULT 0")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS processing_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_id INTEGER,
+                stage TEXT,
+                method TEXT,
+                chars INTEGER,
+                locked INTEGER,
+                elapsed_ms INTEGER,
+                error TEXT,
+                accepted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_attempts_article "
+            "ON processing_attempts(article_id, id)"
+        )
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_status_unread_email_time ON articles(
+                pub_status, is_read, email_time_et DESC, CAST(email_id AS INTEGER) DESC
+            );
+            CREATE INDEX IF NOT EXISTS idx_status_unread_last_mod ON articles(
+                pub_status, is_read, last_modified DESC, CAST(email_id AS INTEGER) DESC
+            );
+            """
+        )
+        _drop_legacy_article_columns(conn)
         if "original_title" not in _table_columns(conn, "articles_fts"):
             conn.executescript(_FTS_REBUILD_SQL)
-    print(f"DB initialized: {DB_PATH}")
+        print(f"DB initialized: {DB_PATH}", file=sys.stderr)
 
 
 def build_fts_query(query: str) -> str:
@@ -232,6 +330,23 @@ def row_to_dict(row: sqlite3.Row) -> dict:
     return article
 
 
+ARTICLE_LIST_COLUMNS = (
+    "id",
+    "email_id",
+    "ticker",
+    "original_title",
+    "company_name",
+    "headline",
+    "summary_details",
+    "ticker_color",
+    "article_url",
+    "email_time_et",
+    "is_read",
+    "parse_method",
+    "summary_model",
+)
+
+
 def query_articles(
     q: str = "",
     ticker: str = "",
@@ -243,6 +358,8 @@ def query_articles(
     deleted: bool = False,
     limit: int = 50,
     offset: int = 0,
+    include_total: bool = True,
+    include_queue: bool = True,
 ) -> dict:
     """기사 목록 조회. 기본은 pub_status='published'만 노출.
     deleted=True 이면 휴지통(pub_status='deleted')만 노출.
@@ -289,14 +406,18 @@ def query_articles(
     field = "articles.last_modified" if sort_by == "last_modified" else "articles.email_time_et"
     order_clause = f"{field} {direction}, CAST(articles.email_id AS INTEGER) {direction}"
 
+    list_columns = ", ".join(f"articles.{column}" for column in ARTICLE_LIST_COLUMNS)
+
     with get_conn() as conn:
-        total = conn.execute(
-            f"SELECT COUNT(*) FROM articles {joins} {where_sql}", params
-        ).fetchone()[0]
+        total = None
+        if include_total:
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM articles {joins} {where_sql}", params
+            ).fetchone()[0]
 
         rows = conn.execute(
             f"""
-            SELECT articles.* FROM articles {joins}
+            SELECT {list_columns} FROM articles {joins}
             {where_sql}
             ORDER BY {order_clause}
             LIMIT ? OFFSET ?
@@ -304,12 +425,41 @@ def query_articles(
             params + [limit, offset],
         ).fetchall()
 
-    return {
-        "total": total,
+        queue_row = None
+        if include_queue:
+            # 최초 목록 조회에서는 별도 왕복 없이 배지까지 함께 반환한다.
+            queue_row = conn.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN pub_status = 'pending' THEN 1 ELSE 0 END) AS pending,
+                    SUM(CASE WHEN pub_status = 'failed' THEN 1 ELSE 0 END) AS failed,
+                    SUM(CASE WHEN pub_status = 'published' AND is_read = 0 THEN 1 ELSE 0 END) AS unread
+                FROM articles
+                """
+            ).fetchone()
+
+    result = {
         "limit": limit,
         "offset": offset,
         "items": [row_to_dict(r) for r in rows],
     }
+    if total is not None:
+        result["total"] = total
+    if queue_row is not None:
+        result["queue"] = {
+            "pending": queue_row["pending"] or 0,
+            "failed": queue_row["failed"] or 0,
+            "unread": queue_row["unread"] or 0,
+        }
+    return result
+
+
+def get_published_article_count() -> int:
+    """새 기사 확인용 경량 카운트. 목록 본문과 큐 집계는 읽지 않는다."""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM articles WHERE pub_status = 'published'"
+        ).fetchone()[0]
 
 
 def get_filter_options() -> dict:
@@ -370,9 +520,11 @@ def purge_old_deleted(days: int = 30) -> int:
                SET original_title  = '',
                    company_name    = '',
                    headline        = '',
-                   summary_core    = '',
                    summary_details = '[]',
-                   tag             = '',
+                   source_text     = NULL,
+                   source_method   = NULL,
+                   source_chars    = NULL,
+                   source_locked   = 0,
                    fail_reason     = NULL,
                    pub_status      = 'purged'
              WHERE pub_status = 'deleted'
@@ -407,7 +559,7 @@ def insert_pending_article(
     original_title: str = "",
     email_time_et: str = "",
 ) -> Optional[int]:
-    """작업 1 (collect) — envelope 정보만으로 pending 행 INSERT.
+    """작업 1 (collect) — envelope 정보로 pending 행 INSERT.
     필수: email_id, ticker, article_url.
     pub_status='pending', last_modified=now 자동 설정.
     한국어 컬럼(company_name 등)은 NULL로 비워두고 작업 2에서 채움.
@@ -428,6 +580,81 @@ def insert_pending_article(
             return cur.lastrowid
         except sqlite3.IntegrityError:
             return None
+
+
+def source_quality_ok(chars: int | None, locked: int | bool | None) -> bool:
+    """미리보기·잠금 본문은 요약/발행에 쓰지 않는다."""
+    if locked:
+        return False
+    return int(chars or 0) >= int(settings.SOURCE_MIN_CHARS)
+
+
+def save_source(
+    article_id: int,
+    *,
+    text: str,
+    method: str | None,
+    locked: bool = False,
+) -> None:
+    chars = len(text or "")
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE articles SET
+              source_text = ?, source_method = ?, source_chars = ?, source_locked = ?
+            WHERE id = ?
+            """,
+            (text or None, method, chars, 1 if locked else 0, article_id),
+        )
+
+
+def get_source(article_id: int) -> Optional[dict]:
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT source_text, source_method, source_chars, source_locked
+            FROM articles WHERE id = ?
+            """,
+            (article_id,),
+        ).fetchone()
+    if not row:
+        return None
+    text = row["source_text"]
+    if not text:
+        return None
+    return {
+        "text": text,
+        "method": row["source_method"],
+        "chars": int(row["source_chars"] or len(text)),
+        "locked": bool(row["source_locked"]),
+    }
+
+
+def log_fetch_attempts(article_id: int, attempts: list) -> None:
+    if not attempts:
+        return
+    now = _now_kst()
+    with get_conn() as conn:
+        conn.executemany(
+            """
+            INSERT INTO processing_attempts
+              (article_id, stage, method, chars, locked, elapsed_ms, error, accepted, created_at)
+            VALUES (?, 'fetch', ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    article_id,
+                    att.get("method"),
+                    att.get("chars"),
+                    1 if att.get("locked") else 0,
+                    att.get("elapsed_ms"),
+                    att.get("error"),
+                    1 if att.get("accepted") else 0,
+                    now,
+                )
+                for att in attempts
+            ],
+        )
 
 
 def get_pending_due(
@@ -475,7 +702,6 @@ def publish_article(
     """작업 2 성공 — 한국어 요약 UPDATE + pub_status='published'.
     ticker가 None이 아닌 경우 ticker 컬럼도 함께 업데이트.
     last_modified=now, fail_reason=NULL.
-    (summary_core/tag/tag_color는 더 이상 생성하지 않아 건드리지 않음 — 기존 값 유지)
     pending/failed 발행과 published 수동 재처리는 허용하고 deleted/purged는 보호한다."""
     last_modified = _now_kst()
     if ticker is not None:

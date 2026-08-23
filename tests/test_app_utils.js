@@ -12,6 +12,11 @@ assert.equal(
 );
 assert.equal(utils.formatTime('2026-07-17 01:56 KST'), '07/17 01:56');
 assert.deepEqual(utils.formatChangePct(1.234), { text: '+1.23%', cls: 'up' });
+assert.equal(utils.formatExtendedMarketState('PRE', '장외'), 'PRE');
+assert.equal(utils.formatExtendedMarketState('POSTPOST', '장외'), 'POST');
+assert.equal(utils.formatExtendedMarketState('', '장외'), '장외');
+assert.equal(utils.isExtendedMarketState('PREPRE'), true);
+assert.equal(utils.isExtendedMarketState('REGULAR'), false);
 assert.equal(utils.formatSummaryModel('claude-opus-5'), 'Claude Opus 5');
 assert.equal(utils.formatSummaryModel('claude-opus-4-8'), 'Claude Opus 4.8');
 assert.equal(utils.formatSummaryModel('claude-sonnet-4-5-20250929'), 'Claude Sonnet 4.5');

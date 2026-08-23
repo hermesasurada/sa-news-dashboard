@@ -26,8 +26,12 @@ def cmd_list(batch_size: int):
 
 
 def cmd_parse(article_id: int):
-    """단일 article_url 파싱 후 본문 stdout 출력. 실패 시 exit code 1."""
+    """article_url로 SA 사이트를 파싱한 뒤 본문을 stdout에 출력. 실패 시 exit code 1.
+
+    품질을 통과한 본문만 DB source_text 에 저장한다. 미리보기는 성공이 아니다.
+    """
     from sa_article_parser import parse_sa_article
+    db.init_db()
     with db.get_conn() as conn:
         row = conn.execute(
             "SELECT article_url FROM articles WHERE id = ?", (article_id,)
@@ -35,20 +39,27 @@ def cmd_parse(article_id: int):
     if not row:
         print(f'ERROR: article_id {article_id} not found', file=sys.stderr)
         sys.exit(2)
-    url = row[0]
+    url = row[0] if not hasattr(row, "keys") else row["article_url"]
     r = parse_sa_article(url)
-    if not r.get('success'):
-        # 실패 사유 stderr, mark_attempt_failed는 LLM이 호출
-        print(f'PARSE_FAIL: {r.get("error", "unknown")}', file=sys.stderr)
-        sys.exit(1)
-    content = r.get('content', '')
-    # 어떤 파서가 쓰였는지 stderr로 전달 (호출측이 DB 기록)
-    print(f'PARSE_METHOD: {r.get("method", "")}', file=sys.stderr)
-    # SA 공식 태깅 티커(후보) stderr로 전달 (API 파서만 채움; 요약기가 화이트리스트로 사용)
-    tickers = r.get('tickers') or []
-    if tickers:
-        print('SA_TICKERS: ' + json.dumps(tickers, ensure_ascii=False), file=sys.stderr)
-    print(content)
+    db.log_fetch_attempts(article_id, r.get("attempts") or [])
+    content = (r.get("content") or "").strip()
+    locked = bool(r.get("locked"))
+    method = r.get("method") or ""
+    if r.get("success") and db.source_quality_ok(len(content), locked):
+        db.save_source(article_id, text=content, method=method, locked=False)
+        print(f"PARSE_METHOD: {method}", file=sys.stderr)
+        print(f"PARSE_CHARS: {len(content)}", file=sys.stderr)
+        print("PARSE_LOCKED: 0", file=sys.stderr)
+        tickers = r.get("tickers") or []
+        if tickers:
+            print("SA_TICKERS: " + json.dumps(tickers, ensure_ascii=False), file=sys.stderr)
+        print(content)
+        return
+    db.save_source(article_id, text=content, method=method or None, locked=True)
+    print(f"PARSE_FAIL: {r.get('error') or 'preview-only'}", file=sys.stderr)
+    print(f"PARSE_CHARS: {len(content)}", file=sys.stderr)
+    print("PARSE_LOCKED: 1", file=sys.stderr)
+    sys.exit(1)
 
 
 def cmd_stats():

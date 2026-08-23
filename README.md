@@ -8,7 +8,7 @@ Seeking Alpha Breaking News 이메일을 수집하고, 기사 본문을 한국�
 SA 이메일
   → himalaya envelope/message
   → articles(pub_status=pending)
-  → SA API / Jina / Playwright / curl_cffi
+  → SA API(로그인 쿠키 있으면 전문) / Playwright / curl_cffi / Jina
   → Claude CLI (실패 시 Grok CLI)
   → articles(pub_status=published)
   → FastAPI + 정적 JavaScript UI
@@ -27,7 +27,8 @@ SA 이메일
 | `scripts/sa_collect.py` | Stage 1: 미읽음 이메일을 pending으로 적재 |
 | `scripts/sa_summarize_claude.py` | Stage 2: 파싱·요약·발행 |
 | `scripts/sa_claude_cli.py` | Claude/Grok CLI 어댑터 |
-| `sa_article_parser.py` | 4단계 SA 본문 파서 |
+| `sa_article_parser.py` | 로그인 세션 우선 SA 본문 파서 |
+| `scripts/sa_refresh_login.py` | headed 브라우저로 `sa_cookies.json` 갱신 |
 | `static/app.js` | 화면 상태와 사용자 동작 |
 | `static/app-utils.js` | 테스트 가능한 HTML/URL/표시 유틸리티 |
 | `static/stats.html` | Chart.js 통계 화면 |
@@ -42,6 +43,8 @@ python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 venv/bin/playwright install chromium
 venv/bin/uvicorn app:app --host 127.0.0.1 --port 8181
+# SA 로그인 세션(전문 수집): 설치된 Chrome이 열린다
+venv/bin/python3 scripts/sa_refresh_login.py
 ```
 
 브라우저에서 `http://127.0.0.1:8181`을 열고 상태 확인은 `GET /api/health`를 사용합니다.
@@ -65,6 +68,9 @@ node --check static/app.js
 | `PORTFOLIO_API_BASE` | `http://127.0.0.1:8765` | 시세 서비스 주소 |
 | `PORTFOLIO_API_TIMEOUT_SECONDS` | `6` | 시세 요청 제한 시간 |
 | `SA_PUBLISH_BATCH_SIZE` | `10` | 발행 배치 크기 |
+| `SA_ARTICLE_GAP_SECONDS` | `20` | 기사 사이 Playwright 요청 간격 |
+| `SA_SOURCE_MIN_CHARS` | `700` | 발행에 쓸 최소 본문 길이 |
+| `SA_ALLOW_ANON_FETCH` | `0` | 비로그인 SA 미리보기 허용 |
 | `SA_PARSE_TIMEOUT_SECONDS` | `200` | 기사 파서 subprocess 제한 시간 |
 | `SA_SUMMARY_TIMEOUT_SECONDS` | `120` | Claude/Grok 호출 제한 시간 |
 | `SA_SUMMARY_CONTENT_LIMIT` | `10000` | LLM에 전달할 최대 본문 문자 수 |
@@ -97,7 +103,7 @@ node --check static/app.js
 - `deleted`: 휴지통, 복원 가능
 - `purged`: 삭제 후 30일 경과. 중복 방지용 행만 보존
 
-`summary_core`, `tag`, `tag_color`는 과거 데이터 호환용 컬럼입니다. 현재 발행기는 `headline`, `summary_details`, `ticker_color`만 생성합니다.
+발행기는 `headline`, `summary_details`, `ticker_color`와 원문 `source_text`를 저장합니다.
 
 ## 보안 경계
 

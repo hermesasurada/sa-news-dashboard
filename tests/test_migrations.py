@@ -44,7 +44,7 @@ class LegacyMigrationTests(unittest.TestCase):
         result = db.query_articles()
         self.assertEqual(result["total"], 1)
         self.assertEqual(result["items"][0]["headline"], "Apple 테스트")
-        self.assertEqual(result["items"][0]["summary_details"], ["상세 문장"])
+        self.assertEqual(result["items"][0]["summary_details"], ["핵심 문장", "상세 문장"])
 
 
 if __name__ == "__main__":

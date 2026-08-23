@@ -2,6 +2,7 @@
 SA News Dashboard — FastAPI 앱
 """
 from fastapi import FastAPI, Query, Body, HTTPException
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from pathlib import Path
@@ -11,12 +12,24 @@ from quote_service import InvalidTickerError, get_price_quote
 BASE_DIR = Path(__file__).parent
 
 app = FastAPI(title="SA News Dashboard")
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # DB 초기화
 db.init_db()
 
 # Static files (index.html, app.js, etc.)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+
+@app.middleware("http")
+async def cache_versioned_static_assets(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        # root()가 파일 mtime을 쿼리 버전으로 붙이므로 변경 시 URL 자체가 바뀐다.
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif request.url.path == "/api/filters":
+        response.headers["Cache-Control"] = "private, max-age=60"
+    return response
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -44,6 +57,8 @@ def get_articles(
     deleted: bool = Query(False, description="휴지통(삭제됨)만 보기"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    include_total: bool = Query(True, description="정확한 검색 결과 건수 포함"),
+    include_queue: bool = Query(True, description="대기·실패·미읽음 통계 포함"),
 ):
     return db.query_articles(
         q=q, ticker=ticker,
@@ -52,7 +67,15 @@ def get_articles(
         unread_only=unread_only,
         deleted=deleted,
         limit=limit, offset=offset,
+        include_total=include_total,
+        include_queue=include_queue,
     )
+
+
+@app.get("/api/articles/state")
+def get_articles_state():
+    """새 기사 폴링용 경량 상태. 기사 본문과 큐 통계는 반환하지 않는다."""
+    return {"total": db.get_published_article_count()}
 
 
 @app.get("/api/filters")
