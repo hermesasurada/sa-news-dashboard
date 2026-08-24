@@ -25,6 +25,7 @@
   --faint: #9aa1af;
   --accent: #2f56e0;    /* 파란 라벨/액션 */
   --accent-ink: #1f3fb0;
+  --accent-soft: #dbe3fb;  /* 활성 토글 배경 틴트 */
 
   /* 재사용 섀도 */
   --nm-raised: 6px 6px 14px var(--sh-dark), -6px -6px 12px var(--sh-light);
@@ -167,7 +168,8 @@ body {
   box-shadow: var(--nm-inset-sm);
 }
 
-/* 공통 돌출형 버튼 */
+/* 공통 돌출형 버튼 — 그림자는 website-monitor의 --shadow와 동일(6/14, -6/12).
+   작은 흐림(-3px -3px 7px)은 흰 하이라이트가 뭉쳐 얼룩처럼 보였다. */
 .btn-search,
 .btn-reset,
 .btn-sort,
@@ -179,7 +181,7 @@ body {
   border-radius: 4px;
   background: var(--surface);
   color: var(--ink-2);
-  box-shadow: var(--nm-raised-sm);
+  box-shadow: var(--nm-raised);
   cursor: pointer;
   transition: box-shadow 0.14s, color 0.14s;
 }
@@ -189,7 +191,7 @@ body {
 .btn-unread:active,
 .btn-ticker:active,
 .btn-stats:active,
-.btn-trash-view:active { box-shadow: var(--nm-inset-sm); }
+.btn-trash-view:active { box-shadow: var(--nm-inset); }
 
 .btn-search {
   padding: 0 20px;
@@ -221,7 +223,9 @@ body {
 .btn-sort.alt {
   color: var(--accent);
   font-weight: 700;
-  box-shadow: var(--nm-inset-sm);
+  /* 흰색 inset은 밝은 버튼 위에서 얼룩으로 보인다 → WM처럼 강조 틴트로 표시 */
+  background: var(--accent-soft);
+  box-shadow: var(--nm-raised);
 }
 .btn-unread.active {
   background: var(--accent);
