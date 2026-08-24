@@ -31,6 +31,11 @@
   --nm-raised-sm: 3px 3px 7px var(--sh-dark), -3px -3px 7px var(--sh-light);
   --nm-inset: inset 3px 3px 7px var(--sh-dark), inset -3px -3px 7px var(--sh-light);
   --nm-inset-sm: inset 2px 2px 5px var(--sh-dark), inset -2px -2px 5px var(--sh-light);
+  /* 강조색으로 채워진 버튼용 — 밝은 표면용 흰색 하이라이트를 쓰면
+     파란 배경 위에 흰 후광이 번져 보인다. 바깥 그림자는 어두운 쪽만,
+     눌린(활성) 상태는 WM과 동일하게 inset. */
+  --nm-solid: 3px 3px 7px var(--sh-dark);
+  --nm-solid-on: inset 3px 3px 7px rgba(18,26,56,0.40), inset -2px -2px 6px rgba(255,255,255,0.15);
 }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -62,7 +67,7 @@ body {
   user-select: none;
   letter-spacing: 0.02em;
   border-radius: 4px;
-  box-shadow: var(--nm-raised-sm);
+  box-shadow: var(--nm-solid);
   margin: 0 0 16px;
 }
 #new-articles-banner:hover { background: var(--accent-ink); }
@@ -194,7 +199,9 @@ body {
   font-weight: 700;
   letter-spacing: 0.03em;
 }
+.btn-search { box-shadow: var(--nm-solid); }
 .btn-search:hover { background: var(--accent-ink); }
+.btn-search:active { box-shadow: var(--nm-solid-on); }
 .btn-reset { padding: 0 14px; font-size: 13px; }
 .btn-reset:hover { color: var(--ink); }
 
@@ -220,6 +227,7 @@ body {
   background: var(--accent);
   color: #fff;
   font-weight: 700;
+  box-shadow: var(--nm-solid-on);
 }
 
 /* ── 휴지통 보기 토글 ── */
@@ -233,7 +241,7 @@ body {
   margin-left: auto;
 }
 .btn-trash-view:hover { color: #c0392b; }
-.btn-trash-view.active { background: #c0392b; color: #fff; }
+.btn-trash-view.active { background: #c0392b; color: #fff; box-shadow: var(--nm-solid-on); }
 
 /* ── 통계 페이지 진입 ── */
 .btn-stats {
@@ -258,7 +266,7 @@ body {
   font-size: 13px; white-space: nowrap; max-width: 170px;
 }
 .btn-ticker:hover { color: var(--ink); }
-.btn-ticker.active { background: var(--accent); color: #fff; font-weight: 700; }
+.btn-ticker.active { background: var(--accent); color: #fff; font-weight: 700; box-shadow: var(--nm-solid-on); }
 .btn-ticker span { overflow: hidden; text-overflow: ellipsis; }
 
 /* ── 복원 버튼 (휴지통 카드) ── */
