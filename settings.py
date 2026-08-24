@@ -57,6 +57,15 @@ PUBLISH_PARSE_TIMEOUT_SECONDS = _env_int("SA_PARSE_TIMEOUT_SECONDS", 200)
 # 기사와 기사 사이 Playwright 요청 간격. SA 차단 완화. 0이면 대기 없음.
 ARTICLE_GAP_SECONDS = _env_int("SA_ARTICLE_GAP_SECONDS", 20, minimum=0)
 SOURCE_MIN_CHARS = _env_int("SA_SOURCE_MIN_CHARS", 700)
+# 로그인 세션 사용 여부. SA가 세션을 무효화(403)하면 인증 경로가 기사마다
+# ~11초를 헛되이 쓰고 403을 반복 유발하므로, 재로그인 전까지 0으로 꺼둔다.
+USE_LOGIN_SESSION = os.environ.get("SA_USE_LOGIN", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+
 ALLOW_ANON_FETCH = os.environ.get("SA_ALLOW_ANON_FETCH", "0").strip().lower() not in {
     "0",
     "false",

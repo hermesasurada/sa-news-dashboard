@@ -32,7 +32,9 @@ import settings
 PW_PROFILE_DIR = str(Path(__file__).resolve().parent / "pw_profile")
 COOKIES_PATH = Path(os.environ.get("SA_COOKIES_PATH") or Path(__file__).resolve().parent / "sa_cookies.json")
 LOGIN_COOKIE_NAMES = {"user_remember_token", "user_id", "_sapi_session_id", "gk_user_access"}
-AUTH_PREVIEW_LIMIT = 700
+# 본문 인정 기준. settings.SOURCE_MIN_CHARS 단일 소스로 둔다.
+# (예전엔 여기 700이 하드코딩돼 있어 SA_SOURCE_MIN_CHARS 설정이 무시됐다)
+AUTH_PREVIEW_LIMIT = settings.SOURCE_MIN_CHARS
 
 STEALTH_INIT = """
 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
@@ -433,7 +435,8 @@ def _acceptable_source(result: Optional[Dict[str, Any]]) -> bool:
     content = (result.get("content") or "").strip()
     if len(content) < AUTH_PREVIEW_LIMIT:
         return False
-    if result.get("locked"):
+    # 익명 모드에서는 본문이 전부 프리뷰라 잠금 여부로 거르지 않는다(예전 동작).
+    if result.get("locked") and settings.USE_LOGIN_SESSION:
         return False
     return True
 
@@ -466,11 +469,12 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
     lead = _og_lead(url)
     cookies = load_sa_cookies()
     steps: List[tuple] = []
-    if not has_login_cookies(cookies):
+    use_login = settings.USE_LOGIN_SESSION and has_login_cookies(cookies)
+    if settings.USE_LOGIN_SESSION and not has_login_cookies(cookies):
         # 인증 경로가 통째로 빠지면 본문이 프리뷰(~300자)로 잘려 품질 게이트에 걸린다.
         # 원인을 못 찾고 '기사 실패'만 반복되지 않도록 stderr로 분명히 알린다.
         _warn_no_login()
-    if has_login_cookies(cookies):
+    if use_login:
         steps.append(
             ("playwright_auth", lambda: parse_with_playwright_stealth(url, cookies=cookies))
         )
