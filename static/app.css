@@ -17,9 +17,7 @@
   --surface: #e7e9ef;
 
   --sh-dark: #c4c8d4;   /* 우하단 그림자 */
-  /* 좌상단 하이라이트. 배경(#e7e9ef) 위 순백(#fff)은 대비 +24라 밝은 회색
-     버튼에서 흰 얼룩처럼 뭉쳐 보인다. 배경보다 살짝만 밝게 잡아 완화. */
-  --sh-light: #f2f4fa;
+  --sh-light: #ffffff;  /* 좌상단 하이라이트 */
 
   --ink: #232732;       /* 제목 (near-black) */
   --ink-2: #545c6b;     /* 본문 */
@@ -27,7 +25,6 @@
   --faint: #9aa1af;
   --accent: #2f56e0;    /* 파란 라벨/액션 */
   --accent-ink: #1f3fb0;
-  --accent-soft: #dbe3fb;  /* 활성 토글 배경 틴트 */
 
   /* 재사용 섀도 */
   --nm-raised: 6px 6px 14px var(--sh-dark), -6px -6px 12px var(--sh-light);
@@ -96,7 +93,12 @@ body {
   place-items: center;
   background: linear-gradient(135deg, #4169e8, var(--accent));
   color: #fff;
-  font-size: 20px;
+  /* Seeking Alpha 심볼(α). serif 계열이 SA 로고의 곡선형 알파에 가깝다. */
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1;
+  padding-bottom: 2px;  /* α 시각 중심이 아래로 처져 보이는 것 보정 */
   box-shadow: var(--nm-raised-sm);
 }
 .header h1 {
@@ -170,8 +172,7 @@ body {
   box-shadow: var(--nm-inset-sm);
 }
 
-/* 공통 돌출형 버튼 — 그림자는 website-monitor의 --shadow와 동일(6/14, -6/12).
-   작은 흐림(-3px -3px 7px)은 흰 하이라이트가 뭉쳐 얼룩처럼 보였다. */
+/* 공통 돌출형 버튼 */
 .btn-search,
 .btn-reset,
 .btn-sort,
@@ -183,7 +184,7 @@ body {
   border-radius: 4px;
   background: var(--surface);
   color: var(--ink-2);
-  box-shadow: var(--nm-raised);
+  box-shadow: var(--nm-raised-sm);
   cursor: pointer;
   transition: box-shadow 0.14s, color 0.14s;
 }
@@ -193,7 +194,7 @@ body {
 .btn-unread:active,
 .btn-ticker:active,
 .btn-stats:active,
-.btn-trash-view:active { box-shadow: var(--nm-inset); }
+.btn-trash-view:active { box-shadow: var(--nm-inset-sm); }
 
 .btn-search {
   padding: 0 20px;
@@ -225,9 +226,7 @@ body {
 .btn-sort.alt {
   color: var(--accent);
   font-weight: 700;
-  /* 흰색 inset은 밝은 버튼 위에서 얼룩으로 보인다 → WM처럼 강조 틴트로 표시 */
-  background: var(--accent-soft);
-  box-shadow: var(--nm-raised);
+  box-shadow: var(--nm-inset-sm);
 }
 .btn-unread.active {
   background: var(--accent);
