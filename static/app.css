@@ -927,3 +927,20 @@ body[data-reader-font="mono"] .card-summary {
   .btn-unread { padding: 0 12px; gap: 0; max-width: none; }
   .btn-reset { padding: 0 10px; }
 }
+
+/* ── 모바일 GPU 합성 시 모서리 깨짐 회피 ──
+   진한 배경 + border-radius + box-shadow 조합에서 일부 모바일 브라우저가
+   합성 단계에 모서리 안티앨리어싱을 삼각형으로 잘라먹어, 그 자리에 뒤
+   배경이 비친다. 회색 버튼은 배경이 body와 같은 색이라 무증상이고 파란
+   요소(로고/검색/활성 토글)에서만 흰 쐐기로 드러난다.
+   배경 클리핑을 명시하고 레이어를 미리 승격해 회피한다. */
+.brand .logo,
+.btn-search,
+.btn-unread.active,
+.btn-ticker.active,
+.btn-trash-view.active {
+  background-clip: padding-box;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
