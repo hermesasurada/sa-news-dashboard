@@ -118,7 +118,7 @@ def record_auth_result(ok: bool, *, probed: bool = False) -> None:
         print(
             f"     ⚠️ SA 로그인 세션 무효 — 인증이 {state['consecutive_failures']}회 연속 "
             f"프리뷰만 반환했습니다. 익명 경로로 자동 전환합니다(본문 축약). "
-            f"복구: python3 scripts/sa_refresh_login.py "
+            f"복구: venv/bin/python scripts/sa_refresh_login.py "
             f"({settings.LOGIN_REPROBE_MINUTES}분마다 자동 재확인)",
             flush=True,
         )

@@ -12,6 +12,7 @@ pw_login_profile/ 만 사용한다.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,13 +22,40 @@ sys.path.insert(0, str(REPO_ROOT))
 from sa_article_parser import COOKIES_PATH, has_login_cookies  # noqa: E402
 
 LOGIN_PROFILE_DIR = REPO_ROOT / "pw_login_profile"
+VENV_PYTHON = REPO_ROOT / "venv" / "bin" / "python3"
+
+
+def _reexec_in_venv() -> None:
+    """venv 밖에서 실행되면 venv 파이썬으로 다시 띄운다.
+
+    playwright는 venv에만 설치돼 있어서 `python3 scripts/sa_refresh_login.py`로
+    실행하면 ImportError가 난다. 사용자가 인터프리터를 신경 쓰지 않아도 되도록
+    여기서 스스로 갈아탄다.
+
+    이미 venv인지는 sys.prefix로 본다. venv/bin/python3는 시스템 파이썬을 가리키는
+    심링크라 sys.executable을 resolve()해 비교하면 둘이 같아져 재실행이 안 된다."""
+    try:
+        if not VENV_PYTHON.is_file():
+            return
+        if Path(sys.prefix).resolve() == (REPO_ROOT / "venv").resolve():
+            return  # 이미 venv — 무한 재실행 방지
+        script = str(Path(__file__).resolve())
+        os.execv(str(VENV_PYTHON), [str(VENV_PYTHON), script, *sys.argv[1:]])
+    except Exception:
+        return  # 재실행에 실패해도 아래 ImportError 안내로 이어진다
 
 
 def main() -> int:
+    _reexec_in_venv()
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        print("playwright 패키지가 없습니다. venv/bin/pip install playwright", file=sys.stderr)
+        print(
+            f"playwright 패키지가 없습니다 (현재 인터프리터: {sys.executable}).\n"
+            f"venv 파이썬으로 실행하세요:\n"
+            f"  {VENV_PYTHON} {Path(__file__).resolve()}",
+            file=sys.stderr,
+        )
         return 1
 
     dest = Path(COOKIES_PATH)

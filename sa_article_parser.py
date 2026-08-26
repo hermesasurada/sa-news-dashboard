@@ -457,7 +457,7 @@ def _warn_no_login() -> None:
         detail = "로그인 쿠키 만료/무효"
     print(
         f"     ⚠️ SA 로그인 세션 없음 — {detail}. 본문이 프리뷰로 잘립니다. "
-        f"복구: python3 scripts/sa_refresh_login.py",
+        f"복구: venv/bin/python scripts/sa_refresh_login.py",
         file=sys.stderr,
     )
 
