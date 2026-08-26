@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import sa_article_parser as parser
+import settings
 
 
 class CookieLoadTests(unittest.TestCase):
@@ -117,6 +118,22 @@ class AuthenticatedApiTests(unittest.TestCase):
 
 
 class FetchOrderTests(unittest.TestCase):
+    """단계 순서 검증. 실제 로그인 상태 파일에 좌우되면 안 되므로 격리한다.
+
+    폴백(degraded) 중에는 익명 경로가 설정과 무관하게 열리도록 돼 있어서,
+    상태 파일을 그대로 두면 '익명은 기본적으로 호출되지 않는다'가 깨진다."""
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        self._patch = patch.object(
+            settings, "LOGIN_STATE_PATH", Path(self._dir.name) / "state.json"
+        )
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        self._dir.cleanup()
+
     def test_playwright_is_tried_before_api_and_wins(self):
         full = {"method": "playwright_auth", "content": "P" * 800, "tickers": []}
         with (
