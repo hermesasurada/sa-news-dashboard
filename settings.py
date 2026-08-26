@@ -55,7 +55,9 @@ SUMMARY_ROUND_ROBIN = os.environ.get("SA_SUMMARY_ROUND_ROBIN", "1").strip().lowe
 PUBLISH_BATCH_SIZE = _env_int("SA_PUBLISH_BATCH_SIZE", 10)
 PUBLISH_PARSE_TIMEOUT_SECONDS = _env_int("SA_PARSE_TIMEOUT_SECONDS", 200)
 # 기사와 기사 사이 Playwright 요청 간격. SA 차단 완화. 0이면 대기 없음.
-ARTICLE_GAP_SECONDS = _env_int("SA_ARTICLE_GAP_SECONDS", 20, minimum=0)
+# 20초로는 16건 연속 배치 후반에 SA가 차단을 걸었다(직전에 4021자를 받던
+# 기사가 같은 쿠키로 2자·locked 반환). 25초로 올린다.
+ARTICLE_GAP_SECONDS = _env_int("SA_ARTICLE_GAP_SECONDS", 25, minimum=0)
 SOURCE_MIN_CHARS = _env_int("SA_SOURCE_MIN_CHARS", 700)
 # 로그인 세션 사용 여부. SA가 세션을 무효화(403)하면 인증 경로가 기사마다
 # ~11초를 헛되이 쓰고 403을 반복 유발하므로, 재로그인 전까지 0으로 꺼둔다.
