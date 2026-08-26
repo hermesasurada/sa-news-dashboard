@@ -38,3 +38,5 @@ ticker_names.json
 grok_model.json
 .grok_model.json.*.tmp
 static/fonts/PretendardVariable.subset.*.woff2
+.sa_login_state.json
+.sa_login_state.json.*.tmp

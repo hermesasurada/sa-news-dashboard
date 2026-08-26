@@ -113,7 +113,7 @@ class AuthenticatedApiTests(unittest.TestCase):
                 reject_locked_preview=True,
             )
         self.assertEqual(result["method"], "sa_api_auth")
-        self.assertGreater(len(result["content"]), parser.AUTH_PREVIEW_LIMIT)
+        self.assertGreater(len(result["content"]), parser._min_chars())
 
 
 class FetchOrderTests(unittest.TestCase):

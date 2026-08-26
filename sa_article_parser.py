@@ -25,6 +25,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from curl_cffi import requests as curl_requests
 
+import sa_login_state
 import settings
 # playwright는 lazy import (parse_with_playwright_stealth 내부).
 # system python처럼 playwright 미설치 환경에서도 Jina/curl_cffi fallback이 동작하도록 모듈 로드를 막지 않음.
@@ -34,7 +35,9 @@ COOKIES_PATH = Path(os.environ.get("SA_COOKIES_PATH") or Path(__file__).resolve(
 LOGIN_COOKIE_NAMES = {"user_remember_token", "user_id", "_sapi_session_id", "gk_user_access"}
 # 본문 인정 기준. settings.SOURCE_MIN_CHARS 단일 소스로 둔다.
 # (예전엔 여기 700이 하드코딩돼 있어 SA_SOURCE_MIN_CHARS 설정이 무시됐다)
-AUTH_PREVIEW_LIMIT = settings.SOURCE_MIN_CHARS
+def _min_chars() -> int:
+    """본문 길이 기준. 로그인 폴백 중에는 완화된 값을 쓴다(sa_login_state)."""
+    return sa_login_state.effective_min_chars()
 
 STEALTH_INIT = """
 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
@@ -252,7 +255,7 @@ def parse_with_sa_api(
         "tickers": tickers,
         "locked": locked,
     }
-    if reject_locked_preview and locked and len(body) < AUTH_PREVIEW_LIMIT:
+    if reject_locked_preview and locked and len(body) < _min_chars():
         result["rejected"] = True
     return result
 
@@ -293,7 +296,7 @@ def parse_with_playwright_stealth(
         method = "playwright_auth" if cookies else "playwright_stealth"
         result = _parse_html(html_content, method)
         if result:
-            result["locked"] = len(result.get("content") or "") < AUTH_PREVIEW_LIMIT
+            result["locked"] = len(result.get("content") or "") < _min_chars()
         return result
     except Exception as exc:
         method = "playwright_auth" if cookies else "playwright_stealth"
@@ -393,7 +396,7 @@ def parse_with_curl_cffi_rotated(
             if resp.status_code == 200:
                 result = _parse_html(resp.text, f"curl_cffi_{imp}{suffix}")
                 if result:
-                    if cookies and len(result.get("content") or "") < AUTH_PREVIEW_LIMIT:
+                    if cookies and len(result.get("content") or "") < _min_chars():
                         continue
                     return result
         except Exception:
@@ -433,10 +436,10 @@ def _acceptable_source(result: Optional[Dict[str, Any]]) -> bool:
     if not result or result.get("rejected") or result.get("error"):
         return False
     content = (result.get("content") or "").strip()
-    if len(content) < AUTH_PREVIEW_LIMIT:
+    if len(content) < _min_chars():
         return False
-    # 익명 모드에서는 본문이 전부 프리뷰라 잠금 여부로 거르지 않는다(예전 동작).
-    if result.get("locked") and settings.USE_LOGIN_SESSION:
+    # 익명 모드·로그인 폴백 중에는 본문이 전부 프리뷰라 잠금으로 거르지 않는다.
+    if result.get("locked") and sa_login_state.enforce_locked_gate():
         return False
     return True
 
@@ -469,11 +472,18 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
     lead = _og_lead(url)
     cookies = load_sa_cookies()
     steps: List[tuple] = []
-    use_login = settings.USE_LOGIN_SESSION and has_login_cookies(cookies)
-    if settings.USE_LOGIN_SESSION and not has_login_cookies(cookies):
+    has_cookies = has_login_cookies(cookies)
+    # 쿠키가 있어도 서버가 세션을 무효화하면 인증 경로는 프리뷰만 준다.
+    # 그 상태(degraded)에서는 기사당 ~11초를 헛쓰지 않도록 인증을 건너뛰고,
+    # REPROBE_MINUTES마다 한 번만 재시도해 복구를 감지한다.
+    degraded = sa_login_state.is_degraded()
+    probing = degraded and sa_login_state.should_probe()
+    use_login = settings.USE_LOGIN_SESSION and has_cookies and (not degraded or probing)
+    if settings.USE_LOGIN_SESSION and not has_cookies:
         # 인증 경로가 통째로 빠지면 본문이 프리뷰(~300자)로 잘려 품질 게이트에 걸린다.
         # 원인을 못 찾고 '기사 실패'만 반복되지 않도록 stderr로 분명히 알린다.
         _warn_no_login()
+    auth_methods = {"playwright_auth", "curl_cffi_auth", "sa_api_auth"}
     if use_login:
         steps.append(
             ("playwright_auth", lambda: parse_with_playwright_stealth(url, cookies=cookies))
@@ -488,7 +498,7 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
             )
         )
     steps.append(("jina_reader", lambda: parse_with_jina_reader(url)))
-    if settings.ALLOW_ANON_FETCH:
+    if settings.ALLOW_ANON_FETCH or degraded:
         steps.append(("sa_api", lambda: parse_with_sa_api(url)))
         steps.append(("playwright_stealth", lambda: parse_with_playwright_stealth(url)))
         steps.append(("curl_cffi", lambda: parse_with_curl_cffi_rotated(url)))
@@ -530,8 +540,12 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
         result["success"] = True
         result["error"] = None
         result["attempts"] = attempts
+        if use_login:
+            sa_login_state.record_auth_result(method in auth_methods, probed=probing)
         return result
 
+    if use_login:
+        sa_login_state.record_auth_result(False, probed=probing)
     max_chars = max((a["chars"] for a in attempts), default=0)
     return {
         "success": False,
@@ -540,7 +554,7 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
         "method": None,
         "error": (
             f"All methods failed or preview-only (max {max_chars} chars, "
-            f"min {AUTH_PREVIEW_LIMIT})"
+            f"min {_min_chars()})"
         ),
         "attempts": attempts,
     }

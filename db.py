@@ -11,6 +11,7 @@ import sys
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+import sa_login_state
 import settings
 
 DB_PATH = settings.DB_PATH
@@ -585,11 +586,12 @@ def insert_pending_article(
 def source_quality_ok(chars: int | None, locked: int | bool | None) -> bool:
     """미리보기·잠금 본문은 요약/발행에 쓰지 않는다.
 
-    단 로그인 세션을 쓰지 않는(익명) 모드에서는 SA가 애초에 프리뷰만 주므로
-    잠금 여부를 따지면 아무것도 발행할 수 없다. 이때는 길이만 본다(예전 동작)."""
-    if locked and settings.USE_LOGIN_SESSION:
+    단 로그인 세션을 쓰지 않는(익명) 모드나 세션 무효로 폴백 중일 때는 SA가
+    애초에 프리뷰만 주므로, 잠금 여부를 따지면 아무것도 발행할 수 없다.
+    이때는 완화된 길이 기준만 본다(sa_login_state)."""
+    if locked and sa_login_state.enforce_locked_gate():
         return False
-    return int(chars or 0) >= int(settings.SOURCE_MIN_CHARS)
+    return int(chars or 0) >= int(sa_login_state.effective_min_chars())
 
 
 def save_source(

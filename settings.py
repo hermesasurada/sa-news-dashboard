@@ -66,6 +66,17 @@ USE_LOGIN_SESSION = os.environ.get("SA_USE_LOGIN", "1").strip().lower() not in {
     "off",
 }
 
+# 로그인 세션이 서버에서 무효화되면(쿠키 만료일과 무관) 익명 경로로 자동 폴백한다.
+#   LOGIN_FAIL_THRESHOLD : 인증이 연속 몇 회 프리뷰만 반환하면 무효로 볼지
+#   LOGIN_REPROBE_MINUTES: 폴백 중 재로그인 여부를 다시 확인하는 주기
+#   DEGRADED_MIN_CHARS   : 폴백 중 본문 길이 기준(익명은 프리뷰라 700자를 못 넘는다)
+LOGIN_STATE_PATH = Path(
+    os.environ.get("SA_LOGIN_STATE_PATH", str(BASE_DIR / ".sa_login_state.json"))
+).expanduser()
+LOGIN_FAIL_THRESHOLD = _env_int("SA_LOGIN_FAIL_THRESHOLD", 3)
+LOGIN_REPROBE_MINUTES = _env_int("SA_LOGIN_REPROBE_MINUTES", 180)
+DEGRADED_MIN_CHARS = _env_int("SA_DEGRADED_MIN_CHARS", 200)
+
 ALLOW_ANON_FETCH = os.environ.get("SA_ALLOW_ANON_FETCH", "0").strip().lower() not in {
     "0",
     "false",
