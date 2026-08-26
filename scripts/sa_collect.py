@@ -184,6 +184,36 @@ def is_roundup_news(subject: str) -> bool:
     return bool(_ROUNDUP_ANY_RE.search(s) or _ROUNDUP_ANY_RE.search(body))
 
 
+_STREAK_NAMED_RE = re.compile(r'\b(?:losing|winning)\s+streak\b', re.I)
+_STREAK_SPAN_RE = re.compile(
+    r'\b(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|multi)'
+    r'[\s-](?:session|day|week)s?\b',
+    re.I,
+)
+_STREAK_MOVE_RE = re.compile(
+    r'\b(?:streak|rally|advance|slide|skid|slump|winning|losing|retreat|selloff|sell-off)\b',
+    re.I,
+)
+
+
+def is_price_streak_news(subject: str) -> bool:
+    """연속 상승·하락의 지속/종료만 전하는 단순 주가 흐름 기사인가 → 수집 제외.
+    (예: 'Honeywell Technologies snaps eight-session losing streak')
+
+    두 경로로 잡는다.
+      1) 'losing/winning streak' 명시 — 기간 표현이 없어도 매치
+         ('breaking recent losing streak')
+      2) 'N-session/day/week' + 움직임 명사 — streak 없이 쓰는 형태
+         ('slips after seven-session advance', 'ending six-session rally')
+
+    기간 단위를 session/day/week으로 한정해 배당성장('57-year growth streak')과
+    등급·흥행 관련('Strong Buy streak', 'box office hot streak')은 걸리지 않는다."""
+    s = subject or ''
+    if _STREAK_NAMED_RE.search(s):
+        return True
+    return bool(_STREAK_SPAN_RE.search(s) and _STREAK_MOVE_RE.search(s))
+
+
 def excluded_reason(subject: str, ticker: str) -> str | None:
     """수집 제외 대상이면 사유 라벨, 아니면 None."""
     if is_preferred_dividend(subject, ticker):
@@ -198,6 +228,8 @@ def excluded_reason(subject: str, ticker: str) -> str | None:
         return '커버리지개시'
     if is_etf_distribution(subject):
         return 'ETF배당'
+    if is_price_streak_news(subject):
+        return '주가연속'
     return None
 
 

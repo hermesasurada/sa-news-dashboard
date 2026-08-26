@@ -242,5 +242,49 @@ class CollectExitCodeTests(unittest.TestCase):
             self.assertEqual(sa_collect.main(), sa_collect.EXIT_PARTIAL_FAILURE)
 
 
+class PriceStreakFilterTests(unittest.TestCase):
+    """연속 상승·하락만 전하는 단순 주가 흐름 기사 제외."""
+
+    def test_streak_news_is_filtered(self):
+        cases = [
+            # 'losing/winning streak' 명시형
+            "Honeywell Technologies snaps eight-session losing streak",
+            "BA: Boeing shares snapped six-session losing streak",
+            "JNJ: Johnson & Johnson shares fell after six-session winning streak",
+            "NVDA: NVIDIA edges higher by 2% ahead of earnings, breaking recent losing streak",
+            "Crypto stocks retreat as Bitcoin extends five-day losing streak",
+            # streak 단어 없이 기간 + 움직임 명사만 쓰는 형태
+            "AVGO: Broadcom slips after seven-session advance",
+            "GM: General Motors slips, ending six-session rally",
+            "COHR: Coherent slumps 12% after sharp multi-session rally",
+            "CRWD: CrowdStrike climbs another 6% as part of three-day rally",
+        ]
+        for subject in cases:
+            self.assertTrue(
+                sa_collect.is_price_streak_news(subject),
+                msg=f"should filter: {subject}",
+            )
+            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "주가연속")
+
+    def test_substantive_news_is_kept(self):
+        keep = [
+            # 'streak'이지만 주가 연속이 아닌 것
+            "TGT: Target dividend could slip below prior payout, snapping 57-year growth streak",
+            "GM: General Motors leads consumer discretionary stocks with longest Strong Buy streak",
+            "AMAT: Tech equal weight has been bearish for 31 straight days – a record streak",
+            "DIS: Star Wars' return and busy June slate could extend box office hot streak",
+            "AAPL: A look at Apple's chart as weekly win streak builds",
+            # 'losing'이 주가와 무관한 것
+            "GOOGL: Alphabet losing AI talent is just 'noise, not thesis changing,' Jefferies says",
+            # 실질 재료
+            "NVDA: Nvidia beats Q3 estimates, guides higher",
+        ]
+        for subject in keep:
+            self.assertFalse(
+                sa_collect.is_price_streak_news(subject),
+                msg=f"should keep: {subject}",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
