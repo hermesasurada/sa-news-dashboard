@@ -15,6 +15,10 @@ assert.deepEqual(utils.formatChangePct(1.234), { text: '+1.23%', cls: 'up' });
 assert.equal(utils.formatExtendedMarketState('PRE', '장외'), 'PRE');
 assert.equal(utils.formatExtendedMarketState('POSTPOST', '장외'), 'POST');
 assert.equal(utils.formatExtendedMarketState('', '장외'), '장외');
+// PREPRE(ET 20:00~익일 4:00)는 거래가 없는 시간대이고, 딸려오는 가격은
+// 직전 애프터마켓 최종 체결가다. PRE로 쓰면 프리마켓이 도는 것처럼 읽힌다.
+assert.equal(utils.formatExtendedMarketState('PREPRE', '장외'), 'POST');
+assert.equal(utils.formatExtendedMarketState('REGULAR', '장외'), '장외');
 assert.equal(utils.isExtendedMarketState('PREPRE'), true);
 assert.equal(utils.isExtendedMarketState('REGULAR'), false);
 assert.equal(utils.formatSummaryModel('claude-opus-5'), 'Claude Opus 5');

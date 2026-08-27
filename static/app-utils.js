@@ -50,8 +50,15 @@
 
   function formatExtendedMarketState(value, fallbackLabel) {
     const state = String(value || '').trim().toUpperCase();
+    // Yahoo marketState는 하루를 여섯으로 나눈다(ET 기준):
+    //   PREPRE 20:00~익일 4:00 / PRE 4:00~9:30 / REGULAR 9:30~16:00
+    //   POST 16:00~20:00 / POSTPOST 20:00~
+    // PREPRE·POSTPOST는 거래가 없는 시간대이고, 이때 딸려오는 가격은
+    // 프리마켓 값이 아니라 '직전 애프터마켓 최종 체결가'다. PREPRE를
+    // startsWith('PRE')로 잡아 PRE라고 쓰면 지금 프리마켓이 도는 것처럼
+    // 읽히므로, 두 구간 모두 POST로 표시한다.
+    if (state === 'PREPRE' || state.includes('POST')) return 'POST';
     if (state.startsWith('PRE')) return 'PRE';
-    if (state.includes('POST')) return 'POST';
     return String(fallbackLabel || '').trim() || '장외';
   }
 
