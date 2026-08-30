@@ -178,7 +178,9 @@ curl -fsS http://127.0.0.1:8181/api/health
 ## 운영 주의
 
 - 웹 API에 인증이 없으므로 로컬 또는 신뢰된 Tailscale ACL 안에서만 노출한다.
-- 웹서버는 launchd `com.user.sa-dashboard`, 기본 포트 8181이다.
+- 웹서버는 launchd `com.user.sa-dashboard`, 기본 포트 8181이다. 디렉토리는
+  2026-08-30에 `sa-dashboard` → `sa-news`로 옮겼지만 **launchd 라벨은 옛 이름을
+  그대로 둔다** — 라벨을 바꾸면 plist 파일명·unload/load까지 함께 손봐야 한다.
 - 시세 프록시는 기본 `http://127.0.0.1:8765`를 사용한다.
 - 통계 페이지의 Chart.js는 현재 jsDelivr에 의존한다.
 - Claude/Grok 호출은 순수 텍스트 작업이므로 임시 디렉터리 cwd에서 실행해 프로젝트 파일 자동 탐색을 막는다.

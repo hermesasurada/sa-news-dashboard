@@ -6,12 +6,12 @@ hermes gateway 쪽에 있습니다. 머신 재구성/이전 시 이 문서로 �
 ## 구성 요소
 | 구분 | 위치 |
 |---|---|
-| 코드 | `~/projects/sa-dashboard/` (이 repo) |
+| 코드 | `~/projects/sa-news/` (이 repo) |
 | 실행 셔임(활성) | `~/.hermes/scripts/sa_{collect,publish,purge}.sh` |
 | 셔임 버전관리 사본 | `deploy/hermes-scripts/` (이 디렉토리) — 활성본과 동기 유지 |
 | 스케줄 | hermes cron (`hermes cron list`) |
 | 웹서버 | launchd `com.user.sa-dashboard` (port 8181) |
-| Python | `~/projects/sa-dashboard/venv/bin/python3` (collect/publish/purge 모두 venv 통일) |
+| Python | `~/projects/sa-news/venv/bin/python3` (collect/publish/purge 모두 venv 통일) |
 | 상태 확인 | `GET http://127.0.0.1:8181/api/health` |
 
 ## cron 작업 (hermes)
