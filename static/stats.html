@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>📊 SA News 통계</title>
+<title>SA News 통계</title>
 <!-- Chart.js 4.4.1 — 로컬 vendoring(외부 CDN 차단·지연 영향 제거).
      갱신 시: curl -sSL -o static/vendor/chart.umd.min.js \
        https://cdn.jsdelivr.net/npm/chart.js@<버전>/dist/chart.umd.min.js -->
@@ -91,12 +91,13 @@
     .chart-scroll .chart-wrap.bump { min-width: 620px; }
   }
 </style>
+<link rel="stylesheet" href="/static/hermes-ui.css?v=3">
 </head>
-<body>
+<body class="app-sa app-sa-stats">
 
 <div class="topbar">
-  <h1>📊 뉴스 통계</h1>
-  <a class="back-link" href="/">← 대시보드로</a>
+  <h1><span class="stats-brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>뉴스 통계</h1>
+  <a class="back-link" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>대시보드</a>
 </div>
 
 <div id="content"><div class="loading">불러오는 중…</div></div>
@@ -133,16 +134,16 @@ function render(d) {
 
     <div class="grid">
       <div class="panel full">
-        <h2>📅 일별 기사 수</h2>
+        <h2>일별 기사 수</h2>
         <div class="chart-wrap"><canvas id="dailyChart"></canvas></div>
       </div>
       <div class="panel full">
-        <h2>🏢 기업별 기사 수 Top ${d.companies.length}</h2>
+        <h2>기업별 기사 수 Top ${d.companies.length}</h2>
         <div class="desc">전체 기간 누적 · 모바일에서는 좌우로 스크롤하세요</div>
         <div class="chart-scroll"><div class="chart-wrap tall companies"><canvas id="companyChart"></canvas></div></div>
       </div>
       <div class="panel full">
-        <h2>🏆 최근 ${d.weekly.weeks.length}주 기업 순위 변동</h2>
+        <h2>최근 ${d.weekly.weeks.length}주 기업 순위 변동</h2>
         <div class="desc">주차별 기사 수 순위 (위쪽이 1위) · ${d.weekly.weeks.length}주 합계 상위 ${d.weekly.top_n}개 기업 · 모바일에서는 좌우로 스크롤하세요</div>
         <div class="chart-scroll"><div class="chart-wrap bump"><canvas id="bumpChart"></canvas></div></div>
       </div>

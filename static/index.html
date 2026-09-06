@@ -8,6 +8,7 @@
      @import는 직렬이라 렌더가 한 왕복 늦어진다. -->
 <link rel="stylesheet" href="/static/fonts/pretendard.css">
 <link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/hermes-ui.css?v=3">
 <script>
 // 요약 본문 명조 계열(Google Fonts)은 '실제로 필요할 때만' 주입한다.
 // app.css에서 @import 하면 렌더 블로킹 + 직렬 로드라 기본 글꼴 사용자에게도
@@ -38,15 +39,27 @@
 })(window);
 </script>
 </head>
-<body>
+<body class="app-sa">
 
 <div id="new-articles-banner" onclick="dismissBanner()"></div>
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <div class="header">
-  <div class="brand">
-    <div class="logo" aria-hidden="true"><img src="/static/img/seekingalpha.png" alt="" width="40" height="40" decoding="async"></div>
-    <h1>SA Breaking News<small>Seeking Alpha 속보 요약</small></h1>
+  <div class="header-line">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"><img src="/static/img/seekingalpha.png" alt="" width="40" height="40" decoding="async"></div>
+      <h1>SA Breaking News<small>Seeking Alpha 속보 요약</small></h1>
+    </div>
+    <div class="bottom-bar">
+      <button class="btn-trash-view" id="trash-view" onclick="toggleTrashView()" title="휴지통 (삭제된 기사)" aria-label="휴지통">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        <span>휴지통</span>
+      </button>
+      <a class="btn-stats" href="/stats" title="뉴스 통계">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        통계
+      </a>
+    </div>
   </div>
   <div class="search-bar">
     <input type="text" id="q" placeholder="검색 (제목, 회사명, 티커, 요약...)" />
@@ -101,17 +114,6 @@
 <div class="stats" id="stats"></div>
 <div class="container" id="cards"></div>
 <div class="pagination" id="pagination"></div>
-
-<div class="bottom-bar">
-  <button class="btn-trash-view" id="trash-view" onclick="toggleTrashView()" title="휴지통 (삭제된 기사)">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-    <span>휴지통</span>
-  </button>
-  <a class="btn-stats" href="/stats" title="뉴스 통계">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-    통계
-  </a>
-</div>
 
 <script src="/static/app-utils.js"></script>
 <script src="/static/app.js"></script>
