@@ -352,6 +352,18 @@ button, input, select { font-family: inherit; }
 .app-td .ticker-chip,
 .app-wm .ticker-chip,
 .app-sa .ticker-badge { color: var(--ui-accent); }
+.app-td .ticker-chip,
+.app-sa .ticker-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  min-height: 20px;
+  padding: 0 7px;
+  font-size: 10px;
+  line-height: 18px;
+  letter-spacing: 0;
+}
+.app-sa .card-tickers { padding-bottom: 8px; }
 .app-td :is(.card-meta, .meta-msg-id),
 .app-wm :is(.card-date, .card-size, .card-id),
 .app-sa :is(.footer-left, .footer-method, .card-time) {
