@@ -91,8 +91,7 @@ button, input, select { font-family: inherit; }
 .app-sa > .header,
 .app-sa > .stats,
 .app-sa > .container,
-.app-sa > .pagination,
-.app-sa > .bottom-bar {
+.app-sa > .pagination {
   width: calc(100% - 48px);
   max-width: 1480px;
   margin-left: auto;
@@ -195,7 +194,7 @@ button, input, select { font-family: inherit; }
 
 .app-td :is(.toolbar button, .page-link, .chan-btn, .font-btn),
 .app-wm :is(#sortToggle, .filter-btn, .site-step, #siteClear, .sites-btn, .font-btn),
-.app-sa :is(.btn-search, .btn-reset, .btn-sort, .btn-unread, .btn-ticker, .btn-stats, .btn-trash-view) {
+.app-sa :is(.btn-search, .btn-reset, .btn-sort, .btn-unread, .btn-ticker, .btn-trash-view) {
   height: var(--ui-control-h);
   min-width: var(--ui-control-h);
   padding: 0 11px;
@@ -216,7 +215,7 @@ button, input, select { font-family: inherit; }
 }
 .app-td :is(.toolbar button, .page-link, .chan-btn, .font-btn):hover,
 .app-wm :is(#sortToggle, .filter-btn, .site-step, #siteClear, .sites-btn, .font-btn):hover,
-.app-sa :is(.btn-search, .btn-reset, .btn-sort, .btn-unread, .btn-ticker, .btn-stats, .btn-trash-view):hover {
+.app-sa :is(.btn-search, .btn-reset, .btn-sort, .btn-unread, .btn-ticker, .btn-trash-view):hover {
   color: var(--ui-text);
   background: var(--ui-surface-2);
   border-color: var(--ui-border-strong);
@@ -323,6 +322,17 @@ button, input, select { font-family: inherit; }
 .app-td .summary-heading,
 .app-wm .card-summary .sum-head,
 .app-sa .card-details strong { font-weight: 650; }
+.app-td .card.unread .title-row {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--ui-border);
+}
+.app-td .card.unread .card-title {
+  color: #172033;
+  font-size: 15.5px;
+  font-weight: 700;
+}
+.app-td .card.unread .summary { color: #596678; }
 
 /* Chips and metadata */
 .app-td :is(.badge, .ticker-chip),
@@ -460,67 +470,7 @@ button, input, select { font-family: inherit; }
 .app-wm .site-row { border-radius: var(--ui-radius-sm); }
 .app-wm #toTop { border: 1px solid var(--ui-border); background: var(--ui-surface); box-shadow: none; }
 
-/* SA utility actions belong to the header, not a detached bottom island. */
-.app-sa .bottom-bar {
-  width: auto;
-  max-width: none;
-  margin: 0;
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-}
-.app-sa .bottom-bar :is(.btn-trash-view, .btn-stats) { color: var(--ui-muted); }
 .app-sa .swipe-row { margin-bottom: 0; }
-
-/* SA statistics page */
-.app-sa-stats {
-  width: calc(100% - 48px);
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 18px 0 48px !important;
-}
-.app-sa-stats .topbar { min-height: 38px; margin-bottom: 16px; }
-.app-sa-stats .topbar h1 {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--ui-text);
-  font-size: 15px;
-  font-weight: 650;
-}
-.app-sa-stats .stats-brand-icon {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--ui-radius-sm);
-  background: #f97316;
-  color: #fff;
-}
-.app-sa-stats .stats-brand-icon svg { width: 17px; height: 17px; }
-.app-sa-stats .back-link {
-  height: var(--ui-control-h);
-  padding: 0 11px;
-  border-color: var(--ui-border);
-  border-radius: var(--ui-radius-sm);
-  color: var(--ui-muted);
-  font-size: 12px;
-  font-weight: 550;
-}
-.app-sa-stats .back-link svg { width: 15px; height: 15px; }
-.app-sa-stats .summary { gap: 10px; margin-bottom: 12px; }
-.app-sa-stats .stat-card,
-.app-sa-stats .panel {
-  border-color: var(--ui-border);
-  border-radius: var(--ui-radius);
-  box-shadow: none;
-}
-.app-sa-stats .stat-card { padding: 13px 14px; }
-.app-sa-stats .stat-card .value { font-size: 22px; }
-.app-sa-stats .grid { gap: 12px; }
-.app-sa-stats .panel { padding: 15px 16px; }
-.app-sa-stats .panel h2 { color: var(--ui-text); font-size: 13px; font-weight: 650; }
 
 @media (max-width: 1040px) {
   .app-td .grid,
@@ -536,7 +486,6 @@ button, input, select { font-family: inherit; }
   .app-sa > .container,
   .app-sa > .pagination { width: calc(100% - 24px); }
   .app-sa > .header { padding-top: 12px; }
-  .app-sa-stats { width: calc(100% - 24px); padding-top: 12px !important; }
 
   .app-td .topbar,
   .app-wm .header,

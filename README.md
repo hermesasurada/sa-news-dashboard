@@ -31,7 +31,6 @@ SA 이메일
 | `scripts/sa_refresh_login.py` | headed 브라우저로 `sa_cookies.json` 갱신 |
 | `static/app.js` | 화면 상태와 사용자 동작 |
 | `static/app-utils.js` | 테스트 가능한 HTML/URL/표시 유틸리티 |
-| `static/stats.html` | Chart.js 통계 화면 |
 | `deploy/DEPLOY.md` | Hermes cron 및 launchd 복원 절차 |
 
 ## 로컬 실행
@@ -88,7 +87,7 @@ node --check static/app.js
 - `GET /api/article/{id}`: 단일 기사
 - `GET /api/filters`: 티커와 별칭
 - `GET /api/price-quote`: portfolio 시세 프록시
-- `GET /api/stats`, `GET /api/queue_stats`: 대시보드 통계
+- `GET /api/queue_stats`: 대기·실패·미읽음 통계
 - `PATCH /api/articles/{id}/read`: 읽음 상태 변경
 - `DELETE /api/articles/{id}`: 소프트 삭제
 - `POST /api/articles/{id}/restore`: 복원

@@ -4,7 +4,7 @@ SA News Dashboard — FastAPI 앱
 from fastapi import FastAPI, Query, Body, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from pathlib import Path
 import db
 from quote_service import InvalidTickerError, get_price_quote
@@ -92,19 +92,9 @@ def price_quote(ticker: str = Query(..., min_length=1, max_length=32, descriptio
         raise HTTPException(status_code=400, detail="invalid ticker")
 
 
-@app.get("/api/stats")
-def get_stats():
-    return db.get_dashboard_stats()
-
-
 @app.get("/api/health")
 def get_health():
     return db.health_check()
-
-
-@app.get("/stats")
-def stats_page():
-    return FileResponse(BASE_DIR / "static" / "stats.html")
 
 
 @app.get("/api/queue_stats")
