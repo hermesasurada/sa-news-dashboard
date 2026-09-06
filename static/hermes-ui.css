@@ -322,17 +322,23 @@ button, input, select { font-family: inherit; }
 .app-td .summary-heading,
 .app-wm .card-summary .sum-head,
 .app-sa .card-details strong { font-weight: 650; }
-.app-td .card.unread .title-row {
+.app-td .card.unread .title-row,
+.app-wm .card:not(.read) .card-title-row,
+.app-sa .card.card-unread .card-title-row {
   margin-bottom: 10px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--ui-border);
 }
-.app-td .card.unread .card-title {
+.app-td .card.unread .card-title,
+.app-wm .card:not(.read) .card-title,
+.app-sa .card.card-unread .card-title {
   color: #172033;
   font-size: 15.5px;
   font-weight: 700;
 }
-.app-td .card.unread .summary { color: #596678; }
+.app-td .card.unread .summary,
+.app-wm .card:not(.read) .card-summary,
+.app-sa .card.card-unread :is(.card-summary, .card-details) { color: #596678; }
 
 /* Chips and metadata */
 .app-td :is(.badge, .ticker-chip),
