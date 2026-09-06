@@ -34,6 +34,28 @@ async function fetchJSON(url, options) {
   return response.json();
 }
 
+async function copyArticleId(button) {
+  const value = button.dataset.articleId || '';
+  if (!value) return;
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch (error) {
+    const input = document.createElement('input');
+    input.value = value;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    input.remove();
+  }
+  const original = button.textContent;
+  button.textContent = '복사됨';
+  button.classList.add('copied');
+  setTimeout(() => {
+    button.textContent = original;
+    button.classList.remove('copied');
+  }, 900);
+}
+
 /* ── Filters ── */
 let allTickers = [];
 
@@ -302,7 +324,10 @@ function renderCard(a) {
   const details = (Array.isArray(a.summary_details) ? a.summary_details : [])
     .map(detail => `<li>${escapeHTML(detail)}</li>`).join('');
   const timeLabel = escapeHTML(formatTime(a.email_time_et));
-  const emailIdLabel = a.email_id ? `ID:${escapeHTML(a.email_id)}` : '';
+  const emailIdLabel = a.email_id
+    ? `<button type="button" class="article-id" data-article-id="${escapeAttr(a.email_id)}" `
+      + `onclick="copyArticleId(this)" title="기사 ID 복사">ID:${escapeHTML(a.email_id)}</button>`
+    : '';
   const footerMeta = [emailIdLabel, timeLabel].filter(Boolean).join(' · ');
   const methodLabel = escapeHTML(parseMethodLabel(a.parse_method));
   const modelLabel = escapeHTML(summaryModelLabel(a.summary_model));

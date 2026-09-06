@@ -692,6 +692,17 @@ body[data-reader-font="mono"] .card-summary {
   letter-spacing: 0;
 }
 .footer-method { display: block; margin-top: 2px; }
+.article-id {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.article-id:hover { color: var(--accent); }
+.article-id.copied { color: #0f7a4f; }
 .footer-actions { display: flex; gap: 8px; align-items: center; }
 
 /* ── Link Button (원문보기) ── */

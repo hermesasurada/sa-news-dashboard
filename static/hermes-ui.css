@@ -364,13 +364,16 @@ button, input, select { font-family: inherit; }
   letter-spacing: 0;
 }
 .app-sa .card-tickers { padding-bottom: 8px; }
-.app-td :is(.card-meta, .meta-msg-id),
+.app-td :is(.card-meta, .meta-msg-id, .meta-collected),
 .app-wm :is(.card-date, .card-size, .card-id),
-.app-sa :is(.footer-left, .footer-method, .card-time) {
+.app-sa :is(.footer-left, .footer-method, .card-time, .article-id) {
   color: var(--ui-faint);
-  font-family: var(--ui-mono);
+  font-family: var(--ui-font);
   font-size: 10.5px;
+  letter-spacing: 0;
 }
+.app-sa .article-id:hover { color: var(--ui-accent); }
+.app-sa .article-id.copied { color: var(--ui-success); }
 
 /* Card footers and actions */
 .app-td .links,
