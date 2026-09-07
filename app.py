@@ -36,7 +36,8 @@ async def cache_versioned_static_assets(request, call_next):
 def root():
     # app.css/app.js에 mtime 기반 ?v= 를 주입 → 파일 변경 시 새로고침만으로 즉시 반영
     html = (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
-    for asset in ("app.css", "app-utils.js", "app.js"):
+    # hermes-ui.css는 고정 ?v=7이라 고쳐도 브라우저가 옛 파일을 계속 썼다(2026-09-07)
+    for asset in ("app.css", "hermes-ui.css", "app-utils.js", "app.js"):
         try:
             v = int((BASE_DIR / "static" / asset).stat().st_mtime)
         except OSError:
