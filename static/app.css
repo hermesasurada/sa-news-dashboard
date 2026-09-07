@@ -602,9 +602,9 @@ body {
   color: var(--faint);
   line-height: 1.4;
   /* 원제는 번역 제목에 딸린 줄이라 바짝 붙인다(2026-09-07 지시). 제목행의
-     margin-bottom(hermes-ui 7px)을 음수 마진으로 되돌려 4px만 남긴다 —
+     margin-bottom(hermes-ui 7px)을 음수 마진으로 되돌려 2px만 남긴다 —
      원제가 없는 카드의 간격은 그대로 둔다. */
-  margin-top: -3px;
+  margin-top: -5px;
   margin-bottom: 0;
   margin-left: 14px;
   word-break: break-word;
