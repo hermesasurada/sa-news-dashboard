@@ -449,3 +449,70 @@ class ParseUsesSiteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ForeignTickerBackfillTests(unittest.TestCase):
+    """제목에 드러난 비미국 상장사를 티커에 보탠다(#7864 MediaTek 누락)."""
+
+    def test_title_company_missing_from_tickers_is_added(self):
+        out = sa_summarize_claude.validate(
+            {"ticker": "TSM, QCOM",
+             "company_name": "Taiwan Semiconductor Manufacturing Company·Qualcomm",
+             "headline": "제목", "summary_details": ["내용"], "ticker_color": "blue"},
+            "QCOM: MediaTek takes aim at Qualcomm with TSMC-built 2-nanometer chip",
+        )
+        self.assertEqual(out["ticker"], "TSM, QCOM, 2454.TW")
+        self.assertEqual(
+            out["company_name"],
+            "Taiwan Semiconductor Manufacturing Company·Qualcomm·MediaTek")
+
+    def test_already_present_or_absent_from_title_is_untouched(self):
+        same = sa_summarize_claude.validate(
+            {"ticker": "NVDA, 2454.TW", "company_name": "Nvidia·MediaTek",
+             "headline": "제목", "summary_details": ["내용"], "ticker_color": "blue"},
+            "NVDA: NVIDIA, MediaTek deepen AI collaboration",
+        )
+        self.assertEqual(same["ticker"], "NVDA, 2454.TW")
+        none = sa_summarize_claude.validate(
+            {"ticker": "AVGO", "company_name": "Broadcom",
+             "headline": "제목", "summary_details": ["내용"], "ticker_color": "blue"},
+            "AVGO: Broadcom wins an order",
+        )
+        self.assertEqual(none["ticker"], "AVGO")
+
+    def test_existing_us_otc_symbol_for_same_company_is_not_duplicated(self):
+        """모델이 미국 OTC 심볼로 이미 넣었으면 그대로 둔다(SKHY·SSNLF 같은 다수 사례)."""
+        out = sa_summarize_claude.validate(
+            {"ticker": "MRAAY, SNPS", "company_name": "Murata Manufacturing·Synopsys",
+             "headline": "제목", "summary_details": ["내용"], "ticker_color": "blue"},
+            "SNPS: Murata, Synopsys team up on simulation models",
+        )
+        self.assertEqual(out["ticker"], "MRAAY, SNPS")
+
+    def test_alias_match_is_case_sensitive_and_word_bounded(self):
+        """'sap' 같은 영어 단어나 'Wistronics' 류 부분일치로 티커를 붙이지 않는다."""
+        out = sa_summarize_claude.validate(
+            {"ticker": "GOOG", "company_name": "Alphabet",
+             "headline": "제목", "summary_details": ["내용"], "ticker_color": "blue"},
+            "GOOGL: Alphabet upsizes its raise as it looks to sap demand for wistron-like parts",
+        )
+        self.assertEqual(out["ticker"], "GOOG")
+
+    def test_name_count_mismatch_leaves_tickers_alone(self):
+        out = sa_summarize_claude.validate(
+            {"ticker": "TSM", "company_name": "",
+             "headline": "제목", "summary_details": ["내용"], "ticker_color": "blue"},
+            "MediaTek news",
+        )
+        self.assertEqual(out["ticker"], "TSM")
+        self.assertEqual(out["company_name"], "")
+
+    def test_prompt_documents_non_us_ticker_format(self):
+        self.assertIn("2454.TW", sa_summarize_claude._PROMPT_TMPL)
+        self.assertIn("6981.T", sa_summarize_claude._PROMPT_TMPL)
+
+    def test_backfill_map_symbols_are_portfolio_form(self):
+        import foreign_tickers
+        for symbol, _name, aliases, _equiv in foreign_tickers._COMPANIES:
+            self.assertRegex(symbol, r"^[A-Z0-9.]{1,12}$", symbol)
+            self.assertTrue(aliases, symbol)

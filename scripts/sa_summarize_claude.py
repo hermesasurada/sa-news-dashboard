@@ -25,6 +25,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 
 import db  # noqa: E402
+import foreign_tickers
 import settings  # noqa: E402
 from sa_claude_cli import call_claude, call_grok, extract_json  # noqa: E402
 from sa_lock import single_instance  # noqa: E402
@@ -49,6 +50,10 @@ _PROMPT_TMPL = """\
      (예: Broadcom 수주 기사에 "경쟁사로는 Nvidia가 있다" 식 언급만 있으면 NVDA 제외)
   또한 제외: 티커를 확신할 수 없는 경우, 비상장 기업(OpenAI·Anthropic 등),
      상장사 아닌 기관(연준·ECB·규제당국 등), 본문에 등장하지 않는 종목.
+  ⚠️ 미국 밖 상장사도 빠뜨리지 않는다. 미국 ADR·OTC 심볼이 있으면 그걸 쓰고(TSMC=TSM,
+     삼성전자=SSNLF, SK하이닉스=SKHY), 없으면 거래소 접미사 형식을 쓴다
+     (MediaTek=2454.TW, 무라타=6981.T, 도쿄일렉트론=8035.T, Wistron=3231.TW).
+     같은 회사를 두 형식으로 중복해 넣지는 않는다.
   ⚠️ SpaceX는 **상장사(SPCX)** 다. 비상장으로 오인해 빠뜨리지 말고, 실질 관련이면 반드시 포함한다.
      (예: 'VinSpace가 SpaceX와 발사 계약' → SPCX 포함. 단순 배경 언급이면 기존대로 제외)
   기사에 해당 기업이 없으면 빈 문자열 "".
@@ -120,16 +125,30 @@ def _plain_text(value) -> str:
     return text.replace("**", "").replace("__", "").replace("*", "").replace("_", " ")
 
 
-def validate(d: dict) -> dict:
-    """Normalize model output and reject forbidden writing-system leakage."""
+def validate(d: dict, original_title: str = "") -> dict:
+    """Normalize model output and reject forbidden writing-system leakage.
+
+    original_title이 주어지면, 제목에 나왔는데 빠진 비미국 상장사를 보탠다
+    (foreign_tickers — 모델이 아시아 종목 티커를 들쭉날쭉 뽑는 것을 메운다).
+    """
     raw_tickers = str(d.get("ticker") or "").upper().strip()
     valid_tickers = []
     for ticker in raw_tickers.split(","):
         ticker = ticker.strip()
         if _TICKER_RE.fullmatch(ticker) and ticker not in valid_tickers:
             valid_tickers.append(ticker)
-    d["ticker"] = ", ".join(valid_tickers)
     d["company_name"] = _plain_text(d.get("company_name"))
+    if original_title:
+        added = foreign_tickers.missing_from_title(original_title, valid_tickers)
+        if added:
+            names = [n for n in d["company_name"].split("·") if n.strip()]
+            # 회사명 개수가 티커와 어긋나 있으면 손대지 않는다(짝이 깨지면 화면이 어긋난다).
+            if len(names) == len(valid_tickers):
+                for symbol, name in added:
+                    valid_tickers.append(symbol)
+                    names.append(name)
+                d["company_name"] = "·".join(names)
+    d["ticker"] = ", ".join(valid_tickers)
     d["headline"] = _plain_text(d.get("headline"))
     details = d.get("summary_details") or []
     if not isinstance(details, list):
@@ -268,7 +287,7 @@ def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess 
         return AttemptFailure(reason[:200])
 
     try:
-        data = validate(data)
+        data = validate(data, row.get("original_title") or "")
     except ValueError as exc:
         reason = f"출력 검증 실패: {exc}"
         print(f"     {reason}", file=sys.stderr)
