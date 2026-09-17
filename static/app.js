@@ -406,6 +406,32 @@ const SWIPE_INTERACTIVE = '.read-btn,.link-btn,.delete-btn,.restore-btn,.ticker-
 const quoteCache = new Map(); // quoteTicker → { at, data } | { at, error }
 const QUOTE_TTL_MS = 60_000;
 
+/* ── 포트폴리오(8765) 종목 상세 딥링크 ──
+   같은 머신의 다른 포트라 현재 호스트를 그대로 재사용한다(localhost/Tailscale 양쪽 동작).
+   포트폴리오 서버는 http만 서빙하므로 스킴은 http 고정. */
+const PORTFOLIO_WEB_PORT = 8765;
+
+function portfolioChartHref(ticker) {
+  const t = String(ticker || '').trim().toUpperCase();
+  const host = location.hostname;
+  if (!t || !host) return '';
+  return `http://${host}:${PORTFOLIO_WEB_PORT}/#chart=${encodeURIComponent(t)}`;
+}
+
+/* 시세가 확인된 종목만 링크로 만든다 — 값이 없으면 상세화면도 빈 차트라 링크 의미가 없다. */
+function setTickerPopoverLink(el, ticker) {
+  const link = el.querySelector('.tqp-name');
+  if (!link) return;
+  const href = portfolioChartHref(ticker);
+  if (href) {
+    link.href = href;
+    link.title = '포트폴리오에서 이 종목 보기';
+  } else {
+    link.removeAttribute('href');
+    link.removeAttribute('title');
+  }
+}
+
 function ensureTickerPopover() {
   let el = document.getElementById('ticker-quote-pop');
   if (el) return el;
@@ -416,7 +442,7 @@ function ensureTickerPopover() {
   el.setAttribute('role', 'dialog');
   el.innerHTML = `
     <div class="tqp-head">
-      <span class="tqp-name"></span>
+      <a class="tqp-name" target="_blank" rel="noopener noreferrer"></a>
     </div>
     <div class="tqp-body">
       <span class="tqp-price">…</span>
@@ -424,6 +450,11 @@ function ensureTickerPopover() {
     </div>
     <div class="tqp-ext" hidden><span class="tqp-ext-label"></span><span class="tqp-ext-chg flat"></span></div>
     <div class="tqp-meta"></div>`;
+  // 새 탭으로 열리므로 남아 있는 팝오버는 정리한다
+  el.querySelector('.tqp-name').addEventListener('click', (e) => {
+    if (!e.currentTarget.getAttribute('href')) { e.preventDefault(); return; }
+    hideTickerPopover();
+  });
   document.body.appendChild(el);
   return el;
 }
@@ -499,6 +530,8 @@ function renderTickerPopoverContent(el, companyFallback, quoteTicker, packed) {
   name.textContent = bestName;
   if (d && d.name) rememberName(quoteTicker, d.name);
 
+  setTickerPopoverLink(el, (d && d.current_price != null) ? (d.ticker || quoteTicker) : '');
+
   if (!d || d.found === false || d.current_price == null) {
     price.textContent = '시세 없음';
     chg.textContent = '';
@@ -535,6 +568,7 @@ async function showTickerQuote(badge) {
   el.dataset.activeTicker = quoteTicker;
   // loading state
   el.querySelector('.tqp-name').textContent = company || nameCache[quoteTicker] || quoteTicker;
+  setTickerPopoverLink(el, '');
   el.querySelector('.tqp-price').textContent = '불러오는 중…';
   el.querySelector('.tqp-chg').textContent = '';
   el.querySelector('.tqp-chg').className = 'tqp-chg flat';

@@ -501,11 +501,30 @@ body {
   font-size: 11px;
   font-weight: 600;
   color: #e8edf3;
+  text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
+/* 팝오버 전체는 pointer-events:none(바깥 탭으로 닫기 유지)이라
+   클릭 대상인 종목명 링크에만 포인터 이벤트를 되살린다. */
+.tqp-name[href] {
+  pointer-events: auto;
+  cursor: pointer;
+  color: #cfe3ff;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+.tqp-name[href]::after {
+  content: "↗";
+  margin-left: 3px;
+  font-size: 9px;
+  text-decoration: none;
+  opacity: 0.75;
+}
+.tqp-name[href]:hover { color: #fff; }
 .tqp-body {
   display: flex;
   align-items: baseline;
