@@ -139,15 +139,9 @@ def validate(d: dict, original_title: str = "") -> dict:
             valid_tickers.append(ticker)
     d["company_name"] = _plain_text(d.get("company_name"))
     if original_title:
-        added = foreign_tickers.missing_from_title(original_title, valid_tickers)
-        if added:
-            names = [n for n in d["company_name"].split("·") if n.strip()]
-            # 회사명 개수가 티커와 어긋나 있으면 손대지 않는다(짝이 깨지면 화면이 어긋난다).
-            if len(names) == len(valid_tickers):
-                for symbol, name in added:
-                    valid_tickers.append(symbol)
-                    names.append(name)
-                d["company_name"] = "·".join(names)
+        ticker_text, d["company_name"] = foreign_tickers.supplement_pairs(
+            original_title, ", ".join(valid_tickers), d["company_name"])
+        valid_tickers = [t.strip() for t in ticker_text.split(",") if t.strip()]
     d["ticker"] = ", ".join(valid_tickers)
     d["headline"] = _plain_text(d.get("headline"))
     details = d.get("summary_details") or []

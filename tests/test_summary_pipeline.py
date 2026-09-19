@@ -498,14 +498,14 @@ class ForeignTickerBackfillTests(unittest.TestCase):
         )
         self.assertEqual(out["ticker"], "GOOG")
 
-    def test_name_count_mismatch_leaves_tickers_alone(self):
+    def test_missing_company_name_uses_symbol_and_allows_supplement(self):
         out = sa_summarize_claude.validate(
             {"ticker": "TSM", "company_name": "",
              "headline": "제목", "summary_details": ["내용"], "ticker_color": "blue"},
             "MediaTek news",
         )
-        self.assertEqual(out["ticker"], "TSM")
-        self.assertEqual(out["company_name"], "")
+        self.assertEqual(out["ticker"], "TSM, 2454.TW")
+        self.assertEqual(out["company_name"], "TSM·MediaTek")
 
     def test_prompt_documents_non_us_ticker_format(self):
         self.assertIn("2454.TW", sa_summarize_claude._PROMPT_TMPL)
