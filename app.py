@@ -10,6 +10,7 @@ import db
 from quote_service import InvalidTickerError, get_price_quote
 
 BASE_DIR = Path(__file__).parent
+READER_FONT_DIR = Path.home() / "projects" / "hermes-reader-fonts"
 
 app = FastAPI(title="SA News Dashboard")
 app.add_middleware(GZipMiddleware, minimum_size=500)
@@ -19,6 +20,7 @@ db.init_db()
 
 # Static files (index.html, app.js, etc.)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+app.mount("/reader-fonts", StaticFiles(directory=READER_FONT_DIR), name="reader-fonts")
 
 
 @app.middleware("http")
@@ -27,6 +29,8 @@ async def cache_versioned_static_assets(request, call_next):
     if request.url.path.startswith("/static/"):
         # root()가 파일 mtime을 쿼리 버전으로 붙이므로 변경 시 URL 자체가 바뀐다.
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif request.url.path.startswith("/reader-fonts/"):
+        response.headers["Cache-Control"] = "public, max-age=86400"
     elif request.url.path == "/api/filters":
         response.headers["Cache-Control"] = "private, max-age=60"
     return response

@@ -1088,11 +1088,11 @@ document.addEventListener('keydown', e => {
    body[data-reader-font]로 카드 요약 본문(.card-details/.card-summary)에 적용. */
 const _READER_FONTS = ['sans', 'noto', 'chosun', 'serif', 'gowun', 'nanum', 'song', 'system', 'mono'];
 const _FONT_LABELS = {
-  sans: '기본', noto: 'Noto Sans KR', chosun: '조선일보명조', serif: 'Noto Serif KR',
+  sans: 'Pretendard', noto: 'Noto Sans KR', chosun: '조선일보명조', serif: 'Noto Serif KR',
   gowun: '고운바탕', nanum: '나눔명조', song: '송명', system: '시스템', mono: '고정폭',
 };
 const _FONT_STACKS = {
-  sans: '-apple-system, "Noto Sans KR", sans-serif',
+  sans: '"Pretendard Variable", "Pretendard", sans-serif',
   noto: "'Noto Sans KR', sans-serif",
   chosun: '"Chosunilbo_myungjo", serif',
   serif: '"Noto Serif KR", serif',
@@ -1100,7 +1100,7 @@ const _FONT_STACKS = {
   nanum: '"Nanum Myeongjo", serif',
   song: '"Song Myung", serif',
   system: '-apple-system, BlinkMacSystemFont, sans-serif',
-  mono: 'var(--mono)',
+  mono: '"JetBrains Mono", ui-monospace, monospace',
 };
 let _readerFont = localStorage.getItem('saReaderFont') || 'sans';
 if (!_READER_FONTS.includes(_readerFont)) _readerFont = 'sans';

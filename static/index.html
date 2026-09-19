@@ -4,26 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>SA Breaking News Dashboard</title>
-<!-- Pretendard(로컬 미러) — app.css보다 먼저 링크해 병렬 로드.
+<!-- 공통 Pretendard — app.css보다 먼저 링크해 병렬 로드.
      @import는 직렬이라 렌더가 한 왕복 늦어진다. -->
-<link rel="stylesheet" href="/static/fonts/pretendard.css">
+<link rel="stylesheet" href="/reader-fonts/core.css">
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/static/hermes-ui.css">
 <script>
-// 요약 본문 명조 계열(Google Fonts)은 '실제로 필요할 때만' 주입한다.
+// 요약 본문 명조 계열은 공통 로컬 자원에서 실제로 필요할 때만 주입한다.
 // app.css에서 @import 하면 렌더 블로킹 + 직렬 로드라 기본 글꼴 사용자에게도
 // 페이지 로드가 ~950ms 늘어난다(측정치). 여기서는 JS 주입이라 논블로킹.
 //   - 저장된 글꼴이 명조 계열이면 시작 시 1회 주입
 //   - 글꼴 선택 시트를 열 때도 주입(미리보기를 실제 글꼴로 보여주기 위해)
-// 기본/시스템/고정폭/조선일보명조(로컬 woff)는 외부 요청이 0건.
+// 기본/시스템/조선일보명조는 추가 CSS 요청이 없다.
 (function (w) {
-  var NEEDS_WEB_FONT = { noto: 1, serif: 1, gowun: 1, nanum: 1, song: 1 };
-  var HREF = 'https://fonts.googleapis.com/css2'
-    + '?family=Noto+Sans+KR:wght@400;500;700'
-    + '&family=Noto+Serif+KR:wght@400;600;700'
-    + '&family=Gowun+Batang:wght@400;700'
-    + '&family=Nanum+Myeongjo:wght@400;700'
-    + '&family=Song+Myung&display=swap';
+  var NEEDS_WEB_FONT = { noto: 1, serif: 1, gowun: 1, nanum: 1, song: 1, mono: 1 };
+  var HREF = '/reader-fonts/google.css';
   var injected = false;
   w.ensureReaderWebFonts = function () {
     if (injected) return;
