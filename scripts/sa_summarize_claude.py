@@ -211,16 +211,15 @@ def parse_article(
 # ── 단일 기사 처리 ─────────────────────────────────────────────────────────
 
 def pick_summarizers(article_id: int):
-    """기사별 1차/폴백 요약 모델 결정 → (1차 이름, 1차 함수, 폴백 이름, 폴백 함수).
+    """1차/폴백 요약 모델 → (1차 이름, 1차 함수, 폴백 이름, 폴백 함수).
 
-    라운드로빈은 기사 id 홀짝으로 정한다. cron이 배치마다 새 프로세스를 띄우므로
-    메모리 카운터는 배치가 1건일 때 항상 같은 모델만 골라 무의미하기 때문.
-    id는 연속 증가라 실제로는 기사 단위로 번갈아 배정된다.
-    재시도 시에도 같은 1차 모델이 배정되지만, 실패하면 폴백이 받으므로 가용성은 유지된다.
+    2026-09-20 사용자 지시로 grok 고정. 그전에는 기사 id 홀짝으로 Claude/grok을
+    번갈아 썼는데, 같은 기사를 재시도해도 1차가 그대로라 모델별 품질 차이가
+    기사마다 고정되는 구조였다. 1차가 응답하지 않으면 다른 모델이 받는다.
     """
-    if settings.SUMMARY_ROUND_ROBIN and article_id % 2 == 1:
-        return "grok", call_grok, "Claude", call_claude
-    return "Claude", call_claude, "grok", call_grok
+    if settings.SUMMARY_PRIMARY == "claude":
+        return "Claude", call_claude, "grok", call_grok
+    return "grok", call_grok, "Claude", call_claude
 
 
 def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess | AttemptFailure:
