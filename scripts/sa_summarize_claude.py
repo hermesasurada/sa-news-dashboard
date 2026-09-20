@@ -260,12 +260,14 @@ def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess 
         candidates=candidates,
     )
     primary_name, primary, fallback_name, fallback = pick_summarizers(article_id)
+    # title은 LLM 호출 이력(llm_log)의 제목 — 기사 원제를 그대로 넘긴다.
+    log_title = row.get("original_title") or None
     print(f"     {primary_name} 요약 중…", end="", flush=True)
-    response, summary_model = primary(prompt)
+    response, summary_model = primary(prompt, title=log_title)
     if not response:
-        # 1차 실패 → 다른 모델로 폴백
+        # 1차 실패 → 다른 모델로 폴백 (이력에는 실패 행 + 폴백 행이 각각 남는다)
         print(f" 실패 → {fallback_name} 폴백…", end="", flush=True)
-        response, summary_model = fallback(prompt)
+        response, summary_model = fallback(prompt, title=log_title)
     if not response:
         reason = "Claude/grok CLI 응답 없음"
         print(f"\n     {reason}", file=sys.stderr)

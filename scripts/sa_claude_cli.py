@@ -3,13 +3,19 @@
 
 sa_summarize_claude.py 가 사용:
   - resolve_claude_bin(): 버전 pin 없이 최신 Claude CLI 바이너리 동적 탐지
-  - call_claude(prompt, timeout): stream-json 호출 후 최종 텍스트 반환
+  - call_claude(prompt, timeout, title=): stream-json 호출 후 최종 텍스트 반환
+  - call_grok(prompt, timeout, title=): grok json 봉투 호출 후 텍스트 반환
   - extract_json(text): 응답에서 JSON 객체 추출
+
+두 call_* 은 호출 1건당 llm_log(~/projects/hermes-llm-log) 이력 1행을 남긴다
+(성공·실패·타임아웃 모두). 이력 기록은 어떤 경우에도 요약 본업을 실패시키지 않는다.
 
 환경변수:
   CLAUDE_BIN / CLAUDE_CODE_BIN — 바이너리 경로 override
   CLAUDE_MODEL — 모델명 (기본 'opus' 이동 별칭, 실제 모델 ID는 응답에서 기록)
+  HERMES_LLM_LOG_DB / HERMES_LLM_LOG_DISABLED — 이력 DB 경로 / 기록 끄기(llm_log 참고)
 """
+import contextlib
 import json
 import os
 import re
@@ -23,6 +29,77 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 import settings
+
+# LLM 호출 이력(hermes-llm-log, ~/.hermes/data/llm_calls.db) — 모듈이 없어도 요약 본업은 돈다.
+try:
+    _LLM_LOG_DIR = os.path.expanduser("~/projects/hermes-llm-log")
+    if _LLM_LOG_DIR not in sys.path:
+        sys.path.append(_LLM_LOG_DIR)
+    import llm_log
+except Exception:
+    llm_log = None
+
+SERVICE_CODE = "sa"
+
+
+@contextlib.contextmanager
+def _llm_track(provider, model=None, **fields):
+    """llm_log 호출 이력 컨텍스트 — 진입·종료 어느 쪽도 본업(요약)을 실패시키지 않는다.
+
+    llm_log.track() 대신 Call 생성과 finish()를 각각 try로 감싼다. 모듈이 없거나
+    생성이 실패하면 call=None을 넘기고, 종료 시 기록 실패는 조용히 무시한다.
+    본업 예외는 그대로 다시 던져진다(call_* 내부에서 잡아 명시적으로 fail 처리).
+    """
+    call = None
+    if llm_log is not None:
+        try:
+            call = llm_log.Call(SERVICE_CODE, provider, model, **fields)
+        except Exception:
+            call = None
+    try:
+        yield call
+    finally:
+        if call is not None:
+            try:
+                call.finish()
+            except Exception:
+                pass
+
+
+def _log_fail(call, error, status: str = "error") -> None:
+    """이력 행을 실패로 표시 — 기록 실패는 무시(반환값 경로와 분리)."""
+    if call is None:
+        return
+    try:
+        call.fail(str(error)[:500], status=status)
+    except Exception:
+        pass
+
+
+def _log_usage(call, usage: dict, fallback_model=None) -> None:
+    """토큰·실제 모델을 이력 행에 반영 — 기록 실패는 무시(반환값 경로와 분리)."""
+    if call is None:
+        return
+    try:
+        call.usage(usage or None)
+        if fallback_model and not (usage or {}).get("model"):
+            call.model = fallback_model
+    except Exception:
+        pass
+
+
+def _usage_from_envelope(data) -> dict:
+    """Claude result 이벤트·grok json 봉투에서 토큰·실제 모델 ID를 뽑는다.
+
+    두 봉투 모두 usage{input_tokens, output_tokens, cache_read_input_tokens,
+    cache_creation_input_tokens} + modelUsage{"<실제 모델>": ...} 형태라 파서를 공유한다.
+    """
+    if llm_log is None or not isinstance(data, dict):
+        return {}
+    try:
+        return llm_log.usage_from_claude_json(data)
+    except Exception:
+        return {}
 
 
 def _version_key(path: Path) -> tuple[int, ...]:
@@ -66,67 +143,95 @@ GROK_BIN = resolve_grok_bin()
 GROK_MODEL = os.environ.get("GROK_MODEL", "")  # 빈값 = grok 기본 모델
 
 
-def _parse_claude_stream(output: str) -> tuple[str | None, str | None]:
-    """Extract the final text and concrete model ID from stream-json output."""
+def _parse_claude_stream_ex(output: str) -> tuple[str | None, str | None, dict]:
+    """stream-json 출력 → (최종 텍스트, 실제 모델 ID, usage dict).
+
+    usage는 result 이벤트의 usage/modelUsage에서 뽑는다(llm_log 이력용). 없으면 {}.
+    """
     result_text = None
     model_id = None
+    usage: dict = {}
     for line in (output or "").splitlines():
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(event, dict):
+            continue
         if not model_id:
             message = event.get("message") if isinstance(event.get("message"), dict) else {}
             model_id = event.get("model") or message.get("model")
-        if event.get("type") == "result" and event.get("subtype") == "success":
-            result_text = event.get("result", "")
+        if event.get("type") == "result":
+            usage = _usage_from_envelope(event) or usage
+            if event.get("subtype") == "success":
+                result_text = event.get("result", "")
         elif event.get("type") == "assistant" and result_text is None:
             message = event.get("message") if isinstance(event.get("message"), dict) else {}
             for block in message.get("content", []):
                 if isinstance(block, dict) and block.get("type") == "text":
                     result_text = block.get("text", "")
     text = (result_text or "").strip() or None
-    return text, (model_id or CLAUDE_MODEL if text else None)
+    return text, (model_id or CLAUDE_MODEL if text else None), usage
+
+
+def _parse_claude_stream(output: str) -> tuple[str | None, str | None]:
+    """Extract the final text and concrete model ID from stream-json output."""
+    text, model_id, _usage = _parse_claude_stream_ex(output)
+    return text, model_id
 
 
 def call_claude(
     prompt: str,
     timeout: int = settings.SUMMARY_TIMEOUT_SECONDS,
+    *,
+    title: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Claude CLI 호출 → (응답 텍스트, 실제 모델ID) 반환. 실패 시 (None, None).
 
     모델ID는 stream-json 이벤트의 model 필드(예: 'claude-opus-4-8')를 캡처 —
     'opus' 별칭이 아니라 실제 처리 모델 버전을 기록하기 위함.
+    title은 llm_log 이력의 제목(기사 원제)으로만 쓰인다. 성공·실패·타임아웃 모두 1행 기록.
     """
-    try:
-        proc = subprocess.run(
-            [
-                CLAUDE_BIN,
-                "--output-format", "stream-json",
-                "--verbose",
-                "--model", CLAUDE_MODEL,
-                "-p", prompt,
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=timeout,
-            cwd=tempfile.gettempdir(),
-        )
-        if proc.returncode != 0:
-            err = (proc.stderr or "")[:300]
-            print(f"     Claude CLI 오류 (rc={proc.returncode}): {err}", file=sys.stderr)
-            return None, None
-        return _parse_claude_stream(proc.stdout)
+    with _llm_track(
+        "claude", CLAUDE_MODEL, purpose="summary", title=title, backend="cli",
+        meta={"alias": CLAUDE_MODEL},
+    ) as call:
+        try:
+            proc = subprocess.run(
+                [
+                    CLAUDE_BIN,
+                    "--output-format", "stream-json",
+                    "--verbose",
+                    "--model", CLAUDE_MODEL,
+                    "-p", prompt,
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=timeout,
+                cwd=tempfile.gettempdir(),
+            )
+            if proc.returncode != 0:
+                err = (proc.stderr or "")[:300]
+                print(f"     Claude CLI 오류 (rc={proc.returncode}): {err}", file=sys.stderr)
+                _log_fail(call, f"rc={proc.returncode}: {err[:200]}")
+                return None, None
+            text, model_id, usage = _parse_claude_stream_ex(proc.stdout)
+            _log_usage(call, usage, model_id or CLAUDE_MODEL)
+            if not text:
+                _log_fail(call, "empty output")
+            return text, model_id
 
-    except subprocess.TimeoutExpired:
-        # subprocess.run()은 timeout 시 자식 프로세스를 종료한 뒤 예외를 발생시킨다.
-        # 아직 대입되지 않은 proc를 참조하면 UnboundLocalError로 배치가 중단된다.
-        print("     Claude CLI 타임아웃", file=sys.stderr)
-        return None, None
-    except Exception as e:
-        print(f"     Claude CLI 호출 실패: {e}", file=sys.stderr)
-        return None, None
+        except subprocess.TimeoutExpired:
+            # subprocess.run()은 timeout 시 자식 프로세스를 종료한 뒤 예외를 발생시킨다.
+            # 아직 대입되지 않은 proc를 참조하면 UnboundLocalError로 배치가 중단된다.
+            print("     Claude CLI 타임아웃", file=sys.stderr)
+            _log_fail(call, f"timeout after {timeout}s", status="timeout")
+            return None, None
+        except Exception as e:
+            print(f"     Claude CLI 호출 실패: {e}", file=sys.stderr)
+            _log_fail(call, f"{type(e).__name__}: {e}")
+            return None, None
 
 
 def extract_json(text: str) -> dict | None:
@@ -232,37 +337,74 @@ def _grok_default_model() -> str:
     return model
 
 
+def _parse_grok_json(output: str) -> tuple[str | None, dict]:
+    """`grok -p … --output-format json` stdout → (응답 텍스트, usage dict).
+
+    봉투: {"text": "<응답>", "stopReason": …, "usage": {input_tokens, output_tokens,
+    cache_read_input_tokens, cache_creation_input_tokens, …},
+    "modelUsage": {"<실제 모델, 예 grok-4.6-build>": {...}}}.
+    봉투가 아니면(구버전 CLI·plain 출력) stdout을 예전처럼 그대로 텍스트로 본다 —
+    요약 JSON 텍스트 자체가 '{'로 시작하므로 text+usage/stopReason 키가 있을 때만 봉투로 판정.
+    """
+    raw = (output or "").strip()
+    try:
+        data = json.loads(raw) if raw.startswith("{") else None
+        is_envelope = (
+            isinstance(data, dict) and "text" in data
+            and any(k in data for k in ("usage", "modelUsage", "stopReason"))
+        )
+        if not is_envelope:
+            return raw or None, {}
+        text = str(data.get("text") or "").strip() or None
+        return text, _usage_from_envelope(data)
+    except Exception:
+        # 어떤 이유로든 봉투 해석에 실패하면 원문 stdout(strip)을 그대로 — 본업 우선.
+        return raw or None, {}
+
+
 def call_grok(
     prompt: str,
     timeout: int = settings.SUMMARY_TIMEOUT_SECONDS,
+    *,
+    title: str | None = None,
 ) -> tuple[str | None, str | None]:
-    """Claude 실패 시 폴백 — grok CLI 헤드리스 호출 → (텍스트, 모델ID). 실패 시 (None, None).
+    """grok CLI 헤드리스 호출 → (텍스트, 모델ID). 실패 시 (None, None).
 
-    `grok -p <PROMPT> --output-format plain` 으로 응답 텍스트만 stdout 수신.
-    응답 형식은 Claude와 동일(요약 JSON 텍스트) → 호출측에서 extract_json 재사용.
-    모델ID는 GROK_MODEL(지정 시) 또는 grok 기본 모델(예: 'grok-4.5').
+    `grok -p <PROMPT> --output-format json` 봉투에서 text만 꺼내 돌려준다(plain 출력을
+    strip한 것과 동일). 응답 형식은 Claude와 동일(요약 JSON 텍스트) → 호출측에서 extract_json 재사용.
+    반환 모델ID는 GROK_MODEL(지정 시) 또는 grok 기본 모델(예: 'grok-4.6'); llm_log 이력에는
+    봉투 modelUsage의 실제 모델(예: 'grok-4.6-build')과 토큰이 남는다.
+    title은 llm_log 이력의 제목(기사 원제)으로만 쓰인다. 성공·실패·타임아웃 모두 1행 기록.
     """
     model = GROK_MODEL or _grok_default_model()
-    try:
-        cmd = [GROK_BIN, "-p", prompt, "--output-format", "plain"]
-        if GROK_MODEL:
-            cmd += ["-m", GROK_MODEL]
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=timeout,
-            cwd=tempfile.gettempdir(),  # 프로젝트 파일 스캔 방지 (순수 텍스트 생성)
-        )
-        if proc.returncode != 0:
-            print(f"     Grok CLI 오류 (rc={proc.returncode}): {(proc.stderr or '')[:300]}", file=sys.stderr)
+    with _llm_track("grok", model, purpose="summary", title=title, backend="cli") as call:
+        try:
+            cmd = [GROK_BIN, "-p", prompt, "--output-format", "json"]
+            if GROK_MODEL:
+                cmd += ["-m", GROK_MODEL]
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=timeout,
+                cwd=tempfile.gettempdir(),  # 프로젝트 파일 스캔 방지 (순수 텍스트 생성)
+            )
+            if proc.returncode != 0:
+                err = (proc.stderr or "")[:300]
+                print(f"     Grok CLI 오류 (rc={proc.returncode}): {err}", file=sys.stderr)
+                _log_fail(call, f"rc={proc.returncode}: {err[:200]}")
+                return None, None
+            text, usage = _parse_grok_json(proc.stdout)
+            _log_usage(call, usage)   # modelUsage 키(실제 모델)로 model 정정 + 토큰
+            if not text:
+                _log_fail(call, "empty output")
+            return text, (model if text else None)
+        except subprocess.TimeoutExpired:
+            print("     Grok CLI 타임아웃", file=sys.stderr)
+            _log_fail(call, f"timeout after {timeout}s", status="timeout")
             return None, None
-        text = (proc.stdout or "").strip() or None
-        return text, (model if text else None)
-    except subprocess.TimeoutExpired:
-        print("     Grok CLI 타임아웃", file=sys.stderr)
-        return None, None
-    except Exception as e:
-        print(f"     Grok CLI 호출 실패: {e}", file=sys.stderr)
-        return None, None
+        except Exception as e:
+            print(f"     Grok CLI 호출 실패: {e}", file=sys.stderr)
+            _log_fail(call, f"{type(e).__name__}: {e}")
+            return None, None

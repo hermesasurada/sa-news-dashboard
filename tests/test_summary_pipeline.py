@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import os
 import sqlite3
 import subprocess
 import tempfile
@@ -112,11 +113,247 @@ class SummaryPipelineTests(unittest.TestCase):
     def test_call_claude_timeout_returns_empty_result(self):
         expired = subprocess.TimeoutExpired(cmd="claude", timeout=1)
         with (
+            patch.dict(os.environ, {"HERMES_LLM_LOG_DISABLED": "1"}),  # 실제 이력 DB 오염 방지
             patch.object(sa_claude_cli.subprocess, "run", side_effect=expired),
             contextlib.redirect_stderr(io.StringIO()),
         ):
             result = sa_claude_cli.call_claude("test", timeout=1)
         self.assertEqual(result, (None, None))
+
+
+_GROK_ENVELOPE = {
+    "text": "ok",
+    "stopReason": "end_turn",
+    "sessionId": "s",
+    "usage": {
+        "input_tokens": 8428, "cache_read_input_tokens": 10496,
+        "cache_creation_input_tokens": 0, "output_tokens": 25,
+        "reasoning_tokens": 24, "total_tokens": 18949,
+    },
+    "num_turns": 1,
+    "modelUsage": {
+        "grok-4.6-build": {
+            "inputTokens": 8428, "outputTokens": 25, "cacheReadInputTokens": 10496,
+            "cacheCreationInputTokens": 0, "modelCalls": 1,
+        }
+    },
+}
+
+_CLAUDE_STREAM = "\n".join([
+    json.dumps({"type": "system", "subtype": "init", "model": "claude-opus-4-8"}),
+    json.dumps({
+        "type": "assistant",
+        "message": {"model": "claude-opus-4-8", "content": [{"type": "text", "text": "draft"}]},
+    }),
+    json.dumps({
+        "type": "result", "subtype": "success", "result": "final",
+        "usage": {"input_tokens": 1200, "output_tokens": 80,
+                  "cache_read_input_tokens": 300, "cache_creation_input_tokens": 40},
+        "modelUsage": {"claude-opus-4-8": {"inputTokens": 1200, "outputTokens": 80}},
+    }),
+])
+
+
+@unittest.skipIf(sa_claude_cli.llm_log is None, "hermes-llm-log 모듈 없음")
+class LlmLogWiringTests(unittest.TestCase):
+    """LLM 호출 이력(llm_log) 배선 — 실 CLI 없이 fixture로 행이 남는지 확인."""
+
+    def setUp(self):
+        self._tempdir = tempfile.TemporaryDirectory()
+        self._db = Path(self._tempdir.name) / "llm_calls.db"
+        self._env = patch.dict(
+            os.environ, {"HERMES_LLM_LOG_DB": str(self._db), "HERMES_LLM_LOG_DISABLED": ""}
+        )
+        self._env.start()
+
+    def tearDown(self):
+        self._env.stop()
+        self._tempdir.cleanup()
+
+    def _rows(self):
+        if not self._db.exists():
+            return []
+        conn = sqlite3.connect(str(self._db))
+        conn.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in conn.execute("SELECT * FROM calls ORDER BY id")]
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _proc(stdout: str, rc: int = 0, stderr: str = ""):
+        return subprocess.CompletedProcess(args=[], returncode=rc, stdout=stdout, stderr=stderr)
+
+    # ── 파서 ──
+    def test_parse_grok_json_envelope(self):
+        text, usage = sa_claude_cli._parse_grok_json(json.dumps(_GROK_ENVELOPE, indent=2))
+        self.assertEqual(text, "ok")
+        self.assertEqual(usage["model"], "grok-4.6-build")
+        self.assertEqual((usage["input_tokens"], usage["output_tokens"]), (8428, 25))
+        self.assertEqual((usage["cache_read_tokens"], usage["cache_write_tokens"]), (10496, 0))
+
+    def test_parse_grok_json_passes_plain_output_through(self):
+        # plain 출력(구버전)·요약 JSON 텍스트('{'로 시작)는 봉투가 아니므로 strip만 하고 그대로.
+        self.assertEqual(sa_claude_cli._parse_grok_json("ok\n"), ("ok", {}))
+        summary = '{"ticker":"AAPL","headline":"제목"}'
+        self.assertEqual(sa_claude_cli._parse_grok_json(summary + "\n"), (summary, {}))
+        self.assertEqual(sa_claude_cli._parse_grok_json(""), (None, {}))
+
+    def test_parse_claude_stream_ex_reads_usage_from_result_event(self):
+        text, model, usage = sa_claude_cli._parse_claude_stream_ex(_CLAUDE_STREAM)
+        self.assertEqual((text, model), ("final", "claude-opus-4-8"))
+        self.assertEqual(usage["model"], "claude-opus-4-8")
+        self.assertEqual((usage["input_tokens"], usage["output_tokens"]), (1200, 80))
+        self.assertEqual((usage["cache_read_tokens"], usage["cache_write_tokens"]), (300, 40))
+        # 기존 2-튜플 API는 그대로
+        self.assertEqual(sa_claude_cli._parse_claude_stream(_CLAUDE_STREAM), ("final", "claude-opus-4-8"))
+
+    # ── call_grok ──
+    def test_call_grok_records_row_with_actual_model_and_tokens(self):
+        with (
+            patch.object(sa_claude_cli, "_grok_default_model", return_value="grok-4.6"),
+            patch.object(sa_claude_cli, "GROK_MODEL", ""),
+            patch.object(sa_claude_cli.subprocess, "run", return_value=self._proc(json.dumps(_GROK_ENVELOPE))) as run,
+        ):
+            result = sa_claude_cli.call_grok("p", timeout=5, title="AAPL: test title")
+        self.assertEqual(result, ("ok", "grok-4.6"))   # 반환 모델(summary_model)은 기존대로
+        self.assertIn("--output-format", run.call_args.args[0])
+        self.assertEqual(run.call_args.args[0][run.call_args.args[0].index("--output-format") + 1], "json")
+        rows = self._rows()
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertEqual((r["service"], r["provider"], r["model"]), ("sa", "grok", "grok-4.6-build"))
+        self.assertEqual((r["purpose"], r["title"], r["backend"]), ("summary", "AAPL: test title", "cli"))
+        self.assertEqual((r["input_tokens"], r["output_tokens"]), (8428, 25))
+        self.assertEqual((r["cache_read_tokens"], r["cache_write_tokens"]), (10496, 0))
+        self.assertEqual(r["status"], "ok")
+        self.assertIsNone(r["reasoning"])
+
+    def test_call_grok_nonzero_exit_records_error_row(self):
+        with (
+            patch.object(sa_claude_cli, "_grok_default_model", return_value="grok-4.6"),
+            patch.object(sa_claude_cli.subprocess, "run", return_value=self._proc("", rc=1, stderr="boom")),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            self.assertEqual(sa_claude_cli.call_grok("p", timeout=5, title="T"), (None, None))
+        rows = self._rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["status"], rows[0]["model"]), ("error", "grok-4.6"))
+        self.assertIn("rc=1", rows[0]["error"])
+
+    # ── call_claude ──
+    def test_call_claude_records_usage_and_alias(self):
+        with patch.object(sa_claude_cli.subprocess, "run", return_value=self._proc(_CLAUDE_STREAM)):
+            self.assertEqual(sa_claude_cli.call_claude("p", timeout=5, title="T"), ("final", "claude-opus-4-8"))
+        rows = self._rows()
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertEqual((r["provider"], r["model"], r["status"]), ("claude", "claude-opus-4-8", "ok"))
+        self.assertEqual((r["input_tokens"], r["output_tokens"]), (1200, 80))
+        self.assertEqual((r["cache_read_tokens"], r["cache_write_tokens"]), (300, 40))
+        self.assertEqual(json.loads(r["meta"])["alias"], sa_claude_cli.CLAUDE_MODEL)
+        self.assertEqual(r["title"], "T")
+
+    def test_call_claude_timeout_records_timeout_row(self):
+        expired = subprocess.TimeoutExpired(cmd="claude", timeout=1)
+        with (
+            patch.object(sa_claude_cli.subprocess, "run", side_effect=expired),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            self.assertEqual(sa_claude_cli.call_claude("p", timeout=1, title="T"), (None, None))
+        rows = self._rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["status"], rows[0]["model"]), ("timeout", sa_claude_cli.CLAUDE_MODEL))
+
+    # ── 본업 실패 불가: 이력 코드가 어떤 상태여도 요약 결과는 그대로 ──
+    def test_summary_survives_missing_llm_log_module(self):
+        with (
+            patch.object(sa_claude_cli, "llm_log", None),
+            patch.object(sa_claude_cli, "_grok_default_model", return_value="grok-4.6"),
+            patch.object(sa_claude_cli.subprocess, "run", return_value=self._proc(json.dumps(_GROK_ENVELOPE))),
+        ):
+            self.assertEqual(sa_claude_cli.call_grok("p", timeout=5, title="T"), ("ok", "grok-4.6"))
+        with (
+            patch.object(sa_claude_cli, "llm_log", None),
+            patch.object(sa_claude_cli.subprocess, "run", return_value=self._proc(_CLAUDE_STREAM)),
+        ):
+            self.assertEqual(sa_claude_cli.call_claude("p", timeout=5, title="T"), ("final", "claude-opus-4-8"))
+        self.assertEqual(self._rows(), [])
+
+    def test_summary_survives_unwritable_log_db(self):
+        err = io.StringIO()
+        with (
+            patch.dict(os.environ, {"HERMES_LLM_LOG_DB": "/dev/null/x/calls.db"}),
+            patch.object(sa_claude_cli, "_grok_default_model", return_value="grok-4.6"),
+            patch.object(sa_claude_cli.subprocess, "run", return_value=self._proc(json.dumps(_GROK_ENVELOPE))),
+            contextlib.redirect_stderr(err),
+        ):
+            self.assertEqual(sa_claude_cli.call_grok("p", timeout=5, title="T"), ("ok", "grok-4.6"))
+        with (
+            patch.dict(os.environ, {"HERMES_LLM_LOG_DB": "/dev/null/x/calls.db"}),
+            patch.object(sa_claude_cli.subprocess, "run", return_value=self._proc(_CLAUDE_STREAM)),
+            contextlib.redirect_stderr(err),
+        ):
+            self.assertEqual(sa_claude_cli.call_claude("p", timeout=5, title="T"), ("final", "claude-opus-4-8"))
+        self.assertIn("[llm_log] record failed", err.getvalue())
+
+    def test_summary_survives_broken_log_calls(self):
+        # Call 생성·finish·usage가 전부 예외를 내도 반환값은 그대로.
+        class Broken:
+            def __init__(self, *a, **k):
+                raise RuntimeError("no call")
+        with (
+            patch.object(sa_claude_cli.llm_log, "Call", Broken),
+            patch.object(sa_claude_cli, "_grok_default_model", return_value="grok-4.6"),
+            patch.object(sa_claude_cli.subprocess, "run", return_value=self._proc(json.dumps(_GROK_ENVELOPE))),
+        ):
+            self.assertEqual(sa_claude_cli.call_grok("p", timeout=5, title="T"), ("ok", "grok-4.6"))
+        with (
+            patch.object(sa_claude_cli.llm_log.Call, "finish", side_effect=RuntimeError("finish")),
+            patch.object(sa_claude_cli.llm_log.Call, "usage", side_effect=RuntimeError("usage")),
+            patch.object(sa_claude_cli.subprocess, "run", return_value=self._proc(_CLAUDE_STREAM)),
+        ):
+            self.assertEqual(sa_claude_cli.call_claude("p", timeout=5, title="T"), ("final", "claude-opus-4-8"))
+
+    def test_parse_grok_json_falls_back_to_raw_on_broken_envelope(self):
+        # 봉투처럼 보이지만 해석 중 예외 → 원문 stdout(strip) 그대로.
+        with patch.object(sa_claude_cli, "_usage_from_envelope", side_effect=RuntimeError("x")):
+            raw = json.dumps(_GROK_ENVELOPE)
+            self.assertEqual(sa_claude_cli._parse_grok_json(raw + "\n"), (raw, {}))
+        self.assertEqual(sa_claude_cli._parse_grok_json('{"text": "broken'), ('{"text": "broken', {}))
+
+    # ── 1차 실패 → 폴백: 행 2개 ──
+    def test_fallback_leaves_failure_row_and_success_row_with_article_title(self):
+        summary = json.dumps({
+            "ticker": "AAPL", "company_name": "Apple", "headline": "제목",
+            "summary_details": ["하나"], "ticker_color": "blue",
+        }, ensure_ascii=False)
+        claude_stream = "\n".join([
+            json.dumps({"type": "system", "model": "claude-opus-4-8"}),
+            json.dumps({"type": "result", "subtype": "success", "result": summary,
+                        "usage": {"input_tokens": 10, "output_tokens": 5},
+                        "modelUsage": {"claude-opus-4-8": {"outputTokens": 5}}}),
+        ])
+        row = {"id": 1, "ticker": "AAPL", "original_title": "AAPL: Apple raises prices"}
+        with (
+            patch.object(settings, "SUMMARY_PRIMARY", "grok"),
+            patch.object(sa_summarize_claude, "parse_article",
+                         return_value=("article body " * 80, "sa_api", [], None)),
+            patch.object(sa_claude_cli, "_grok_default_model", return_value="grok-4.6"),
+            patch.object(sa_claude_cli.subprocess, "run",
+                         side_effect=[subprocess.TimeoutExpired(cmd="grok", timeout=1),
+                                      self._proc(claude_stream)]),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            outcome = sa_summarize_claude.attempt_article(row)
+        self.assertIsInstance(outcome, sa_summarize_claude.AttemptSuccess)
+        self.assertEqual(outcome.summary_model, "claude-opus-4-8")
+        rows = self._rows()
+        self.assertEqual([(r["provider"], r["status"]) for r in rows],
+                         [("grok", "timeout"), ("claude", "ok")])
+        self.assertEqual({r["title"] for r in rows}, {"AAPL: Apple raises prices"})
+        self.assertEqual(rows[1]["input_tokens"], 10)
 
 
 class GrokModelDetectionTests(unittest.TestCase):
