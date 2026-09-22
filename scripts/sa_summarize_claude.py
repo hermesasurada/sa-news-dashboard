@@ -56,6 +56,8 @@ _PROMPT_TMPL = """\
      같은 회사를 두 형식으로 중복해 넣지는 않는다.
   ⚠️ SpaceX는 **상장사(SPCX)** 다. 비상장으로 오인해 빠뜨리지 말고, 실질 관련이면 반드시 포함한다.
      (예: 'VinSpace가 SpaceX와 발사 계약' → SPCX 포함. 단순 배경 언급이면 기존대로 제외)
+     xAI는 SpaceX에 합병됐다. 'xAI'·'SpaceXAI'로만 적혀 있어도 같은 상장사이므로 SPCX로 잡는다.
+     (Grok·Grok 4.7 등 모델명은 제품이라 티커가 아니다. company_name은 SpaceX로 적는다)
   기사에 해당 기업이 없으면 빈 문자열 "".
 - company_name: ticker 순서·개수와 **정확히 동일하게** 정식 영문 기업명을 · 로 연결 (예: "Nvidia·AMD").
   ticker를 N개 넣었으면 company_name도 N개. 한국어 번역·음차 절대 금지. 티커 기호(AAPL 등) 포함 금지.
