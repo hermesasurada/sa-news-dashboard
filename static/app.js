@@ -376,9 +376,11 @@ function renderCard(a) {
 <div class="card${!isRead ? ' card-unread' : ''}" data-id="${articleId}" data-read="${isRead ? '1' : '0'}" style="--accent:${ACCENT[a.ticker_color] || ACCENT.blue}">
   <div class="card-title-row">
     ${unreadDot}
-    <h2 class="card-title">${escapeHTML(a.headline)}</h2>
+    <div class="card-heading">
+      <h2 class="card-title">${escapeHTML(a.headline)}</h2>
+      ${originalTitle}
+    </div>
   </div>
-  ${originalTitle}
   <hr class="card-divider">
   <div class="card-details">
     <ul>${details}</ul>

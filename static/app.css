@@ -425,7 +425,8 @@ body {
   background: var(--accent);
 }
 .card-title-row .unread-dot { margin-top: 8px; flex-shrink: 0; }
-.card-title-row .card-title { margin-bottom: 0; flex: 1; }
+.card-heading { flex: 1; min-width: 0; }
+.card-title-row .card-title { margin-bottom: 0; }
 
 /* ── Ticker Row ── */
 .card-tickers {
@@ -611,12 +612,8 @@ body {
   font-size: 12px;
   color: var(--faint);
   line-height: 1.4;
-  /* 원제는 번역 제목에 딸린 줄이라 바짝 붙인다(2026-09-07 지시). 제목행의
-     margin-bottom(hermes-ui 7px)을 음수 마진으로 되돌려 2px만 남긴다 —
-     원제가 없는 카드의 간격은 그대로 둔다. */
-  margin-top: -5px;
+  margin-top: 3px;
   margin-bottom: 0;
-  margin-left: 14px;
   word-break: break-word;
 }
 
@@ -640,10 +637,11 @@ body {
 .card-details strong { color: var(--ink-2); }
 .card-details ul { padding-left: 16px; margin-top: 4px; }
 .card-details li {
-  margin-bottom: 6px;  /* bullet 사이 간격은 유지 */
+  margin-bottom: 3px;
   overflow-wrap: break-word;
   word-break: keep-all;
 }
+.card-details li:last-child { margin-bottom: 0; }
 
 /* ── 요약 본문 글꼴 선택 (website-monitor 이식) ──
    body[data-reader-font=key] → 카드 요약 본문(.card-details/.card-summary)에 적용.
