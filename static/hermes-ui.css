@@ -313,7 +313,7 @@ button, input, select { font-family: inherit; }
 .app-wm .card-divider,
 .app-sa .card-divider { margin: 9px 0; border-top-color: var(--ui-border); box-shadow: none; }
 .app-sa .card-title-row { margin-bottom: 0; }
-.app-sa .card-divider { margin-top: 4px; margin-bottom: 4px; background: var(--ui-border); }
+.app-sa .card-divider { margin-top: 3px; margin-bottom: 3px; background: var(--ui-border); }
 .app-td .summary,
 .app-wm .card-summary,
 .app-sa :is(.card-summary, .card-details) {
