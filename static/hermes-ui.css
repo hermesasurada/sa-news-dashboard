@@ -312,7 +312,8 @@ button, input, select { font-family: inherit; }
 .app-sa .card-orig-title { margin-left: 0; color: var(--ui-muted); font-size: 11.5px; }
 .app-wm .card-divider,
 .app-sa .card-divider { margin: 9px 0; border-top-color: var(--ui-border); box-shadow: none; }
-.app-sa .card-divider { margin-bottom: 3px; }
+.app-sa .card-title-row { margin-bottom: 0; }
+.app-sa .card-divider { margin-top: 4px; margin-bottom: 4px; background: var(--ui-border); }
 .app-td .summary,
 .app-wm .card-summary,
 .app-sa :is(.card-summary, .card-details) {
@@ -324,8 +325,7 @@ button, input, select { font-family: inherit; }
 .app-wm .card-summary .sum-head,
 .app-sa .card-details strong { font-weight: 650; }
 .app-td .card.unread .title-row,
-.app-wm .card:not(.read) .card-title-row,
-.app-sa .card.card-unread .card-title-row {
+.app-wm .card:not(.read) .card-title-row {
   margin-bottom: 10px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--ui-border);
