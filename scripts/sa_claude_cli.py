@@ -17,10 +17,17 @@ sa_summarize_claude.py 가 사용:
 """
 
 # Shared metadata; service execution policy remains local.
+# 카탈로그는 부가 정보라 못 불러와도 요약은 계속한다(아래 _grok_default_model이 None을 처리).
 import sys as _catalog_sys
 from pathlib import Path as _CatalogPath
-_catalog_sys.path.insert(0, str(_CatalogPath.home() / "projects/hermes-llm-log"))
-import llm_catalog
+_CATALOG_DIR = str(_CatalogPath.home() / "projects/hermes-llm-log")
+if _CATALOG_DIR not in _catalog_sys.path:
+    _catalog_sys.path.append(_CATALOG_DIR)
+try:
+    import llm_catalog
+except Exception as _catalog_exc:  # noqa: BLE001 — SyntaxError 포함 어떤 실패든 본업은 계속
+    llm_catalog = None
+    _catalog_sys.stderr.write(f"[llm_catalog] 불러오기 실패 → 카탈로그 없이 진행: {type(_catalog_exc).__name__}: {_catalog_exc}\n")
 
 import contextlib
 import json
@@ -325,7 +332,12 @@ def _grok_default_model() -> str:
     if _GROK_DEFAULT_MODEL is not None:
         return _GROK_DEFAULT_MODEL
 
-    registered = llm_catalog.resolve("grok", "grok")
+    registered = None
+    if llm_catalog is not None:
+        try:
+            registered = llm_catalog.resolve("grok", "grok")
+        except Exception:  # noqa: BLE001 — 카탈로그 오류는 아래 캐시·탐지로 넘어간다
+            registered = None
     if registered and registered.get("resolved_model"):
         return registered["resolved_model"]
 
