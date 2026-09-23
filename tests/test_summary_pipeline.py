@@ -360,6 +360,9 @@ class GrokModelDetectionTests(unittest.TestCase):
     """grok 기본 모델 탐지 — 간헐 실패로 버전('grok-4.5')이 소실되지 않아야 한다."""
 
     def setUp(self):
+        self.catalog_patch = patch.object(sa_claude_cli.llm_catalog, "resolve", return_value=None)
+        self.catalog_patch.start()
+        self.addCleanup(self.catalog_patch.stop)
         self._tempdir = tempfile.TemporaryDirectory()
         self._orig_cache = sa_claude_cli.GROK_MODEL_CACHE
         sa_claude_cli.GROK_MODEL_CACHE = Path(self._tempdir.name) / "grok_model.json"
@@ -369,6 +372,11 @@ class GrokModelDetectionTests(unittest.TestCase):
         sa_claude_cli.GROK_MODEL_CACHE = self._orig_cache
         sa_claude_cli._GROK_DEFAULT_MODEL = None
         self._tempdir.cleanup()
+
+    def test_shared_catalog_observation_skips_local_probe(self):
+        with patch.object(sa_claude_cli.llm_catalog, "resolve", return_value={"resolved_model": "grok-shared"}), patch.object(sa_claude_cli, "_probe_grok_model") as probe:
+            self.assertEqual(sa_claude_cli._grok_default_model(), "grok-shared")
+            probe.assert_not_called()
 
     def test_probe_success_is_cached_to_disk(self):
         with patch.object(sa_claude_cli, "_probe_grok_model", return_value="grok-4.5"):

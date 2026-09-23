@@ -15,6 +15,13 @@ sa_summarize_claude.py 가 사용:
   CLAUDE_MODEL — 모델명 (기본 'opus' 이동 별칭, 실제 모델 ID는 응답에서 기록)
   HERMES_LLM_LOG_DB / HERMES_LLM_LOG_DISABLED — 이력 DB 경로 / 기록 끄기(llm_log 참고)
 """
+
+# Shared metadata; service execution policy remains local.
+import sys as _catalog_sys
+from pathlib import Path as _CatalogPath
+_catalog_sys.path.insert(0, str(_CatalogPath.home() / "projects/hermes-llm-log"))
+import llm_catalog
+
 import contextlib
 import json
 import os
@@ -317,6 +324,10 @@ def _grok_default_model() -> str:
     global _GROK_DEFAULT_MODEL
     if _GROK_DEFAULT_MODEL is not None:
         return _GROK_DEFAULT_MODEL
+
+    registered = llm_catalog.resolve("grok", "grok")
+    if registered and registered.get("resolved_model"):
+        return registered["resolved_model"]
 
     cached, fresh = _read_grok_model_cache()
     if cached and fresh:
