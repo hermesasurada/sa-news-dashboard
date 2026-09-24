@@ -90,3 +90,19 @@
 }
 :root[data-theme="dark"] .app-td :is(.error, .analysis-alert) { border-color: #5a2a30; background: var(--dm-danger-soft); }
 :root[data-theme="dark"] :is(.app-td .modal, .app-wm .modal-overlay, .app-sa .modal-overlay) { background: var(--dm-overlay); }
+
+/* ── 상단 고정 영역(타이틀 + 검색조건) — 스크롤해도 제자리(2026-09-24 사용자 지시) ──
+   세 앱 공통. 배경은 ::before로 좌우 끝까지 칠해 아래로 지나가는 카드를 가린다
+   (조상에 overflow-x:hidden이 있으면 sticky가 깨지므로 앱은 clip을 쓴다).
+   z-index는 각 앱 모달(wm 50)보다 낮게 둔다. 스크롤되면 JS가 .is-stuck을 붙여 밑줄. */
+.hermes-gnb { position: sticky; top: 0; z-index: 40; display: flow-root; padding-top: 12px; margin-top: -12px; }  /* flow-root: 마지막 줄의 아래 여백까지 배경 안에 넣는다 */
+.hermes-gnb::before {
+  content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; left: -100vmax; right: -100vmax;
+  background: var(--ui-bg);
+}
+/* 붙어 있을 때는 배경을 밑줄 아래로 10px 더 내려 스크롤되는 카드와 틈을 둔다(2026-09-24 사용자 지시) */
+.hermes-gnb.is-stuck::before { bottom: -10px; }
+.hermes-gnb.is-stuck::after {
+  content: ""; position: absolute; left: -100vmax; right: -100vmax; bottom: 0; height: 1px;
+  background: var(--ui-border);
+}

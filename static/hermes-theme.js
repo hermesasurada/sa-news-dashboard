@@ -142,5 +142,15 @@
   global.addEventListener('resize', closeMenu);
   apply();
 
+  // 상단 고정 영역(.hermes-gnb)이 붙어 있는 동안 밑줄을 긋는다(hermes-theme.css).
+  function markStuck() {
+    const stuck = (global.scrollY || 0) > 0;
+    document.querySelectorAll('.hermes-gnb').forEach(el => el.classList.toggle('is-stuck', stuck));
+  }
+  global.addEventListener('scroll', markStuck, { passive: true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', markStuck);
+  else markStuck();
+  global.addEventListener('load', markStuck);   // 새로고침 뒤 스크롤 위치 복원까지 반영
+
   global.HermesTheme = { mount, set, preference, resolved: () => resolved() };
 })(window);
