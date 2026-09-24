@@ -57,18 +57,16 @@ async function copyArticleId(button) {
 }
 
 /* ── Filters ── */
-let allTickers = [];
 
 const FILTERS_CACHE_KEY = 'sa_filters';
 
 async function loadFilters() {
   try {
     const data = await fetchJSON('/api/filters');
-    allTickers = data.tickers || [];
     TICKER_ALIASES = data.aliases || {};   // db가 단일 소스
     try {
       localStorage.setItem(FILTERS_CACHE_KEY,
-        JSON.stringify({ tickers: allTickers, aliases: TICKER_ALIASES }));
+        JSON.stringify({ aliases: TICKER_ALIASES }));
     } catch (e) {}
   } catch(e) { console.error('필터 로드 실패', e); }
 }
@@ -79,62 +77,11 @@ function loadFiltersFromCache() {
   try {
     const cached = JSON.parse(localStorage.getItem(FILTERS_CACHE_KEY) || 'null');
     if (cached && cached.aliases) {
-      allTickers = cached.tickers || [];
       TICKER_ALIASES = cached.aliases;
       return true;
     }
   } catch (e) {}
   return false;
-}
-
-/* ── 티커 선택 모달 ── */
-// 해외상장 티커는 자국 표기(삼성전자 / AIR.PA)로 보여 가독성↑
-function tickerDisplay(raw) {
-  const fl = FOREIGN_LISTINGS[raw];
-  return fl ? (fl.byName ? fl.name : fl.home) : raw;
-}
-function updateTickerLabel() {
-  const val = document.getElementById('ticker-filter').value;
-  const btn = document.getElementById('ticker-btn');
-  const lbl = document.getElementById('ticker-btn-label');
-  if (val) { lbl.textContent = tickerDisplay(val); btn.classList.add('active'); }
-  else     { lbl.textContent = '전체 티커'; btn.classList.remove('active'); }
-}
-function openTickerModal() {
-  document.getElementById('ticker-search').value = '';
-  document.getElementById('ticker-modal').classList.add('show');
-  renderTickerList();
-  setTimeout(() => document.getElementById('ticker-search').focus(), 30);
-}
-function closeTickerModal() {
-  document.getElementById('ticker-modal').classList.remove('show');
-}
-function setTicker(val) {
-  document.getElementById('ticker-filter').value = val;
-  updateTickerLabel();
-  closeTickerModal();
-  search(0);
-}
-function renderTickerList() {
-  const q = document.getElementById('ticker-search').value.trim().toLowerCase();
-  const cur = document.getElementById('ticker-filter').value;
-  const matched = allTickers.filter(t => {
-    if (!q) return true;
-    const fl = FOREIGN_LISTINGS[t];
-    const hay = (t + ' ' + (fl ? fl.home + ' ' + fl.name : '')).toLowerCase();
-    return hay.includes(q);
-  });
-  const allChip = `<div class="tk-chip all ${!cur ? 'active' : ''}" onclick="setTicker('')">전체</div>`;
-  if (matched.length === 0) {
-    document.getElementById('ticker-list').innerHTML = allChip + '<div class="tk-empty">일치하는 티커가 없습니다</div>';
-    return;
-  }
-  const chips = matched.map(t => {
-    const fl = FOREIGN_LISTINGS[t];
-    const sub = fl ? `<span class="sub">${escapeHTML(fl.byName ? fl.name : fl.home)}</span>` : '';
-    return `<div class="tk-chip ${t === cur ? 'active' : ''}" data-ticker="${escapeAttr(t)}" onclick="setTicker(this.dataset.ticker)">${escapeHTML(t)}${sub}</div>`;
-  }).join('');
-  document.getElementById('ticker-list').innerHTML = allChip + chips;
 }
 
 /* ── Sort ── */
@@ -143,6 +90,7 @@ function applySortUI() {
   document.getElementById('sort-label').textContent = currentSort === 'last_modified' ? '수정시간순' : '이메일시간순';
   document.getElementById('sort-toggle').classList.toggle('alt', currentSort === 'last_modified');
   document.getElementById('order-label').textContent = currentOrder === 'asc' ? '과거순' : '최신순';
+  document.getElementById('order-toggle').classList.toggle('asc', currentOrder === 'asc');   // 모바일 화살표 방향
   document.getElementById('order-toggle').classList.toggle('alt', currentOrder === 'asc');
 }
 
@@ -190,9 +138,7 @@ function loadPrefs() {
 function getParams(offset) {
   const p = new URLSearchParams();
   const q = document.getElementById('q').value.trim();
-  const ticker = document.getElementById('ticker-filter').value;
   if (q) p.set('q', q);
-  if (ticker) p.set('ticker', ticker);
   p.set('sort_by', currentSort);
   p.set('order', currentOrder);
   if (document.getElementById('unread-filter').classList.contains('active'))
@@ -870,7 +816,6 @@ function syncURL(params) {
 function restoreFromURL() {
   const sp = new URLSearchParams(location.search);
   if (sp.has('q'))           document.getElementById('q').value = sp.get('q');
-  if (sp.has('ticker'))    { document.getElementById('ticker-filter').value = sp.get('ticker'); updateTickerLabel(); }
   if (sp.has('unread_only')) document.getElementById('unread-filter').classList.add('active');
   // URL이 정렬을 지정하면 로컬 기본값보다 우선 (공유 링크)
   if (sp.has('sort_by')) currentSort = sp.get('sort_by') === 'last_modified' ? 'last_modified' : 'email_time_et';
@@ -987,7 +932,6 @@ async function search(offset = 0, refreshMeta = true) {
 
     if (data.items.length === 0) {
       const hasFilter = !!(document.getElementById('q').value.trim()
-        || document.getElementById('ticker-filter').value
         || document.getElementById('unread-filter').classList.contains('active'));
       let msg, icon;
       if (trashView)       { icon = '🗑'; msg = '휴지통이 비어있습니다.'; }
@@ -1007,9 +951,8 @@ async function search(offset = 0, refreshMeta = true) {
 
     // #7: 필터 없는 1페이지 결과로 기준 total 갱신
     const qVal = document.getElementById('q').value.trim();
-    const tVal = document.getElementById('ticker-filter').value;
     const uVal = document.getElementById('unread-filter').classList.contains('active');
-    if (!qVal && !tVal && !uVal && offset === 0) {
+    if (!qVal && !uVal && offset === 0) {
       lastKnownTotal = currentListTotal;
       document.getElementById('new-articles-banner').style.display = 'none';
     }
@@ -1036,8 +979,6 @@ function toggleTrashView() {
 
 function reset() {
   document.getElementById('q').value = '';
-  document.getElementById('ticker-filter').value = '';
-  updateTickerLabel();
   currentSort = 'email_time_et';
   currentOrder = 'desc';
   applySortUI();
@@ -1081,7 +1022,6 @@ document.getElementById('q').addEventListener('keydown', e => {
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   hideTickerPopover();
-  closeTickerModal();
   closeFontPicker();
 });
 

@@ -107,6 +107,9 @@ body {
 }
 
 /* ── Search Bar ── */
+/* 모바일에서만 쓰는 아이콘(정렬 방향·초기화) — 데스크톱은 글자 라벨 */
+.ico-m { display: none; flex: 0 0 auto; }
+#order-toggle.asc .ico-order { transform: rotate(180deg); }
 .search-bar {
   display: flex;
   flex-wrap: wrap;
@@ -130,13 +133,12 @@ body {
 .search-bar > .btn-search,
 .search-bar > .btn-reset,
 .search-bar > .btn-sort,
-.search-bar > .btn-unread,
-.search-bar > .btn-ticker {
+.search-bar > .btn-unread {
   height: 35px;
   border-radius: 16px;
 }
 .search-bar input[type=text] {
-  flex: 1;
+  flex: 0 1 300px;   /* 입력창 폭을 줄여 버튼과 한 줄에 둔다(2026-09-24 사용자 지시) */
   min-width: 180px;
   padding: 0 16px;
   border: none;
@@ -167,7 +169,6 @@ body {
 .btn-reset,
 .btn-sort,
 .btn-unread,
-.btn-ticker,
 .btn-trash-view {
   border: none;
   border-radius: 4px;
@@ -181,7 +182,6 @@ body {
 .btn-reset:active,
 .btn-sort:active,
 .btn-unread:active,
-.btn-ticker:active,
 .btn-trash-view:active { box-shadow: var(--nm-inset-sm); }
 
 .btn-search {
@@ -235,16 +235,6 @@ body {
 }
 .btn-trash-view:hover { color: #c0392b; }
 .btn-trash-view.active { background: #c0392b; color: #fff; box-shadow: var(--nm-solid-on); }
-
-/* ── 티커 선택 버튼 ── */
-.btn-ticker {
-  height: 40px; padding: 0 14px;
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 13px; white-space: nowrap; max-width: 170px;
-}
-.btn-ticker:hover { color: var(--ink); }
-.btn-ticker.active { background: var(--accent); color: #fff; font-weight: 700; box-shadow: var(--nm-solid-on); }
-.btn-ticker span { overflow: hidden; text-overflow: ellipsis; }
 
 /* ── 복원 버튼 (휴지통 카드) ── */
 .restore-btn {
@@ -857,32 +847,6 @@ body[data-reader-font="mono"] .card-summary {
 .modal-head h3 { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; color: var(--ink); }
 .modal-close { background: none; border: none; font-size: 17px; color: var(--muted); cursor: pointer; line-height: 1; padding: 4px; }
 .modal-close:hover { color: var(--ink); }
-#ticker-search {
-  margin: 6px 22px 14px; height: 40px; padding: 0 16px;
-  border: none; border-radius: 4px; font-size: 14px; outline: none;
-  color: var(--ink-2); background: var(--surface);
-  box-shadow: var(--nm-inset-sm);
-}
-#ticker-search:focus { box-shadow: var(--nm-inset-sm), 0 0 0 2px rgba(47,86,224,0.25); }
-.ticker-grid {
-  overflow-y: auto; padding: 2px 22px 22px;
-  display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start;
-}
-.tk-chip {
-  padding: 6px 12px; border: none; border-radius: 4px;
-  background: var(--surface); box-shadow: var(--nm-raised-sm);
-  font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink-2);
-  cursor: pointer; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 5px;
-  transition: box-shadow 0.14s, color 0.14s;
-}
-.tk-chip:hover { color: var(--accent); }
-.tk-chip:active { box-shadow: var(--nm-inset-sm); }
-.tk-chip.active { background: var(--accent); color: #fff; box-shadow: var(--nm-inset-sm); }
-.tk-chip.all { color: var(--muted); }
-.tk-chip.all.active { background: var(--accent); color: #fff; }
-.tk-chip .sub { font-weight: 400; font-size: 11px; color: var(--muted); }
-.tk-chip.active .sub { color: #dbe4fb; }
-.tk-empty { color: var(--muted); font-size: 13px; padding: 24px; text-align: center; width: 100%; }
 
 /* ── Mobile ── */
 @media (max-width: 480px) {
@@ -897,17 +861,22 @@ body[data-reader-font="mono"] .card-summary {
   }
   .toast-action { min-height: 40px; padding: 0 14px; }
 
-  /* 검색조건: 아이콘/축약으로 두 줄 유지 */
-  .search-bar { gap: 6px; }
-  .search-bar input[type=text] { min-width: 0; flex: 1 1 60%; }
-  #ticker-btn-label,
-  #sort-label,
-  .btn-unread .btn-txt,
-  #font-btn .btn-txt { display: none; }
-  .btn-ticker,
-  .btn-sort,
-  .btn-unread { padding: 0 12px; gap: 0; max-width: none; }
-  .btn-reset { padding: 0 10px; }
+}
+
+/* hermes-ui.css 모바일 구간(≤680px)과 같은 폭에서 적용해야 중간 폭에서 3줄로 돌아가지 않는다 */
+@media (max-width: 680px) {
+  /* 타이틀 1줄 + 검색조건 1줄(2026-09-24 사용자 지시: 3줄 → 2줄). 버튼은 아이콘만.
+     hermes-ui.css의 6열 grid를 덮으려고 body.app-sa로 한 단계 높인다. */
+  body.app-sa .search-bar { display: flex; flex-wrap: nowrap; gap: 5px; }
+  body.app-sa .search-bar input[type=text] { flex: 1 1 auto; min-width: 0; width: auto; padding: 0 10px; font-size: 13px; }
+  body.app-sa .search-bar :is(#order-toggle, .btn-sort, .btn-reset, .btn-unread) {   /* hermes-ui가 :is에 #id를 넣어 특이도가 높다 — 같이 맞춘다 */
+    flex: 0 0 auto; width: 34px; min-width: 34px; padding: 0; gap: 0; justify-content: center; }
+  body.app-sa .search-bar .btn-search { flex: 0 0 auto; padding: 0 10px; }
+  #sort-label, #order-label,
+  .search-bar .btn-txt,
+  .header-actions .btn-txt { display: none; }
+  .ico-m { display: inline-block; }
+  .header-actions :is(#font-btn, .btn-trash-view) { width: 34px; min-width: 34px; padding: 0; justify-content: center; }
 }
 
 /* ── 모바일 GPU 합성 시 모서리 깨짐 회피 ──
@@ -919,7 +888,6 @@ body[data-reader-font="mono"] .card-summary {
 .brand .logo,
 .btn-search,
 .btn-unread.active,
-.btn-ticker.active,
 .btn-trash-view.active {
   background-clip: padding-box;
   -webkit-backface-visibility: hidden;
@@ -944,5 +912,3 @@ body[data-reader-font="mono"] .card-summary {
 :root[data-theme="dark"] #toast { background: #2a303a; color: var(--ui-text); box-shadow: var(--dm-shadow); }
 :root[data-theme="dark"] .toast-action { border-color: rgba(255,255,255,.3); color: var(--ui-text); }
 :root[data-theme="dark"] .modal-box { box-shadow: var(--dm-shadow); }
-:root[data-theme="dark"] .tk-chip { box-shadow: none; border: 1px solid var(--ui-border); }
-:root[data-theme="dark"] .tk-chip.active .sub { color: #c9d7f7; }

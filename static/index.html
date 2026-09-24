@@ -48,35 +48,34 @@
       <h1>SA Breaking News<small>Seeking Alpha 속보 요약</small></h1>
     </div>
     <div class="header-actions">
+      <button type="button" class="btn-sort" id="font-btn" onclick="ensureReaderWebFonts();openFontPicker()" title="요약 본문 글꼴" aria-label="요약 본문 글꼴">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+        <span class="btn-txt">글꼴</span>
+      </button>
       <button class="btn-trash-view" id="trash-view" onclick="toggleTrashView()" title="휴지통 (삭제된 기사)" aria-label="휴지통">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-        <span>휴지통</span>
+        <span class="btn-txt">휴지통</span>
       </button>
     </div>
   </div>
   <div class="search-bar">
-    <input type="text" id="q" placeholder="검색 (제목, 회사명, 티커, 요약...)" />
+    <input type="text" id="q" placeholder="검색어" title="제목·회사명·티커·요약에서 검색" />
     <button class="btn-search" onclick="search(0)">검색</button>
-    <input type="hidden" id="ticker-filter">
-    <button type="button" class="btn-ticker" id="ticker-btn" onclick="openTickerModal()" title="티커 선택">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-      <span id="ticker-btn-label">전체 티커</span>
-    </button>
     <button class="btn-sort" id="sort-toggle" onclick="toggleSort()">
       <span id="sort-label">이메일시간순</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
     </button>
     <button class="btn-sort" id="order-toggle" onclick="toggleOrder()" title="정렬 방향">
+      <svg class="ico-m ico-order" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
       <span id="order-label">최신순</span>
     </button>
-    <button class="btn-reset" onclick="reset()">초기화</button>
+    <button class="btn-reset" onclick="reset()" title="초기화" aria-label="초기화">
+      <svg class="ico-m" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      <span class="btn-txt">초기화</span>
+    </button>
     <button class="btn-unread" id="unread-filter" onclick="toggleUnreadFilter()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
       <span class="btn-txt">미읽음만</span>
-    </button>
-    <button type="button" class="btn-sort" id="font-btn" onclick="ensureReaderWebFonts();openFontPicker()" title="요약 본문 글꼴" aria-label="요약 본문 글꼴">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-      <span class="btn-txt">글꼴</span>
     </button>
   </div>
 </div>
@@ -89,18 +88,6 @@
       <button class="modal-close" onclick="closeFontPicker()" aria-label="닫기">✕</button>
     </div>
     <div id="font-list" class="font-list"></div>
-  </div>
-</div>
-
-<!-- 티커 선택 모달 -->
-<div id="ticker-modal" class="modal-overlay" onclick="if(event.target===this)closeTickerModal()">
-  <div class="modal-box">
-    <div class="modal-head">
-      <h3>🏷️ 티커 선택</h3>
-      <button class="modal-close" onclick="closeTickerModal()" aria-label="닫기">✕</button>
-    </div>
-    <input type="text" id="ticker-search" placeholder="티커 검색 (예: NVDA, 삼성, AIR.PA)" oninput="renderTickerList()" autocomplete="off" />
-    <div id="ticker-list" class="ticker-grid"></div>
   </div>
 </div>
 
