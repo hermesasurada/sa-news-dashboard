@@ -9,6 +9,8 @@
 <link rel="stylesheet" href="/reader-fonts/core.css">
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/static/hermes-ui.css">
+<link rel="stylesheet" href="/static/hermes-theme.css">
+<script src="/static/hermes-theme.js"></script>
 <script>
 // 요약 본문 명조 계열은 공통 로컬 자원에서 실제로 필요할 때만 주입한다.
 // app.css에서 @import 하면 렌더 블로킹 + 직렬 로드라 기본 글꼴 사용자에게도
@@ -108,5 +110,6 @@
 
 <script src="/static/app-utils.js"></script>
 <script src="/static/app.js"></script>
+<script>HermesTheme.mount(document.querySelector('.header-actions'), {className: 'btn-sort', before: document.getElementById('trash-view')});</script>
 </body>
 </html>

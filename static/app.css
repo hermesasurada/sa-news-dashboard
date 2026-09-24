@@ -926,3 +926,23 @@ body[data-reader-font="mono"] .card-summary {
   backface-visibility: hidden;
   transform: translateZ(0);
 }
+
+/* ── 다크 모드 — hermes-theme.css 토큰 위에서 여기서 직접 칠한 색만 덮는다 ── */
+:root[data-theme="dark"] .card-details { color: #b9c1cc; }
+:root[data-theme="dark"] .pending-badge { color: #e0b04a; }
+:root[data-theme="dark"] :is(.restore-btn, .article-id.copied) { color: #4cc27a; }
+:root[data-theme="dark"] .restore-btn:hover { color: #6fd797; }
+:root[data-theme="dark"] :is(.btn-trash-view:hover, .read-btn.done:hover) { color: #f07f89; }
+:root[data-theme="dark"] .ticker-badge { box-shadow: none; }
+:root[data-theme="dark"] .ticker-blue   { background: #1d2b45; color: #9dbbf5; }
+:root[data-theme="dark"] .ticker-green  { background: #173323; color: #7fd6a3; }
+:root[data-theme="dark"] .ticker-purple { background: #2a2245; color: #b9a6f2; }
+:root[data-theme="dark"] .ticker-orange { background: #3a2718; color: #f0ad72; }
+:root[data-theme="dark"] .ticker-yellow { background: #3a3018; color: #e6c465; }
+:root[data-theme="dark"] .ticker-red    { background: #3a2024; color: #f29a92; }
+:root[data-theme="dark"] .ticker-gray   { background: #262b33; color: #b3bcc8; }
+:root[data-theme="dark"] #toast { background: #2a303a; color: var(--ui-text); box-shadow: var(--dm-shadow); }
+:root[data-theme="dark"] .toast-action { border-color: rgba(255,255,255,.3); color: var(--ui-text); }
+:root[data-theme="dark"] .modal-box { box-shadow: var(--dm-shadow); }
+:root[data-theme="dark"] .tk-chip { box-shadow: none; border: 1px solid var(--ui-border); }
+:root[data-theme="dark"] .tk-chip.active .sub { color: #c9d7f7; }
