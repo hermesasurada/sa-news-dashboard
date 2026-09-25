@@ -1023,6 +1023,7 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   hideTickerPopover();
   closeFontPicker();
+  closeModelConfig();
 });
 
 /* ── 요약 본문 글꼴 선택 (website-monitor 이식) ──
@@ -1086,3 +1087,88 @@ async function init() {
   startNotificationPolling();
 }
 init();
+
+/* ── 요약 모델 설정(wm 설정 팝업 이식, 2026-09-26) ─────────────────────────────
+   화면은 공통 ModelSelector(계열 모드)가 그리고 여기서는 상태·저장만 맡는다.
+   지금은 Grok 4.7 한 칸 — 서버(summary_config.py)가 고를 수 있는 모델을 정한다. */
+const MC_SLOTS = ['grok'];
+let _mc = null;
+let _mcStatus = '';
+
+function _mcState() {
+  const cfg = _mc.config;
+  return {
+    order: MC_SLOTS.map(p => (cfg.providers.includes(p) ? p : null)),
+    version: { grok: cfg.grok_model },
+    effort: cfg.reasoning, next: null,
+    versions: (_mc.model_options || []).map(v => ({ ...v, slot: v.provider })),
+    efforts: _mc.reasoning_options || [],
+    allowNone: false, tag: '단일 모델',
+    hint: '새 기사를 이 모델로 요약한다. 실패하면 다음 수집 주기에 다시 시도한다(다른 모델로 폴백하지 않음).',
+    status: _mcStatus,
+    notes: [],
+  };
+}
+
+function renderModelConfig() {
+  const root = document.getElementById('model-selector');
+  ModelSelector.render(root, _mcState(), {
+    onModel(index, value) {
+      const r = ModelSelector.pick({ order: _mcState().order, version: _mcState().version,
+                                     versions: _mcState().versions }, index, value);
+      if (!r) { _mcStatus = '하나는 켜 두어야 합니다'; return renderModelConfig(); }
+      saveModelConfig(() => {
+        _mc.config.providers = r.order.filter(Boolean);
+        _mc.config.grok_model = r.version.grok;
+        const item = (_mc.model_options || []).find(o => o.value === r.version.grok);
+        if (item && !item.reasoning.includes(_mc.config.reasoning.grok)) {
+          _mc.config.reasoning.grok = 'default';
+          _mcStatus = '모델에 맞게 추론 수준을 기본값으로 변경했습니다';
+        }
+      });
+    },
+    onEffort(slot, level) {
+      saveModelConfig(() => { _mc.config.reasoning = { ..._mc.config.reasoning, [slot]: level }; });
+    },
+  });
+}
+
+async function openModelConfig() {
+  document.getElementById('model-modal').classList.add('show');
+  try {
+    _mc = await fetchJSON('/api/summary-config');
+    _mcStatus = '';
+    renderModelConfig();
+  } catch (e) {
+    document.getElementById('model-selector').textContent = '설정을 불러오지 못했습니다';
+  }
+}
+function closeModelConfig() {
+  document.getElementById('model-modal').classList.remove('show');
+}
+
+/** 변경을 적용하고 바로 저장한다. 실패하면 적용 전 상태로 되돌린다. */
+async function saveModelConfig(mutate) {
+  const snapshot = JSON.stringify(_mc.config);
+  _mcStatus = '';
+  mutate();
+  const adjusted = _mcStatus;
+  _mcStatus = '저장 중…';
+  renderModelConfig();
+  try {
+    const r = await fetch('/api/summary-config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_mc.config),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.status);
+    _mc = d;
+    _mcStatus = adjusted || '저장됨';
+  } catch (e) {
+    _mc.config = JSON.parse(snapshot);
+    _mcStatus = '저장 실패: ' + e.message;
+  }
+  renderModelConfig();
+  setTimeout(() => {
+    if (_mcStatus === '저장됨') { _mcStatus = ''; ModelSelector.setStatus(document.getElementById('model-selector'), ''); }
+  }, 1400);
+}

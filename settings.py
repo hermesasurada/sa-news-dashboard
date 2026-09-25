@@ -42,9 +42,7 @@ PORTFOLIO_API_BASE = os.environ.get(
 ).rstrip("/")
 PORTFOLIO_API_TIMEOUT_SECONDS = _env_float("PORTFOLIO_API_TIMEOUT_SECONDS", 6.0)
 
-# 요약 1차 모델. 2026-09-20 사용자 지시로 grok 고정 — 그전에는 기사 id 홀짝으로
-# Claude/grok을 번갈아 썼다. 1차가 실패하면 다른 모델이 받으므로 가용성은 같다.
-SUMMARY_PRIMARY = os.environ.get("SA_SUMMARY_PRIMARY", "grok").strip().lower()
+# 요약 모델·추론 수준은 대시보드 설정 팝업(summary_config.py, app_settings)이 정한다.
 
 PUBLISH_BATCH_SIZE = _env_int("SA_PUBLISH_BATCH_SIZE", 10)
 PUBLISH_PARSE_TIMEOUT_SECONDS = _env_int("SA_PARSE_TIMEOUT_SECONDS", 200)

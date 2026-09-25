@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/static/hermes-ui.css">
 <link rel="stylesheet" href="/static/hermes-theme.css">
+<link rel="stylesheet" href="/static/model-selector.css">
 <script src="/static/hermes-theme.js"></script>
 <script>
 // 요약 본문 명조 계열은 공통 로컬 자원에서 실제로 필요할 때만 주입한다.
@@ -52,6 +53,9 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
         <span class="btn-txt">글꼴</span>
       </button>
+      <button type="button" class="btn-sort" id="model-btn" onclick="openModelConfig()" title="요약 모델·추론 설정" aria-label="요약 모델 설정">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
       <button class="btn-trash-view" id="trash-view" onclick="toggleTrashView()" title="휴지통 (삭제된 기사)" aria-label="휴지통">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
         <span class="btn-txt">휴지통</span>
@@ -80,6 +84,17 @@
   </div>
 </div>
 
+<!-- 요약 모델 설정 — 화면은 공통 렌더러(model-selector.js, wm·yt와 같은 파일)가 그린다. 바꾸면 바로 저장. -->
+<div id="model-modal" class="modal-overlay" onclick="if(event.target===this)closeModelConfig()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>⚙️ 요약 모델 설정</h3>
+      <button class="modal-close" onclick="closeModelConfig()" aria-label="닫기">✕</button>
+    </div>
+    <div class="mc-body"><div id="model-selector"></div></div>
+  </div>
+</div>
+
 <!-- 요약 본문 글꼴 선택 모달 (모바일) -->
 <div id="font-modal" class="modal-overlay" onclick="if(event.target===this)closeFontPicker()">
   <div class="modal-box">
@@ -95,6 +110,7 @@
 <div class="container" id="cards"></div>
 <div class="pagination" id="pagination"></div>
 
+<script src="/static/model-selector.js"></script>
 <script src="/static/app-utils.js"></script>
 <script src="/static/app.js"></script>
 <script>HermesTheme.mount(document.querySelector('.header-actions'), {className: 'btn-sort', before: document.getElementById('trash-view')});</script>

@@ -16,30 +16,35 @@ import ticker_names
 from scripts import sa_claude_cli, sa_publish, sa_summarize_claude
 
 
-class PrimaryModelTests(unittest.TestCase):
-    """요약 1차 모델 — 2026-09-20부터 grok 고정, 실패하면 Claude가 받는다."""
+# 폴백 동작 검증용 순번(설정 화면에서는 아직 Claude를 고를 수 없다)
+GROK_THEN_CLAUDE = {"providers": ["grok", "claude"], "grok_model": "grok-4.7", "reasoning": {"grok": "default"}}
+CLAUDE_THEN_GROK = {"providers": ["claude", "grok"], "grok_model": "grok-4.7", "reasoning": {"grok": "default"}}
 
-    def setUp(self):
-        self._primary = settings.SUMMARY_PRIMARY
-        settings.SUMMARY_PRIMARY = "grok"
 
-    def tearDown(self):
-        settings.SUMMARY_PRIMARY = self._primary
+class SummaryChainTests(unittest.TestCase):
+    """요약 순번은 대시보드 설정(summary_config)을 따른다 — 2026-09-26부터 Grok 4.7 한 칸."""
 
-    def test_grok_is_primary_regardless_of_article_id(self):
-        for article_id in (100, 101, 102, 103):
-            name, func, fb_name, fb_func = sa_summarize_claude.pick_summarizers(article_id)
-            self.assertEqual(name, "grok")
-            self.assertEqual(func, sa_summarize_claude.call_grok)
-            self.assertEqual(fb_name, "Claude")
-            self.assertEqual(fb_func, sa_summarize_claude.call_claude)
+    def test_default_chain_is_grok_47_only(self):
+        with patch.dict(os.environ, {"SA_SUMMARY_CONFIG_IGNORE_DB": "1"}):
+            chain = sa_summarize_claude.summary_chain()
+        self.assertEqual([name for name, _ in chain], ["grok-4.7"])
 
-    def test_claude_can_be_pinned_back(self):
-        settings.SUMMARY_PRIMARY = "claude"
-        for article_id in (100, 101):
-            name, _, fb_name, _ = sa_summarize_claude.pick_summarizers(article_id)
-            self.assertEqual((name, fb_name), ("Claude", "grok"))
+    def test_chain_passes_model_and_reasoning_to_grok(self):
+        cfg = {"providers": ["grok"], "grok_model": "grok-4.7", "reasoning": {"grok": "high"}}
+        with patch.object(sa_summarize_claude, "call_grok", return_value=("t", "grok-4.7")) as g:
+            name, fn = sa_summarize_claude.summary_chain(cfg)[0]
+            fn("prompt", title="T")
+        g.assert_called_once_with("prompt", title="T", model="grok-4.7", reasoning="high")
 
+    def test_config_normalize_and_validate(self):
+        import summary_config as sc
+        self.assertEqual(sc.normalize({"providers": ["claude"], "grok_model": "x"}), sc.DEFAULT_CONFIG)
+        self.assertIsNone(sc.validate({"providers": ["grok"], "grok_model": "grok-4.7",
+                                       "reasoning": {"grok": "medium"}}))
+        self.assertIsNotNone(sc.validate({"providers": [], "grok_model": "grok-4.7"}))
+        self.assertIsNotNone(sc.validate({"providers": ["grok"], "grok_model": "grok-4.6"}))
+        self.assertIsNotNone(sc.validate({"providers": ["grok"], "grok_model": "grok-4.7",
+                                          "reasoning": {"grok": "ultra"}}))
 
 class SummaryPipelineTests(unittest.TestCase):
     def test_validate_normalizes_tickers_and_markdown(self):
@@ -336,7 +341,7 @@ class LlmLogWiringTests(unittest.TestCase):
         ])
         row = {"id": 1, "ticker": "AAPL", "original_title": "AAPL: Apple raises prices"}
         with (
-            patch.object(settings, "SUMMARY_PRIMARY", "grok"),
+            patch.object(sa_summarize_claude.summary_config, "load", return_value=GROK_THEN_CLAUDE),
             patch.object(sa_summarize_claude, "parse_article",
                          return_value=("article body " * 80, "sa_api", [], None)),
             patch.object(sa_claude_cli, "_grok_default_model", return_value="grok-4.6"),
@@ -428,15 +433,16 @@ class BatchResilienceTests(unittest.TestCase):
         db.DB_PATH = Path(self._tempdir.name) / "summary.db"
         with contextlib.redirect_stdout(io.StringIO()):
             db.init_db()
-        # 배치 격리·폴백 자체를 검증하는 테스트이므로 1차 모델을 Claude로 고정한다.
-        # (1차 모델 선택 규칙은 PrimaryModelTests에서 별도로 검증)
-        self._rr = settings.SUMMARY_PRIMARY
-        settings.SUMMARY_PRIMARY = "claude"
+        # 배치 격리·폴백 자체를 검증하는 테스트이므로 순번을 Claude → grok으로 고정한다.
+        # (실제 순번 규칙은 SummaryChainTests에서 별도로 검증)
+        self._load = patch.object(sa_summarize_claude.summary_config, "load",
+                                  return_value=CLAUDE_THEN_GROK)
+        self._load.start()
         self._gap = settings.ARTICLE_GAP_SECONDS
         settings.ARTICLE_GAP_SECONDS = 0
 
     def tearDown(self):
-        settings.SUMMARY_PRIMARY = self._rr
+        self._load.stop()
         settings.ARTICLE_GAP_SECONDS = self._gap
         db.DB_PATH = self._original_path
         self._tempdir.cleanup()
@@ -530,7 +536,7 @@ class BatchResilienceTests(unittest.TestCase):
         self.assertEqual(first_row["pub_status"], db.STATUS_PENDING)
         self.assertEqual(first_row["retry_count"], 1)
         self.assertTrue(first_row["last_attempt"])
-        self.assertIn("Claude/grok", first_row["fail_reason"])
+        self.assertIn("요약 모델 응답 없음", first_row["fail_reason"])
         self.assertEqual(self._row(second)["pub_status"], db.STATUS_PUBLISHED)
         self.assertNotIn(first, [row["id"] for row in db.get_pending_due(batch_size=10)])
 

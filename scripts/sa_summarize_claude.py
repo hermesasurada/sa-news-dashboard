@@ -28,6 +28,7 @@ import db  # noqa: E402
 import foreign_tickers
 import settings  # noqa: E402
 from sa_claude_cli import call_claude, call_grok, extract_json  # noqa: E402
+import summary_config  # noqa: E402
 from sa_lock import single_instance  # noqa: E402
 
 # ── 프롬프트 ──────────────────────────────────────────────────────────────
@@ -212,16 +213,22 @@ def parse_article(
 
 # ── 단일 기사 처리 ─────────────────────────────────────────────────────────
 
-def pick_summarizers(article_id: int):
-    """1차/폴백 요약 모델 → (1차 이름, 1차 함수, 폴백 이름, 폴백 함수).
+def summary_chain(config: dict | None = None) -> list[tuple[str, object]]:
+    """대시보드 설정(summary_config) 순번대로 [(이름, 호출함수)].
 
-    2026-09-20 사용자 지시로 grok 고정. 그전에는 기사 id 홀짝으로 Claude/grok을
-    번갈아 썼는데, 같은 기사를 재시도해도 1차가 그대로라 모델별 품질 차이가
-    기사마다 고정되는 구조였다. 1차가 응답하지 않으면 다른 모델이 받는다.
+    2026-09-26부터 설정 팝업이 정한다 — 처음에는 Grok 4.7 한 칸뿐이라 폴백이 없다
+    (예전 Claude 폴백은 사용자 지시로 순번에 넣을 때만). 실패하면 기존 재시도로 다시 돈다.
     """
-    if settings.SUMMARY_PRIMARY == "claude":
-        return "Claude", call_claude, "grok", call_grok
-    return "grok", call_grok, "Claude", call_claude
+    cfg = config or summary_config.load()
+    chain = []
+    for provider in cfg["providers"]:
+        if provider == "grok":
+            model, effort = cfg["grok_model"], cfg["reasoning"].get("grok", "default")
+            chain.append((model, lambda prompt, title=None, _m=model, _e=effort:
+                          call_grok(prompt, title=title, model=_m, reasoning=_e)))
+        elif provider == "claude":      # 설정 화면에는 아직 없다 — 선택지를 넓힐 때 쓴다
+            chain.append(("Claude", call_claude))
+    return chain
 
 
 def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess | AttemptFailure:
@@ -261,17 +268,17 @@ def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess 
         content=content[: settings.SUMMARY_CONTENT_LIMIT],
         candidates=candidates,
     )
-    primary_name, primary, fallback_name, fallback = pick_summarizers(article_id)
     # title은 LLM 호출 이력(llm_log)의 제목 — 기사 원제를 그대로 넘긴다.
     log_title = row.get("original_title") or None
-    print(f"     {primary_name} 요약 중…", end="", flush=True)
-    response, summary_model = primary(prompt, title=log_title)
+    response, summary_model = None, None
+    for i, (name, summarize) in enumerate(summary_chain()):
+        # 앞 순번 실패 → 다음 순번 (이력에는 실패 행 + 다음 행이 각각 남는다)
+        print(f"{' 실패 →' if i else '    '} {name} 요약 중…", end="", flush=True)
+        response, summary_model = summarize(prompt, title=log_title)
+        if response:
+            break
     if not response:
-        # 1차 실패 → 다른 모델로 폴백 (이력에는 실패 행 + 폴백 행이 각각 남는다)
-        print(f" 실패 → {fallback_name} 폴백…", end="", flush=True)
-        response, summary_model = fallback(prompt, title=log_title)
-    if not response:
-        reason = "Claude/grok CLI 응답 없음"
+        reason = "요약 모델 응답 없음"
         print(f"\n     {reason}", file=sys.stderr)
         return AttemptFailure(reason)
     print(f" 완료 ({summary_model})")

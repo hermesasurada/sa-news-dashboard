@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pathlib import Path
 import db
+import summary_config
 from quote_service import InvalidTickerError, get_price_quote
 
 BASE_DIR = Path(__file__).parent
@@ -41,7 +42,8 @@ def root():
     # app.css/app.js에 mtime 기반 ?v= 를 주입 → 파일 변경 시 새로고침만으로 즉시 반영
     html = (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
     # hermes-ui.css는 고정 ?v=7이라 고쳐도 브라우저가 옛 파일을 계속 썼다(2026-09-07)
-    for asset in ("app.css", "hermes-ui.css", "hermes-theme.css", "hermes-theme.js", "app-utils.js", "app.js"):
+    for asset in ("app.css", "hermes-ui.css", "hermes-theme.css", "hermes-theme.js",
+                  "model-selector.css", "model-selector.js", "app-utils.js", "app.js"):
         try:
             v = int((BASE_DIR / "static" / asset).stat().st_mtime)
         except OSError:
@@ -95,6 +97,29 @@ def price_quote(ticker: str = Query(..., min_length=1, max_length=32, descriptio
         return get_price_quote(ticker)
     except InvalidTickerError:
         raise HTTPException(status_code=400, detail="invalid ticker")
+
+
+# ── 요약 모델 설정(wm 설정 팝업 이식, 2026-09-26) ─────────────────────────────
+def _summary_config_payload() -> dict:
+    return {
+        "config": summary_config.load(),
+        "model_options": summary_config.model_options(),
+        "reasoning_options": summary_config.reasoning_options(),
+    }
+
+
+@app.get("/api/summary-config")
+def summary_config_get():
+    return _summary_config_payload()
+
+
+@app.post("/api/summary-config")
+def summary_config_post(payload: dict = Body(...)):
+    error = summary_config.validate(payload)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    summary_config.save(payload)
+    return {"ok": True, **_summary_config_payload()}
 
 
 @app.get("/api/health")

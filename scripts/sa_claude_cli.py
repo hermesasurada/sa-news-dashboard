@@ -390,8 +390,13 @@ def call_grok(
     timeout: int = settings.SUMMARY_TIMEOUT_SECONDS,
     *,
     title: str | None = None,
+    model: str | None = None,
+    reasoning: str | None = None,
 ) -> tuple[str | None, str | None]:
     """grok CLI 헤드리스 호출 → (텍스트, 모델ID). 실패 시 (None, None).
+
+    model·reasoning은 대시보드 설정(summary_config)이 정한 값 — 주면 `-m`·
+    `--reasoning-effort`로 넘기고, 없으면 GROK_MODEL 환경값·CLI 기본을 쓴다.
 
     `grok -p <PROMPT> --output-format json` 봉투에서 text만 꺼내 돌려준다(plain 출력을
     strip한 것과 동일). 응답 형식은 Claude와 동일(요약 JSON 텍스트) → 호출측에서 extract_json 재사용.
@@ -399,12 +404,17 @@ def call_grok(
     봉투 modelUsage의 실제 모델(예: 'grok-4.6-build')과 토큰이 남는다.
     title은 llm_log 이력의 제목(기사 원제)으로만 쓰인다. 성공·실패·타임아웃 모두 1행 기록.
     """
-    model = GROK_MODEL or _grok_default_model()
-    with _llm_track("grok", model, purpose="summary", title=title, backend="cli") as call:
+    chosen = model or GROK_MODEL
+    model = chosen or _grok_default_model()
+    effort = (reasoning or "default").lower()
+    with _llm_track("grok", model, purpose="summary", title=title, backend="cli",
+                    reasoning=None if effort == "default" else effort) as call:
         try:
             cmd = [GROK_BIN, "-p", prompt, "--output-format", "json"]
-            if GROK_MODEL:
-                cmd += ["-m", GROK_MODEL]
+            if chosen:
+                cmd += ["-m", chosen]
+            if effort != "default":
+                cmd += ["--reasoning-effort", effort]
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
