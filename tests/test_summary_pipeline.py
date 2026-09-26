@@ -17,8 +17,9 @@ from scripts import sa_claude_cli, sa_publish, sa_summarize_claude
 
 
 # 폴백 동작 검증용 순번(설정 화면에서는 아직 Claude를 고를 수 없다)
-GROK_THEN_CLAUDE = {"providers": ["grok", "claude"], "grok_model": "grok-4.7", "reasoning": {"grok": "default"}}
-CLAUDE_THEN_GROK = {"providers": ["claude", "grok"], "grok_model": "grok-4.7", "reasoning": {"grok": "default"}}
+import summary_config as _sc  # noqa: E402
+GROK_THEN_CLAUDE = dict(_sc.DEFAULT_CONFIG, providers=["grok", "claude"])
+CLAUDE_THEN_GROK = dict(_sc.DEFAULT_CONFIG, providers=["claude", "grok"])
 
 
 class SummaryChainTests(unittest.TestCase):
@@ -36,15 +37,33 @@ class SummaryChainTests(unittest.TestCase):
             fn("prompt", title="T")
         g.assert_called_once_with("prompt", title="T", model="grok-4.7", reasoning="high")
 
+    def test_chain_follows_catalog_order_across_providers(self):
+        cfg = {"providers": ["codex", "grok"], "claude_model": "claude-opus-5-5",
+               "codex_model": "gpt-6-luna", "grok_model": "grok-4.6",
+               "reasoning": {"claude": "default", "codex": "low", "grok": "default"}}
+        with patch.object(sa_summarize_claude, "call_codex", return_value=(None, None)) as c, \
+             patch.object(sa_summarize_claude, "call_grok", return_value=("t", "grok-4.6")) as g:
+            chain = sa_summarize_claude.summary_chain(cfg)
+            self.assertEqual([name for name, _ in chain], ["gpt-6-luna", "grok-4.6"])
+            chain[0][1]("p", title="T")
+            chain[1][1]("p", title="T")
+        c.assert_called_once_with("p", title="T", model="gpt-6-luna", reasoning="low")
+        g.assert_called_once_with("p", title="T", model="grok-4.6", reasoning="default")
+
     def test_config_normalize_and_validate(self):
         import summary_config as sc
-        self.assertEqual(sc.normalize({"providers": ["claude"], "grok_model": "x"}), sc.DEFAULT_CONFIG)
-        self.assertIsNone(sc.validate({"providers": ["grok"], "grok_model": "grok-4.7",
-                                       "reasoning": {"grok": "medium"}}))
-        self.assertIsNotNone(sc.validate({"providers": [], "grok_model": "grok-4.7"}))
-        self.assertIsNotNone(sc.validate({"providers": ["grok"], "grok_model": "grok-4.6"}))
-        self.assertIsNotNone(sc.validate({"providers": ["grok"], "grok_model": "grok-4.7",
-                                          "reasoning": {"grok": "ultra"}}))
+        base = sc.DEFAULT_CONFIG
+        self.assertEqual(sc.normalize({"providers": ["nope"]})["providers"], ["grok"])
+        ok = dict(base, providers=["claude", "codex"], codex_model="gpt-6-sol",
+                  reasoning={"claude": "high", "codex": "medium", "grok": "default"})
+        self.assertIsNone(sc.validate(ok, base))
+        self.assertIsNotNone(sc.validate(dict(base, providers=[]), base))
+        self.assertIsNotNone(sc.validate(dict(base, providers=["grok", "grok"]), base))
+        self.assertIsNotNone(sc.validate(dict(base, grok_model="grok-9"), base))
+        self.assertIsNotNone(sc.validate(dict(base, reasoning={"grok": "ultra"}), base))
+        # 카탈로그에서 빠진 기존 저장값은 그대로 두면 통과
+        legacy = dict(base, grok_model="grok-old")
+        self.assertIsNone(sc.validate(legacy, legacy))
 
 class SummaryPipelineTests(unittest.TestCase):
     def test_validate_normalizes_tickers_and_markdown(self):

@@ -199,26 +199,29 @@ def call_claude(
     timeout: int = settings.SUMMARY_TIMEOUT_SECONDS,
     *,
     title: str | None = None,
+    model: str | None = None,
+    reasoning: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Claude CLI 호출 → (응답 텍스트, 실제 모델ID) 반환. 실패 시 (None, None).
+
+    model·reasoning은 대시보드 설정(summary_config)이 정한 값 — 없으면 CLAUDE_MODEL 환경값.
 
     모델ID는 stream-json 이벤트의 model 필드(예: 'claude-opus-4-8')를 캡처 —
     'opus' 별칭이 아니라 실제 처리 모델 버전을 기록하기 위함.
     title은 llm_log 이력의 제목(기사 원제)으로만 쓰인다. 성공·실패·타임아웃 모두 1행 기록.
     """
+    chosen = model or CLAUDE_MODEL
+    effort = (reasoning or "default").lower()
     with _llm_track(
-        "claude", CLAUDE_MODEL, purpose="summary", title=title, backend="cli",
-        meta={"alias": CLAUDE_MODEL},
+        "claude", chosen, purpose="summary", title=title, backend="cli",
+        reasoning=None if effort == "default" else effort, meta={"alias": chosen},
     ) as call:
         try:
+            cmd = [CLAUDE_BIN, "--output-format", "stream-json", "--verbose", "--model", chosen]
+            if effort != "default":
+                cmd += ["--effort", effort]
             proc = subprocess.run(
-                [
-                    CLAUDE_BIN,
-                    "--output-format", "stream-json",
-                    "--verbose",
-                    "--model", CLAUDE_MODEL,
-                    "-p", prompt,
-                ],
+                cmd + ["-p", prompt],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -231,7 +234,7 @@ def call_claude(
                 _log_fail(call, f"rc={proc.returncode}: {err[:200]}")
                 return None, None
             text, model_id, usage = _parse_claude_stream_ex(proc.stdout)
-            _log_usage(call, usage, model_id or CLAUDE_MODEL)
+            _log_usage(call, usage, model_id or chosen)
             if not text:
                 _log_fail(call, "empty output")
             return text, model_id
@@ -246,6 +249,96 @@ def call_claude(
             print(f"     Claude CLI 호출 실패: {e}", file=sys.stderr)
             _log_fail(call, f"{type(e).__name__}: {e}")
             return None, None
+
+
+# ── GPT(Codex CLI) — 설정 팝업에서 GPT를 순번에 넣으면 쓴다(2026-09-26, wm_llm.call_codex 이식) ──
+def resolve_codex_bin() -> str:
+    env_bin = os.environ.get("CODEX_BIN")
+    if env_bin and Path(env_bin).expanduser().is_file():
+        return str(Path(env_bin).expanduser())
+    for bundled in (Path("/Applications/ChatGPT.app/Contents/Resources/codex"),
+                    Path("/Applications/Codex.app/Contents/Resources/codex")):
+        if bundled.is_file():
+            return str(bundled)
+    found = shutil.which("codex")
+    if found:
+        return found
+    for candidate in (Path.home() / ".local/bin/codex", Path.home() / ".hermes/node/bin/codex"):
+        if candidate.is_file():
+            return str(candidate)
+    return "codex"
+
+
+CODEX_BIN = resolve_codex_bin()
+
+
+def _codex_message_from_events(stdout: str) -> str:
+    """`codex exec --json` 이벤트에서 마지막 agent_message 본문(-o 파일이 비었을 때 폴백)."""
+    text = ""
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            item = (json.loads(line) or {}).get("item")
+        except (json.JSONDecodeError, AttributeError):
+            continue
+        if isinstance(item, dict) and item.get("type") == "agent_message":
+            text = str(item.get("text") or "")
+    return text
+
+
+def call_codex(
+    prompt: str,
+    timeout: int = settings.SUMMARY_TIMEOUT_SECONDS,
+    *,
+    title: str | None = None,
+    model: str = "gpt-6-sol",
+    reasoning: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Codex CLI(GPT) 헤드리스 호출 → (텍스트, 모델ID). 실패 시 (None, None). 읽기 전용 샌드박스."""
+    effort = (reasoning or "default").lower()
+    with _llm_track("codex", model, purpose="summary", title=title, backend="cli",
+                    reasoning=None if effort == "default" else effort) as call:
+        fd, out_path = tempfile.mkstemp(prefix="sa_codex_", suffix=".txt")
+        os.close(fd)
+        try:
+            cmd = [CODEX_BIN, "exec", "--ephemeral", "--skip-git-repo-check", "--color", "never",
+                   "-s", "read-only", "-m", model]
+            if effort != "default":          # "default"는 codex가 받는 값이 아니다 — 플래그를 뺀다
+                cmd += ["-c", f'model_reasoning_effort="{effort}"']
+            cmd += ["--json", "-o", out_path, "-"]
+            proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
+                                  encoding="utf-8", timeout=timeout, cwd=tempfile.gettempdir())
+            try:
+                text = Path(out_path).read_text(encoding="utf-8", errors="replace").strip()
+            except OSError:
+                text = ""
+            text = text or _codex_message_from_events(proc.stdout).strip()
+            try:
+                if llm_log is not None and call is not None:
+                    call.usage(llm_log.usage_from_codex_events(proc.stdout or "") or None)
+            except Exception:
+                pass
+            if proc.returncode != 0 or not text:
+                err = (proc.stderr or "").strip()[:300]
+                print(f"     Codex CLI 오류 (rc={proc.returncode}): {err}", file=sys.stderr)
+                _log_fail(call, f"rc={proc.returncode}: {err[:200]}" if proc.returncode else "empty output")
+                return None, None
+            return text, model
+        except subprocess.TimeoutExpired:
+            print("     Codex CLI 타임아웃", file=sys.stderr)
+            _log_fail(call, f"timeout after {timeout}s", status="timeout")
+            return None, None
+        except Exception as e:
+            print(f"     Codex CLI 호출 실패: {e}", file=sys.stderr)
+            _log_fail(call, f"{type(e).__name__}: {e}")
+            return None, None
+        finally:
+            try:
+                os.remove(out_path)
+            except OSError:
+                pass
 
 
 def extract_json(text: str) -> dict | None:

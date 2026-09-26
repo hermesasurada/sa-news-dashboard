@@ -27,7 +27,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import db  # noqa: E402
 import foreign_tickers
 import settings  # noqa: E402
-from sa_claude_cli import call_claude, call_grok, extract_json  # noqa: E402
+from sa_claude_cli import call_claude, call_codex, call_grok, extract_json  # noqa: E402
 import summary_config  # noqa: E402
 from sa_lock import single_instance  # noqa: E402
 
@@ -214,20 +214,22 @@ def parse_article(
 # ── 단일 기사 처리 ─────────────────────────────────────────────────────────
 
 def summary_chain(config: dict | None = None) -> list[tuple[str, object]]:
-    """대시보드 설정(summary_config) 순번대로 [(이름, 호출함수)].
+    """대시보드 설정(summary_config) 순번대로 [(모델, 호출함수)] — 순차 폴백.
 
-    2026-09-26부터 설정 팝업이 정한다 — 처음에는 Grok 4.7 한 칸뿐이라 폴백이 없다
-    (예전 Claude 폴백은 사용자 지시로 순번에 넣을 때만). 실패하면 기존 재시도로 다시 돈다.
+    2026-09-26부터 설정 팝업이 정한다(모델은 공용 LLM 카탈로그). 1순위가 요약하고,
+    실패하면 다음 순위가 받는다. 순번 밖 모델로는 가지 않는다.
     """
     cfg = config or summary_config.load()
+    callers = {"claude": call_claude, "codex": call_codex, "grok": call_grok}
     chain = []
     for provider in cfg["providers"]:
-        if provider == "grok":
-            model, effort = cfg["grok_model"], cfg["reasoning"].get("grok", "default")
-            chain.append((model, lambda prompt, title=None, _m=model, _e=effort:
-                          call_grok(prompt, title=title, model=_m, reasoning=_e)))
-        elif provider == "claude":      # 설정 화면에는 아직 없다 — 선택지를 넓힐 때 쓴다
-            chain.append(("Claude", call_claude))
+        fn = callers.get(provider)
+        if not fn:
+            continue
+        model = cfg[summary_config.MODEL_KEYS[provider]]
+        effort = cfg["reasoning"].get(provider, "default")
+        chain.append((model, lambda prompt, title=None, _f=fn, _m=model, _e=effort:
+                      _f(prompt, title=title, model=_m, reasoning=_e)))
     return chain
 
 

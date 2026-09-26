@@ -101,9 +101,10 @@ def price_quote(ticker: str = Query(..., min_length=1, max_length=32, descriptio
 
 # ── 요약 모델 설정(wm 설정 팝업 이식, 2026-09-26) ─────────────────────────────
 def _summary_config_payload() -> dict:
+    cfg = summary_config.load()
     return {
-        "config": summary_config.load(),
-        "model_options": summary_config.model_options(),
+        "config": cfg,
+        "model_options": summary_config.model_options(cfg),
         "reasoning_options": summary_config.reasoning_options(),
     }
 
@@ -115,7 +116,7 @@ def summary_config_get():
 
 @app.post("/api/summary-config")
 def summary_config_post(payload: dict = Body(...)):
-    error = summary_config.validate(payload)
+    error = summary_config.validate(payload, summary_config.load())
     if error:
         raise HTTPException(status_code=400, detail=error)
     summary_config.save(payload)
