@@ -65,6 +65,16 @@ class SummaryChainTests(unittest.TestCase):
         legacy = dict(base, grok_model="grok-old")
         self.assertIsNone(sc.validate(legacy, legacy))
 
+    def test_catalog_outage_keeps_saved_model_in_options(self):
+        """Astra 검토(2026-09-26): 카탈로그 장애 중에도 저장된 모델이 목록에 남아야 화면이 실제와 같다."""
+        import summary_config as sc
+        cfg = sc.normalize({"providers": ["codex"], "codex_model": "gpt-6-astra"})
+        with patch.object(sc, "llm_catalog", None):
+            values = [o["value"] for o in sc.model_options(cfg) if o["provider"] == "codex"]
+            self.assertIn("gpt-6-astra", values)
+            self.assertIsNone(sc.validate(cfg, cfg))
+            self.assertIsNotNone(sc.validate(dict(cfg, codex_model="gpt-9-bogus"), cfg))
+
 class SummaryPipelineTests(unittest.TestCase):
     def test_validate_normalizes_tickers_and_markdown(self):
         result = sa_summarize_claude.validate(
@@ -378,6 +388,50 @@ class LlmLogWiringTests(unittest.TestCase):
                          [("grok", "timeout"), ("claude", "ok")])
         self.assertEqual({r["title"] for r in rows}, {"AAPL: Apple raises prices"})
         self.assertEqual(rows[1]["input_tokens"], 10)
+
+
+class OutputValidationFallbackTests(unittest.TestCase):
+    """Astra 검토(2026-09-26): 응답은 왔지만 검증에 실패하면 다음 순번 모델로 넘어간다."""
+
+    GOOD = json.dumps({"ticker": "AAPL", "company_name": "Apple", "headline": "제목",
+                       "summary_details": ["하나"], "ticker_color": "blue"}, ensure_ascii=False)
+
+    def _run(self, responses):
+        calls = []
+
+        def model(name, response):
+            def fn(prompt, title=None):
+                calls.append(name)
+                return response, name
+            return fn
+        chain = [(f"m{i}", model(f"m{i}", r)) for i, r in enumerate(responses)]
+        row = {"id": 1, "ticker": "AAPL", "original_title": "AAPL: Apple raises prices"}
+        with (
+            patch.object(sa_summarize_claude, "summary_chain", return_value=chain),
+            patch.object(sa_summarize_claude, "parse_article",
+                         return_value=("article body " * 80, "sa_api", [], None)),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            return sa_summarize_claude.attempt_article(row), calls
+
+    def test_invalid_output_falls_through_to_next_model(self):
+        missing = json.dumps({"ticker": "AAPL", "company_name": "Apple", "headline": "",
+                              "summary_details": [], "ticker_color": "blue"})
+        for bad in ("그냥 문장입니다", missing):
+            outcome, calls = self._run([bad, self.GOOD])
+            self.assertIsInstance(outcome, sa_summarize_claude.AttemptSuccess)
+            self.assertEqual((calls, outcome.summary_model), (["m0", "m1"], "m1"))
+
+    def test_every_model_invalid_fails_with_last_reason(self):
+        outcome, calls = self._run(["문장", "", "{}"])
+        self.assertIsInstance(outcome, sa_summarize_claude.AttemptFailure)
+        self.assertEqual(calls, ["m0", "m1", "m2"])
+        self.assertTrue(outcome.reason)
+
+    def test_first_valid_output_stops_the_chain(self):
+        outcome, calls = self._run([self.GOOD, self.GOOD])
+        self.assertEqual((calls, outcome.summary_model), (["m0"], "m0"))
 
 
 class GrokModelDetectionTests(unittest.TestCase):

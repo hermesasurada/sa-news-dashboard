@@ -1150,6 +1150,7 @@ async function openModelConfig() {
   try {
     _mc = await fetchJSON('/api/summary-config');
     _mcOrder = _mcRowsFrom(_mc.config.providers);
+    _mcConfirmed = JSON.stringify([_mc.config, _mcOrder]);
     _mcStatus = '';
     renderModelConfig();
   } catch (e) {
@@ -1160,29 +1161,47 @@ function closeModelConfig() {
   document.getElementById('model-modal').classList.remove('show');
 }
 
-/** 변경을 적용하고 바로 저장한다. 실패하면 적용 전 상태로 되돌린다. */
-async function saveModelConfig(mutate) {
-  const snapshot = JSON.stringify([_mc.config, _mcOrder]);
+/*
+ * 변경을 적용하고 바로 저장한다. 저장은 한 줄로 세워 차례로 보내고, 뒤에 더 새 변경이
+ * 줄 서 있으면 앞 요청의 응답으로 화면을 덮지 않는다(연달아 바꾸면 늦게 온 옛 응답이
+ * 화면을 되돌리던 문제, Astra 검토 2026-09-26). 실패하면 서버가 마지막으로 확인한
+ * 상태로 되돌린다.
+ */
+let _mcSaveSeq = 0;
+let _mcSaveChain = Promise.resolve();
+let _mcConfirmed = null;           // 서버가 마지막으로 확인한 [config, order]
+
+function saveModelConfig(mutate) {
+  if (_mcConfirmed === null) _mcConfirmed = JSON.stringify([_mc.config, _mcOrder]);
   _mcStatus = '';
   mutate();
   const adjusted = _mcStatus;
+  const seq = ++_mcSaveSeq;
   _mcStatus = '저장 중…';
   renderModelConfig();
-  try {
-    const r = await fetch('/api/summary-config', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_mc.config),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || r.status);
-    _mc = d;
-    _mcOrder = _mcRowsFrom(d.config.providers);
-    _mcStatus = adjusted || '저장됨';
-  } catch (e) {
-    [_mc.config, _mcOrder] = JSON.parse(snapshot);
-    _mcStatus = '저장 실패: ' + e.message;
-  }
-  renderModelConfig();
-  setTimeout(() => {
-    if (_mcStatus === '저장됨') { _mcStatus = ''; ModelSelector.setStatus(document.getElementById('model-selector'), ''); }
-  }, 1400);
+  const job = _mcSaveChain.then(async () => {
+    if (seq !== _mcSaveSeq) return;          // 뒤의 요청이 최신 상태를 통째로 보낸다
+    try {
+      const r = await fetch('/api/summary-config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_mc.config),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || r.status);
+      _mcConfirmed = JSON.stringify([d.config, _mcRowsFrom(d.config.providers)]);
+      if (seq !== _mcSaveSeq) return;        // 기다리는 사이 새 변경이 생겼다
+      _mc = d;
+      _mcOrder = _mcRowsFrom(d.config.providers);
+      _mcStatus = adjusted || '저장됨';
+    } catch (e) {
+      if (seq !== _mcSaveSeq) return;
+      [_mc.config, _mcOrder] = JSON.parse(_mcConfirmed);
+      _mcStatus = '저장 실패: ' + e.message;
+    }
+    renderModelConfig();
+    setTimeout(() => {
+      if (_mcStatus === '저장됨') { _mcStatus = ''; ModelSelector.setStatus(document.getElementById('model-selector'), ''); }
+    }, 1400);
+  });
+  _mcSaveChain = job.catch(() => {});
+  return job;
 }

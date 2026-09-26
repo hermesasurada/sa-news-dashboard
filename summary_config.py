@@ -61,6 +61,11 @@ def model_options(config: dict | None = None) -> list[dict]:
             items = [{"value": v, "label": label, "provider": provider,
                       "reasoning": list(FALLBACK_LEVELS), "enabled": True}
                      for v, label in _FALLBACK_MODELS[provider]]
+            # 카탈로그 장애 중에도 지금 저장된 모델은 목록에 남긴다 — 빠지면 화면이 실제 실행
+            # 모델과 다른 모델을 보여 준다(Astra 검토, 2026-09-26).
+            if current and all(o["value"] != current for o in items):
+                items.insert(0, {"value": current, "label": current, "provider": provider,
+                                 "reasoning": list(FALLBACK_LEVELS), "enabled": True})
         out.extend(dict(o, provider=provider) for o in items)
     return out
 

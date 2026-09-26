@@ -233,6 +233,21 @@ def summary_chain(config: dict | None = None) -> list[tuple[str, object]]:
     return chain
 
 
+def _checked_summary(response: str, original_title: str) -> tuple[dict | None, str]:
+    """모델 응답 → (검증된 요약, '') 또는 (None, 실패 사유)."""
+    data = extract_json(response)
+    if not data:
+        return None, f"JSON 파싱 실패: {response[:120]}"
+    try:
+        data = validate(data, original_title)
+    except ValueError as exc:
+        return None, f"출력 검증 실패: {exc}"
+    if not data["headline"] or not data["summary_details"]:
+        return None, (f"필수 필드 누락: headline={bool(data['headline'])} "
+                      f"summary_details={bool(data['summary_details'])}")
+    return data, ""
+
+
 def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess | AttemptFailure:
     """기사 1건을 파싱·요약·검증하되 DB 상태는 변경하지 않는다."""
     article_id = row["id"]
@@ -272,36 +287,26 @@ def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess 
     )
     # title은 LLM 호출 이력(llm_log)의 제목 — 기사 원제를 그대로 넘긴다.
     log_title = row.get("original_title") or None
-    response, summary_model = None, None
+    # 응답이 있어도 JSON·출력 검증·필수 필드까지 통과해야 성공이다. 어느 단계에서든
+    # 실패하면 다음 순번 모델로 넘긴다(Astra 검토, 2026-09-26 — 예전엔 문자열만 오면
+    # 체인을 끝내고 검증에서 실패해 다음 모델을 한 번도 부르지 않았다).
+    data, summary_model, reason = None, None, "요약 모델 응답 없음"
     for i, (name, summarize) in enumerate(summary_chain()):
         # 앞 순번 실패 → 다음 순번 (이력에는 실패 행 + 다음 행이 각각 남는다)
         print(f"{' 실패 →' if i else '    '} {name} 요약 중…", end="", flush=True)
-        response, summary_model = summarize(prompt, title=log_title)
-        if response:
+        response, model = summarize(prompt, title=log_title)
+        if not response:
+            reason = "요약 모델 응답 없음"
+            continue
+        data, reason = _checked_summary(response, row.get("original_title") or "")
+        if data is not None:
+            summary_model = model
             break
-    if not response:
-        reason = "요약 모델 응답 없음"
+        print(f"\n     {name}: {reason}", file=sys.stderr)
+    if data is None:
         print(f"\n     {reason}", file=sys.stderr)
-        return AttemptFailure(reason)
+        return AttemptFailure(reason[:200])
     print(f" 완료 ({summary_model})")
-
-    # 3. JSON 추출 및 검증
-    data = extract_json(response)
-    if not data:
-        reason = f"JSON 파싱 실패: {response[:120]}"
-        print(f"     {reason}", file=sys.stderr)
-        return AttemptFailure(reason[:200])
-
-    try:
-        data = validate(data, row.get("original_title") or "")
-    except ValueError as exc:
-        reason = f"출력 검증 실패: {exc}"
-        print(f"     {reason}", file=sys.stderr)
-        return AttemptFailure(reason)
-    if not data["headline"] or not data["summary_details"]:
-        reason = f"필수 필드 누락: headline={bool(data['headline'])} summary_details={bool(data['summary_details'])}"
-        print(f"     {reason}", file=sys.stderr)
-        return AttemptFailure(reason[:200])
 
     # DB 반영은 process_article()이 단 한 번만 담당한다.
     new_ticker = data.get("ticker") or ""
