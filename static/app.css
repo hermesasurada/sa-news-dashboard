@@ -665,8 +665,15 @@ body[data-reader-font="mono"] .card-details,
 body[data-reader-font="mono"] .card-summary {
   font-family: 'JetBrains Mono', ui-monospace, monospace; letter-spacing: -.01em; }
 
-/* 글꼴 선택 시트 (PC·모바일 공통) */
-.font-list { display: grid; gap: 6px; padding: 2px 18px 18px; }
+/* 글꼴 선택 — 설정 창 안 '요약 본문 글꼴' 절(wm과 같은 구성) */
+.mc-font { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--sh-dark); }
+.mc-font-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+.mc-font-head strong { font-size: 13px; font-weight: 700; color: var(--ink); }
+.mc-font-head span { font-size: 11px; color: var(--muted); }
+.font-list { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; padding: 2px; }
+.mc-font .font-opt { padding: 9px 12px; font-size: 13.5px; }
+.mc-font .font-opt .fo-sample { font-size: 12.5px; }
+@media (max-width: 640px) { .font-list { grid-template-columns: 1fr; } }
 .font-opt {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   background: var(--surface); border: none; box-shadow: var(--nm-raised-sm); border-radius: 4px;
@@ -879,7 +886,7 @@ body[data-reader-font="mono"] .card-summary {
   .search-bar .btn-txt,
   .header-actions .btn-txt { display: none; }
   .ico-m { display: inline-block; }
-  .header-actions :is(#font-btn, .btn-trash-view) { width: 34px; min-width: 34px; padding: 0; justify-content: center; }
+  .header-actions .btn-trash-view { width: 34px; min-width: 34px; padding: 0; justify-content: center; }
 }
 
 /* ── 모바일 GPU 합성 시 모서리 깨짐 회피 ──

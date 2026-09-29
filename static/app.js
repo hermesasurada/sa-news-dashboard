@@ -1022,13 +1022,13 @@ document.getElementById('q').addEventListener('keydown', e => {
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   hideTickerPopover();
-  closeFontPicker();
   closeModelConfig();
 });
 
 /* ── 요약 본문 글꼴 선택 (website-monitor 이식) ──
-   PC는 검색바 select, 모바일은 Aa 버튼 → 시트. 상태 = localStorage 'saReaderFont'.
-   body[data-reader-font]로 카드 요약 본문(.card-details/.card-summary)에 적용. */
+   설정 창(⚙️) 안 '요약 본문 글꼴' 절에서 고른다(2026-09-30, 별도 버튼·모달 폐지).
+   상태 = localStorage 'saReaderFont'. body[data-reader-font]로 카드 요약 본문
+   (.card-details/.card-summary)에 적용. */
 const _READER_FONTS = ['sans', 'noto', 'chosun', 'serif', 'gowun', 'nanum', 'song', 'system', 'mono'];
 const _FONT_LABELS = {
   sans: 'Pretendard', noto: 'Noto Sans KR', chosun: '조선일보명조', serif: 'Noto Serif KR',
@@ -1056,7 +1056,7 @@ function setReaderFont(key) {
   _readerFont = key;
   localStorage.setItem('saReaderFont', key);
   applyReaderFont();
-  if (document.getElementById('font-modal').classList.contains('show')) renderFontList();
+  if (document.getElementById('model-modal').classList.contains('show')) renderFontList();
 }
 function renderFontList() {
   document.getElementById('font-list').innerHTML = _READER_FONTS.map(k => `
@@ -1065,13 +1065,6 @@ function renderFontList() {
       <span class="fo-sample" style="font-family:${_FONT_STACKS[k]}">본문 가나다 AaBb</span>
       ${k === _readerFont ? '<span class="fo-check">✓</span>' : ''}
     </button>`).join('');
-}
-function openFontPicker() {
-  renderFontList();
-  document.getElementById('font-modal').classList.add('show');
-}
-function closeFontPicker() {
-  document.getElementById('font-modal').classList.remove('show');
 }
 
 /* ── Init ── */
@@ -1146,6 +1139,8 @@ function renderModelConfig() {
 }
 
 async function openModelConfig() {
+  ensureReaderWebFonts();          // 글꼴 견본을 제 글꼴로 보여 주려면 웹폰트가 필요하다
+  renderFontList();
   document.getElementById('model-modal').classList.add('show');
   try {
     _mc = await fetchJSON('/api/summary-config');
