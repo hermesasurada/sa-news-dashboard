@@ -256,17 +256,12 @@ def resolve_codex_bin() -> str:
     env_bin = os.environ.get("CODEX_BIN")
     if env_bin and Path(env_bin).expanduser().is_file():
         return str(Path(env_bin).expanduser())
-    for bundled in (Path("/Applications/ChatGPT.app/Contents/Resources/codex"),
-                    Path("/Applications/Codex.app/Contents/Resources/codex")):
-        if bundled.is_file():
-            return str(bundled)
-    found = shutil.which("codex")
-    if found:
-        return found
-    for candidate in (Path.home() / ".local/bin/codex", Path.home() / ".hermes/node/bin/codex"):
+    # npm판 고정(2026-09-30): ChatGPT.app 번들은 앱 업데이트 때 경로·알파 빌드가 바뀌고(9/27 Resources/codex →
+    # codex-cli/bin/codex) 새 모델을 늦게 받는다(0.158-alpha는 gpt-6.1-sol 거부). 번들 경로는 찾지 않는다.
+    for candidate in (Path.home() / ".hermes/node/bin/codex", Path.home() / ".local/bin/codex"):
         if candidate.is_file():
             return str(candidate)
-    return "codex"
+    return shutil.which("codex") or "codex"
 
 
 CODEX_BIN = resolve_codex_bin()
