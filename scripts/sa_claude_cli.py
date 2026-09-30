@@ -53,6 +53,23 @@ try:
 except Exception:
     llm_log = None
 
+# CLI 최소 구성(2026-09-30 사용자 지시): 요약은 텍스트 전용이라 CLI 자체 시스템 프롬프트·도구
+# 정의를 걷어낸다(hermes-llm-log/cli_minimal.py). 없거나 실패하면 빈 인자 = 예전 구성.
+try:
+    import cli_minimal as _cli_minimal
+except Exception:
+    _cli_minimal = None
+
+
+def _minimal_args(kind):
+    try:
+        if _cli_minimal is None:
+            return []
+        return _cli_minimal.claude_args() if kind == "claude" else _cli_minimal.codex_args()
+    except Exception:
+        return []
+
+
 SERVICE_CODE = "sa"
 
 
@@ -220,6 +237,7 @@ def call_claude(
             cmd = [CLAUDE_BIN, "--output-format", "stream-json", "--verbose", "--model", chosen]
             if effort != "default":
                 cmd += ["--effort", effort]
+            cmd += _minimal_args("claude")
             proc = subprocess.run(
                 cmd + ["-p", prompt],
                 capture_output=True,
@@ -302,6 +320,7 @@ def call_codex(
                    "-s", "read-only", "-m", model]
             if effort != "default":          # "default"는 codex가 받는 값이 아니다 — 플래그를 뺀다
                 cmd += ["-c", f'model_reasoning_effort="{effort}"']
+            cmd += _minimal_args("codex")
             cmd += ["--json", "-o", out_path, "-"]
             proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
                                   encoding="utf-8", timeout=timeout, cwd=tempfile.gettempdir())

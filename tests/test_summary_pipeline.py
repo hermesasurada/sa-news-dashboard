@@ -54,7 +54,7 @@ class SummaryChainTests(unittest.TestCase):
         import summary_config as sc
         base = sc.DEFAULT_CONFIG
         self.assertEqual(sc.normalize({"providers": ["nope"]})["providers"], ["grok"])
-        ok = dict(base, providers=["claude", "codex"], codex_model="gpt-6-sol",
+        ok = dict(base, providers=["claude", "codex"], codex_model=_sc.llm_catalog.options("codex")[0]["value"],  # 카탈로그 이름 변경(gpt-6.1-sol)에도 안 깨지게
                   reasoning={"claude": "high", "codex": "medium", "grok": "default"})
         self.assertIsNone(sc.validate(ok, base))
         self.assertIsNotNone(sc.validate(dict(base, providers=[]), base))
