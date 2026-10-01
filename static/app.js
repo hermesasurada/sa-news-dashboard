@@ -1,7 +1,8 @@
 const PAGE_SIZE = 15;
 const DELETE_UNDO_DURATION_MS = 6000;
 let currentOffset = 0;
-let currentSort = 'email_time_et';
+// 정렬 기준은 이메일 시간 고정(2026-10-01 사용자 지시 — 정렬조건 버튼 삭제). 방향(최신·과거순)만 바꾼다.
+const currentSort = 'email_time_et';
 let currentOrder = 'desc';   // desc=최신순 / asc=과거순
 let trashView = false;
 let currentListTotal = null;
@@ -87,18 +88,9 @@ function loadFiltersFromCache() {
 /* ── Sort ── */
 // 정렬 기준/방향 UI를 현재 상태에 맞게 반영
 function applySortUI() {
-  document.getElementById('sort-label').textContent = currentSort === 'last_modified' ? '수정시간순' : '이메일시간순';
-  document.getElementById('sort-toggle').classList.toggle('alt', currentSort === 'last_modified');
   document.getElementById('order-label').textContent = currentOrder === 'asc' ? '과거순' : '최신순';
   document.getElementById('order-toggle').classList.toggle('asc', currentOrder === 'asc');   // 모바일 화살표 방향
   document.getElementById('order-toggle').classList.toggle('alt', currentOrder === 'asc');
-}
-
-function toggleSort() {
-  currentSort = currentSort === 'email_time_et' ? 'last_modified' : 'email_time_et';
-  applySortUI();
-  savePrefs();
-  search(0);
 }
 
 function toggleOrder() {
@@ -112,7 +104,6 @@ function toggleOrder() {
 function savePrefs() {
   try {
     localStorage.setItem('sa_prefs', JSON.stringify({
-      sort: currentSort,
       order: currentOrder,
       unread: document.getElementById('unread-filter').classList.contains('active'),
     }));
@@ -123,7 +114,6 @@ function loadPrefs() {
     const raw = localStorage.getItem('sa_prefs');
     const p = raw ? JSON.parse(raw) : null;
     if (p) {
-      if (p.sort === 'last_modified' || p.sort === 'email_time_et') currentSort = p.sort;
       if (p.order === 'asc' || p.order === 'desc') currentOrder = p.order;
       if (p.unread) document.getElementById('unread-filter').classList.add('active');
     } else {
@@ -818,7 +808,6 @@ function restoreFromURL() {
   if (sp.has('q'))           document.getElementById('q').value = sp.get('q');
   if (sp.has('unread_only')) document.getElementById('unread-filter').classList.add('active');
   // URL이 정렬을 지정하면 로컬 기본값보다 우선 (공유 링크)
-  if (sp.has('sort_by')) currentSort = sp.get('sort_by') === 'last_modified' ? 'last_modified' : 'email_time_et';
   if (sp.has('order'))   currentOrder = sp.get('order') === 'asc' ? 'asc' : 'desc';
   applySortUI();
   return parseInt(sp.get('offset') || '0');
@@ -853,11 +842,16 @@ function startNotificationPolling() {
 
 /* ── Search ── */
 // 상단 통계줄 구성 — search()와 refillGrid()가 공유
+// 안읽음 건수는 통계줄 대신 눈 아이콘(미읽음만) 버튼 안에 표시하고, 대기 건수는 표시하지 않는다
+// (2026-10-01 사용자 지시). 통계줄 뒤에 붙던 배지 자리는 빈 문자열로 남긴다.
 function queueBadges(qData) {
-  if (trashView) return '';
-  const pending = qData.pending > 0 ? ` <span class="pending-badge">대기 ${qData.pending}건</span>` : '';
-  const unread = qData.unread > 0 ? ` <span class="unread-badge">안읽음 ${qData.unread}건</span>` : '';
-  return pending + unread;
+  const el = document.getElementById('unread-count');
+  if (el) {
+    const n = (qData && qData.unread) || 0;
+    el.textContent = n;
+    el.hidden = trashView || n <= 0;
+  }
+  return '';
 }
 function statsLine(total, offset, shown, badges) {
   const trashLabel = trashView ? '🗑 휴지통 · ' : '';
@@ -979,7 +973,6 @@ function toggleTrashView() {
 
 function reset() {
   document.getElementById('q').value = '';
-  currentSort = 'email_time_et';
   currentOrder = 'desc';
   applySortUI();
   document.getElementById('unread-filter').classList.remove('active');

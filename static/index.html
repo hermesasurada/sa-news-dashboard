@@ -61,10 +61,6 @@
   <div class="search-bar">
     <input type="text" id="q" placeholder="검색어" title="제목·회사명·티커·요약에서 검색" />
     <button class="btn-search" onclick="search(0)">검색</button>
-    <button class="btn-sort" id="sort-toggle" onclick="toggleSort()">
-      <span id="sort-label">이메일시간순</span>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
-    </button>
     <button class="btn-sort" id="order-toggle" onclick="toggleOrder()" title="정렬 방향">
       <svg class="ico-m ico-order" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
       <span id="order-label">최신순</span>
@@ -76,6 +72,7 @@
     <button class="btn-unread" id="unread-filter" onclick="toggleUnreadFilter()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
       <span class="btn-txt">미읽음만</span>
+      <b class="unread-count" id="unread-count" hidden></b>
     </button>
   </div>
 </div>
