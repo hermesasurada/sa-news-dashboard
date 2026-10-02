@@ -149,12 +149,16 @@ def resolve_claude_bin() -> str:
     app_support = Path.home() / "Library/Application Support/Claude"
     candidates = [
         *app_support.glob("claude-code/*/claude.app/Contents/MacOS/claude"),
+        *app_support.glob("claude-code/*/*/claude.app/Contents/MacOS/claude"),  # 2026-10-02 앱 업데이트: <ver>/<hash>/claude.app
         *app_support.glob("claude-code-vm/*/claude"),
     ]
     candidates = [p for p in candidates if p.is_file()]
     if candidates:
         return str(max(candidates, key=lambda p: (_version_key(p), "claude.app" in str(p))))
 
+    native = Path.home() / ".local/bin/claude"   # 번들을 못 찾으면 독립 설치판(launchd PATH엔 ~/.local/bin 없음)
+    if native.is_file():
+        return str(native)
     return "claude"
 
 
