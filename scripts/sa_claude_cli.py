@@ -145,6 +145,11 @@ def resolve_claude_bin() -> str:
     env_bin = os.environ.get("CLAUDE_BIN") or os.environ.get("CLAUDE_CODE_BIN")
     if env_bin:
         return str(Path(env_bin).expanduser())
+    # 2026-10-07 사용자 지시: 독립 설치판(~/.local/bin/claude, 자동 업데이트 켬)으로 통일. 앱 번들은 앱 업데이트 때 경로가
+    # 바뀌고(10/02 사고) 서비스마다 버전이 갈려서 최후 폴백으로만 남긴다.
+    native = Path.home() / ".local/bin/claude"
+    if native.is_file():
+        return str(native)
 
     app_support = Path.home() / "Library/Application Support/Claude"
     candidates = [
@@ -156,9 +161,6 @@ def resolve_claude_bin() -> str:
     if candidates:
         return str(max(candidates, key=lambda p: (_version_key(p), "claude.app" in str(p))))
 
-    native = Path.home() / ".local/bin/claude"   # 번들을 못 찾으면 독립 설치판(launchd PATH엔 ~/.local/bin 없음)
-    if native.is_file():
-        return str(native)
     return "claude"
 
 
