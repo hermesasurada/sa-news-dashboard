@@ -26,6 +26,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import db  # noqa: E402
 import foreign_tickers
+import ticker_names  # noqa: E402
 import settings  # noqa: E402
 from sa_claude_cli import call_claude, call_codex, call_grok, extract_json  # noqa: E402
 import summary_config  # noqa: E402
@@ -128,6 +129,37 @@ def _plain_text(value) -> str:
     return text.replace("**", "").replace("__", "").replace("*", "").replace("_", " ")
 
 
+# SA 알림 메일 제목 앞 티커('FDX: Citi ... upgrades XPO')는 사용자가 팔로우해서 그 기사가 온 종목이다.
+# 모델은 기사 대상(XPO)만 뽑기도 해서, 제목 앞 티커는 기본으로 칩에 넣는다(2026-10-08 사용자 지시, 9360).
+_TITLE_PREFIX_RE = re.compile(r"^([A-Z0-9][A-Z0-9.,\s]{0,40}[A-Z0-9])\s*:\s")
+
+
+def title_prefix_tickers(title: str) -> list[str]:
+    m = _TITLE_PREFIX_RE.match(title or "")
+    if not m:
+        return []
+    out = []
+    for t in m.group(1).split(","):
+        t = db.TICKER_ALIASES.get(t.strip().upper(), t.strip().upper())
+        if _TICKER_RE.fullmatch(t) and t not in out:
+            out.append(t)
+    return out
+
+
+def merge_title_prefix(ticker_text: str, company_text: str, title: str) -> tuple[str, str]:
+    """모델 티커 뒤에 빠진 제목 앞 티커를 붙인다(주 종목 순서 유지). 회사명은 같은 자리에 채운다."""
+    tks = [t.strip() for t in str(ticker_text or "").split(",") if t.strip()]
+    cos = [c.strip() for c in str(company_text or "").split("·")] if company_text else []
+    cos += [""] * (len(tks) - len(cos))
+    have = {db.TICKER_ALIASES.get(t.upper(), t.upper()) for t in tks}
+    for t in title_prefix_tickers(title):
+        if t not in have:
+            tks.append(t); cos.append(""); have.add(t)
+    if not tks:
+        return ticker_text, company_text
+    return ", ".join(tks), ticker_names.fill_company(", ".join(tks), "·".join(cos[:len(tks)]))
+
+
 def validate(d: dict, original_title: str = "") -> dict:
     """Normalize model output and reject forbidden writing-system leakage.
 
@@ -144,6 +176,8 @@ def validate(d: dict, original_title: str = "") -> dict:
     if original_title:
         ticker_text, d["company_name"] = foreign_tickers.supplement_pairs(
             original_title, ", ".join(valid_tickers), d["company_name"])
+        valid_tickers = [t.strip() for t in ticker_text.split(",") if t.strip()]
+        ticker_text, d["company_name"] = merge_title_prefix(", ".join(valid_tickers), d["company_name"], original_title)
         valid_tickers = [t.strip() for t in ticker_text.split(",") if t.strip()]
     d["ticker"] = ", ".join(valid_tickers)
     d["headline"] = _plain_text(d.get("headline"))
