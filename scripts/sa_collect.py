@@ -214,6 +214,30 @@ def is_price_streak_news(subject: str) -> bool:
     return bool(_STREAK_SPAN_RE.search(s) and _STREAK_MOVE_RE.search(s))
 
 
+# 지표 스크리닝 목록 기사(2026-10-08 사용자 지시, 9348 'These low-priced stocks are flashing overbought
+# signals'): SA 퀀트 화면을 그대로 옮긴 '모멘텀 등급 상·하위 10선', '공매도 상·하위', '과매수·과매도 종목',
+# '퀀트 등급 상위', '$10 미만 배당성장주' 같은 목록. 단일 종목의 공매도·과매도 언급('SpaceX ... amid short
+# interest surge', 'Walmart stock dives into oversold')과 질문형 분석('Semi stocks overbought?')은 남긴다 —
+# 복수형 stocks·순위 표현이 있을 때만 목록으로 본다.
+_SCREEN_RES = (
+    re.compile(r"\bmomentum\s+(?:grades?|scores?)\b"
+               r"|\b(?:strong(?:est)?|weak(?:est)?|top)\s+momentum\b.*\b(?:stocks|REITs|names)\b"
+               r"|\b(?:stocks|REITs)\b.*\b(?:strong(?:est)?|weak(?:est)?)\s+momentum\b", re.I),
+    re.compile(r"\b(?:most|least)\s+(?:and\s+least\s+)?shorted\b|\b(?:highest|lowest)\s+short interest\b"
+               r"|\bshort interest\b.*\bstocks\b|\bstocks\b.*\bshort interest\b|short interest heatmap", re.I),
+    re.compile(r"^(?!.*\?).*(?:\bstocks\b[^.]*\b(?:overbought|oversold)\b|\b(?:overbought|oversold)\b[^.]*\bstocks\b)", re.I),
+    re.compile(r"\bquant[- ]rated\b|\bQuant\s+(?:signals?|ratings?|grades?)\b.*\bstocks\b"
+               r"|\bstocks\b.*\bQuant\s+(?:signals?|ratings?)\b", re.I),
+    re.compile(r"\bstocks\s+under\s+\$\d+", re.I),
+)
+
+
+def is_indicator_screen(subject: str) -> bool:
+    """지표·퀀트 등급으로 종목을 나열하는 스크리닝 목록 기사인가 → 수집 제외."""
+    s = subject or ""
+    return any(rx.search(s) for rx in _SCREEN_RES)
+
+
 def excluded_reason(subject: str, ticker: str) -> str | None:
     """수집 제외 대상이면 사유 라벨, 아니면 None."""
     if is_preferred_dividend(subject, ticker):
@@ -230,6 +254,8 @@ def excluded_reason(subject: str, ticker: str) -> str | None:
         return 'ETF배당'
     if is_price_streak_news(subject):
         return '주가연속'
+    if is_indicator_screen(subject):
+        return '지표스크린'
     return None
 
 

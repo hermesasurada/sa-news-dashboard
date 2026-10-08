@@ -286,5 +286,34 @@ class PriceStreakFilterTests(unittest.TestCase):
             )
 
 
+
+class IndicatorScreenTests(unittest.TestCase):
+    def test_screen_lists_are_filtered(self):
+        for subject in (
+            "RXRX: These low-priced stocks are flashing overbought signals",
+            "SCHD: Top dividend growth stocks under $10 include Diversified Healthcare, Industrial Logistics & more",
+            "AMAT: Stocks with the lowest short interest on Wall Street",
+            "JPM: September short interest: Most and least shorted financial stocks above $2B",
+            "AMD, Dell, HPE lead tech stocks with top momentum scores",
+            "JOBY: 10 mid-cap industrial stocks with weakest momentum grades",
+            "ATI: Four industrial stocks with persistent Strong Buy Quant signals",
+            "DIS: Paramount-WBD deal closes; here are top quant-rated entertainment stocks",
+            "CEG: Utilities stocks hit most oversold level in 3 years",
+        ):
+            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "지표스크린", msg=subject)
+
+    def test_single_stock_and_analysis_kept(self):
+        for subject in (
+            "SPCX: SpaceX $330 calls dominate options ahead of earnings and amid short interest surge",
+            "SPCX: SpaceX short interest trends higher ahead of earnings",
+            "WMT: Walmart stock dives into oversold territory, eyeing $100 support",
+            "SOXX: Semi stocks overbought? Not according to Korea",
+            "Dell earnings blowout sparks fresh focus on high-momentum hardware stocks",
+            "MU: Memory stocks face a new test as pricing momentum cools ahead of Micron",
+            "GS: Goldman Sachs tests 200-day average as momentum weakens",
+        ):
+            self.assertFalse(sa_collect.is_indicator_screen(subject), msg=subject)
+
+
 if __name__ == "__main__":
     unittest.main()
