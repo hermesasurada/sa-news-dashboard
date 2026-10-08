@@ -260,9 +260,11 @@ function renderCard(a) {
   const details = (Array.isArray(a.summary_details) ? a.summary_details : [])
     .map(detail => `<li>${escapeHTML(detail)}</li>`).join('');
   const timeLabel = escapeHTML(formatTime(a.email_time_et));
-  const emailIdLabel = a.email_id
-    ? `<button type="button" class="article-id" data-article-id="${escapeAttr(a.email_id)}" `
-      + `onclick="copyArticleId(this)" title="기사 ID 복사">ID:${escapeHTML(a.email_id)}</button>`
+  // 화면 번호는 DB 기사 ID(articles.id). 예전엔 메일 ID(email_id)를 '기사 ID'라며 보였다
+  // (2026-10-08 사용자 지적 — 9364는 메일 ID, 기사 ID는 8885). 메일 ID는 툴팁에 남긴다.
+  const emailIdLabel = articleId
+    ? `<button type="button" class="article-id" data-article-id="${articleId}" `
+      + `onclick="copyArticleId(this)" title="기사 ID 복사${a.email_id ? ` (메일 ID ${escapeAttr(a.email_id)})` : ''}">ID:${articleId}</button>`
     : '';
   const footerMeta = [emailIdLabel, timeLabel].filter(Boolean).join(' · ');
   const methodLabel = escapeHTML(parseMethodLabel(a.parse_method));
