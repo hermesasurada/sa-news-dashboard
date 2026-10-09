@@ -299,6 +299,10 @@ class IndicatorScreenTests(unittest.TestCase):
             "ATI: Four industrial stocks with persistent Strong Buy Quant signals",
             "DIS: Paramount-WBD deal closes; here are top quant-rated entertainment stocks",
             "CEG: Utilities stocks hit most oversold level in 3 years",
+            "AME: Top industrials stocks with A+ EPS revision grades ahead of Q3 earnings",
+            "CEG: These eight utilities stocks all carry A- or better growth grades",
+            "COST: Ten consumer staples stocks with the strongest dividend growth grades",
+            "DIS: Growth scores put streaming and internet platforms ahead of telecom peers",
         ):
             self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "지표스크린", msg=subject)
 
@@ -311,6 +315,7 @@ class IndicatorScreenTests(unittest.TestCase):
             "Dell earnings blowout sparks fresh focus on high-momentum hardware stocks",
             "MU: Memory stocks face a new test as pricing momentum cools ahead of Micron",
             "GS: Goldman Sachs tests 200-day average as momentum weakens",
+            "AAPL: Apple's growth grade slips after guidance cut",
         ):
             self.assertFalse(sa_collect.is_indicator_screen(subject), msg=subject)
 

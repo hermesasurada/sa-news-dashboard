@@ -229,6 +229,11 @@ _SCREEN_RES = (
     re.compile(r"\bquant[- ]rated\b|\bQuant\s+(?:signals?|ratings?|grades?)\b.*\bstocks\b"
                r"|\bstocks\b.*\bQuant\s+(?:signals?|ratings?)\b", re.I),
     re.compile(r"\bstocks\s+under\s+\$\d+", re.I),
+    # 그 밖의 퀀트 요인 등급 목록(2026-10-09 사용자 지시, 기사 8951 'Top industrials stocks with A+ EPS
+    # revision grades'): EPS 수정·성장·밸류에이션·수익성·배당 등급으로 여러 종목을 줄 세운 것.
+    # 단일 종목('Apple's growth grade slips')은 남기도록 복수 종목 표현이 함께 있을 때만.
+    re.compile(r"^(?=.*\b(?:stocks|peers|among|lead)\b).*\b(?:EPS\s+revisions?|revisions?|valuation|growth|profitability"
+               r"|dividend\s+(?:safety|growth|yield|consistency))\s+(?:grades?|scores?)\b", re.I),
 )
 
 
