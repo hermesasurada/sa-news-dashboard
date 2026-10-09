@@ -1,5 +1,6 @@
 const PAGE_SIZE = 15;
 const DELETE_UNDO_DURATION_MS = 6000;
+const READ_UNDO_DURATION_MS = 6000;
 let currentOffset = 0;
 // 정렬 기준은 이메일 시간 고정(2026-10-01 사용자 지시 — 정렬조건 버튼 삭제). 방향(최신·과거순)만 바꾼다.
 const currentSort = 'email_time_et';
@@ -697,6 +698,9 @@ async function toggleRead(id, btn) {
 
   // 페이드는 요청과 동시에 진행했으므로 성공 응답 뒤 추가 대기가 없다.
   if (removeFromUnread) {
+    // 안읽음만 보기에서는 카드가 사라져 버튼으로 되돌릴 수 없다 — 삭제와 같은 토스트로
+    // 복원 기회를 준다(스와이프 읽음도 여기로 온다. wm과 같은 방식, 2026-10-09 사용자 지시).
+    showToast('읽음 처리했습니다', '되돌리기', () => undoRead(id), READ_UNDO_DURATION_MS);
     await removalDone;
     refillGrid();
   } else {
@@ -736,6 +740,21 @@ function deleteCard(articleId, element) {
       delete card.dataset.deleting;
       showToast('삭제 중 오류 발생', null, null);
     });
+}
+
+/* ── 읽음 취소(안읽음 목록에서 사라진 카드 되살리기) ── */
+async function undoRead(articleId) {
+  try {
+    const res = await fetch(`/api/articles/${articleId}/read`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({is_read: false}),
+    });
+    if (!res.ok) throw new Error('http ' + res.status);
+    search(currentOffset);  // 목록·안읽음 수 새로고침 → 카드가 다시 나타난다
+  } catch (e) {
+    showToast('되돌리기 실패: ' + e.message, null, null);
+  }
 }
 
 /* ── 삭제 취소(복원) ── */
