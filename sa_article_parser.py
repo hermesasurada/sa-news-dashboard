@@ -25,6 +25,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from curl_cffi import requests as curl_requests
 
+import sa_block_guard
 import sa_login_state
 import settings
 # playwright는 lazy import (parse_with_playwright_stealth 내부).
@@ -223,9 +224,12 @@ def parse_with_sa_api(
             headers=headers,
             impersonate="chrome124", timeout=25,
         )
+        sa_block_guard.check(resp.text, resp.status_code, "sa_api")
         if resp.status_code != 200:
             return None
         data = resp.json()
+    except sa_block_guard.SABlocked:
+        raise
     except Exception:
         return None
 
@@ -294,15 +298,18 @@ def parse_with_playwright_stealth(
                     pass
             page = ctx.new_page()
             # SA가 느릴 수 있어 로드 35s 허용. JS SPA라 본문은 load 이후 XHR로 렌더 → 3s 추가 대기.
-            page.goto(url, timeout=35000, wait_until="load")
+            resp = page.goto(url, timeout=35000, wait_until="load")
             time.sleep(3)
             html_content = page.content()
             ctx.close()
+        sa_block_guard.check(html_content, resp.status if resp else None, "playwright")
         method = "playwright_auth" if cookies else "playwright_stealth"
         result = _parse_html(html_content, method)
         if result:
             result["locked"] = len(result.get("content") or "") < _min_chars()
         return result
+    except sa_block_guard.SABlocked:
+        raise
     except Exception as exc:
         method = "playwright_auth" if cookies else "playwright_stealth"
         return {
@@ -398,12 +405,16 @@ def parse_with_curl_cffi_rotated(
     for imp in IMPERSONATES:
         try:
             resp = curl_requests.get(url, headers=headers, impersonate=imp, timeout=30)
+            # 차단 화면이면 다른 브라우저 흉내로 이어 두드리지 않고 바로 멈춘다
+            sa_block_guard.check(resp.text, resp.status_code, f"curl_{imp}")
             if resp.status_code == 200:
                 result = _parse_html(resp.text, f"curl_cffi_{imp}{suffix}")
                 if result:
                     if cookies and len(result.get("content") or "") < _min_chars():
                         continue
                     return result
+        except sa_block_guard.SABlocked:
+            raise
         except Exception:
             pass
         time.sleep(2)
@@ -416,6 +427,7 @@ def _og_lead(url: str) -> str:
     실패해도 빈 문자열 → 호출측 무해."""
     try:
         r = curl_requests.get(url, headers={"User-Agent": UA}, impersonate="chrome124", timeout=20)
+        sa_block_guard.check(r.text, r.status_code, "og_lead")
         if r.status_code != 200:
             return ""
         html_text = r.text
@@ -432,6 +444,8 @@ def _og_lead(url: str) -> str:
         desc = _meta("description")
         lead = "\n".join(x for x in (title, desc) if x)
         return lead.strip()
+    except sa_block_guard.SABlocked:
+        raise
     except Exception:
         return ""
 
@@ -474,7 +488,12 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
     Returns 에 attempts(각 단계 결과)를 포함한다.
     """
     url = strip_utm(url)
-    lead = _og_lead(url)
+    left = sa_block_guard.remaining_seconds()
+    if left:
+        # 봇 확인 화면 쿨다운 중 — SA에 아예 접속하지 않는다(sa_block_guard)
+        return {"success": False, "title": "", "content": "", "method": None, "locked": True,
+                "tickers": [], "attempts": [], "blocked": True,
+                "error": f"SA_BLOCKED: 봇 확인 쿨다운 {left // 60 + 1}분 남음"}
     cookies = load_sa_cookies()
     steps: List[tuple] = []
     has_cookies = has_login_cookies(cookies)
@@ -515,6 +534,14 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
         error = None
         try:
             result = fn()
+        except sa_block_guard.SABlocked as exc:
+            # 남은 경로도 같은 IP·세션이라 이어 시도하면 차단만 길어진다. 로그인 실패로도 세지 않는다.
+            attempts.append({"method": name, "chars": 0, "locked": True,
+                             "elapsed_ms": int((time.time() - t0) * 1000), "error": f"SA_BLOCKED({exc})",
+                             "accepted": False})
+            return {"success": False, "title": "", "content": "", "method": None, "locked": True,
+                    "tickers": [], "attempts": attempts, "blocked": True,
+                    "error": f"SA_BLOCKED: 봇 확인 화면({exc}) — 쿨다운 {sa_block_guard.remaining_seconds() // 60 + 1}분"}
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             result = {"method": name, "content": "", "error": error, "locked": True}
@@ -539,6 +566,15 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
         if not accepted:
             continue
         body = content
+        sa_block_guard.record_ok()
+        # 리드(og 메타)는 페이지 HTML을 받은 경로(브라우저·curl)에는 이미 들어 있다. API·Jina 결과에만
+        # 따로 받는다 — 기사마다 SA 요청을 하나 줄인다(2026-10-10 차단 줄이기).
+        lead = ""
+        if not str(method).startswith(("playwright", "curl_cffi")):
+            try:
+                lead = _og_lead(url)
+            except sa_block_guard.SABlocked:
+                lead = ""
         if lead and (len(lead) < 40 or lead[-40:] not in body):
             result["content"] = f"{lead}\n\n{body}"
         result.setdefault("tickers", [])

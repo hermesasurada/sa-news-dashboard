@@ -679,11 +679,37 @@ class BatchResilienceTests(unittest.TestCase):
         with (
             patch.object(sa_summarize_claude, "process_article", return_value=True) as proc,
             patch.object(sa_summarize_claude.time, "sleep") as slept,
+            patch.object(sa_summarize_claude.random, "uniform", return_value=7),
+            patch.object(sa_summarize_claude.sa_block_guard, "remaining_seconds", return_value=0),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             sa_summarize_claude.run_batch(2)
         self.assertEqual(proc.call_count, 2)
-        slept.assert_called_once_with(20)
+        slept.assert_called_once_with(27)          # 간격 + 무작위 여유(2026-10-10)
+
+    def test_batch_stops_during_block_cooldown(self):
+        """SA 봇 확인 쿨다운이 걸리면 남은 기사는 SA에 접속하지 않고 다음 배치로 넘긴다."""
+        self._pending("9401", 1)
+        self._pending("9402", 2)
+        settings.ARTICLE_GAP_SECONDS = 0
+        left = iter([0, 3000])
+        with (
+            patch.object(sa_summarize_claude, "process_article", return_value=False) as proc,
+            patch.object(sa_summarize_claude.sa_block_guard, "remaining_seconds", side_effect=lambda: next(left)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            sa_summarize_claude.run_batch(2)
+        self.assertEqual(proc.call_count, 1)
+
+    def test_blocked_parse_does_not_spend_retry(self):
+        with (
+            patch.object(sa_summarize_claude, "attempt_article",
+                         return_value=sa_summarize_claude.AttemptFailure("PARSE_FAIL: SA_BLOCKED: 봇 확인")),
+            patch.object(sa_summarize_claude.db, "mark_attempt_failed") as marked,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertFalse(sa_summarize_claude.process_article({"id": 1}))
+        marked.assert_not_called()
 
 
 class ParseUsesSiteTests(unittest.TestCase):

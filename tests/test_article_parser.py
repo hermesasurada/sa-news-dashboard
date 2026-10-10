@@ -237,3 +237,68 @@ class NoLoginWarningTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BlockGuardTests(unittest.TestCase):
+    """SA 봇 확인 화면(PerimeterX) 쿨다운(2026-10-10)."""
+
+    def setUp(self):
+        import sa_block_guard
+        self.guard = sa_block_guard
+        self.dir = tempfile.TemporaryDirectory()
+        self._prev = settings.BLOCK_STATE_PATH
+        settings.BLOCK_STATE_PATH = Path(self.dir.name) / "block.json"
+
+    def tearDown(self):
+        settings.BLOCK_STATE_PATH = self._prev
+        self.dir.cleanup()
+
+    def test_detects_px_page_only(self):
+        page = "<title>Access to this page has been denied</title> Press & Hold to confirm you are a human"
+        self.assertTrue(self.guard.is_block_page(403, page))
+        self.assertTrue(self.guard.is_block_page(429, ""))
+        self.assertFalse(self.guard.is_block_page(403, "<html>Forbidden</html>"))
+        self.assertFalse(self.guard.is_block_page(200, page))
+
+    def test_cooldown_doubles_and_resets(self):
+        with patch("sys.stdout"), patch("sys.stderr"):
+            self.assertEqual(self.guard.record_block("t"), settings.BLOCK_COOLDOWN_MINUTES)
+            self.assertEqual(self.guard.record_block("t"), settings.BLOCK_COOLDOWN_MINUTES * 2)
+        self.assertGreater(self.guard.remaining_seconds(), 0)
+        self.guard.record_ok()
+        self.assertEqual(self.guard.load_state()["consecutive_blocks"], 0)
+
+    def test_parse_skips_sa_entirely_during_cooldown(self):
+        with patch("sys.stdout"), patch("sys.stderr"):
+            self.guard.record_block("t")
+        with patch.object(parser, "load_sa_cookies") as cookies, patch.object(parser, "_og_lead") as lead:
+            r = parser.parse_sa_article("https://seekingalpha.com/news/1-x")
+        self.assertFalse(r["success"])
+        self.assertTrue(r["blocked"])
+        self.assertIn("SA_BLOCKED", r["error"])
+        cookies.assert_not_called()
+        lead.assert_not_called()
+
+    def test_block_mid_fetch_stops_remaining_paths(self):
+        calls = []
+
+        def blocked(*a, **k):
+            calls.append("pw")
+            with patch("sys.stdout"), patch("sys.stderr"):
+                self.guard.record_block("playwright")
+            raise self.guard.SABlocked("playwright")
+
+        with (
+            patch.object(parser, "load_sa_cookies", return_value=[{"name": "user_id", "value": "1"}]),
+            patch.object(parser, "has_login_cookies", return_value=True),
+            patch.object(parser.sa_login_state, "is_degraded", return_value=False),
+            patch.object(parser, "parse_with_playwright_stealth", side_effect=blocked),
+            patch.object(parser, "parse_with_curl_cffi_rotated") as curl,
+            patch.object(parser.sa_login_state, "record_auth_result") as auth,
+        ):
+            r = parser.parse_sa_article("https://seekingalpha.com/news/1-x")
+        self.assertTrue(r["blocked"])
+        self.assertEqual(calls, ["pw"])
+        curl.assert_not_called()
+        auth.assert_not_called()           # 차단은 로그인 실패로 세지 않는다
+

@@ -11,6 +11,7 @@ db.publish_article() 또는 db.mark_attempt_failed()를 호출한다.
 """
 import argparse
 import json
+import random
 import re
 import sqlite3
 import subprocess
@@ -26,6 +27,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import db  # noqa: E402
 import foreign_tickers
+import sa_block_guard  # noqa: E402
 import ticker_names  # noqa: E402
 import settings  # noqa: E402
 from sa_claude_cli import call_claude, call_codex, call_grok, extract_json  # noqa: E402
@@ -367,6 +369,10 @@ def process_article(row: dict, *, reuse_source: bool = False) -> bool:
         print(f"     {reason}", file=sys.stderr)
         outcome = AttemptFailure(reason[:200])
 
+    if isinstance(outcome, AttemptFailure) and "SA_BLOCKED" in (outcome.reason or ""):
+        # SA 봇 확인 쿨다운 — 기사 잘못이 아니므로 재시도 횟수를 쓰지 않고 대기열에 그대로 둔다
+        print("     → SA 봇 확인 쿨다운: 이 기사는 다음 배치에서 다시 처리")
+        return False
     if isinstance(outcome, AttemptFailure):
         result = db.mark_attempt_failed(article_id, outcome.reason)
         print(f"     → {result}")
@@ -401,9 +407,15 @@ def run_batch(batch_size: int) -> BatchResult:
     ok = fail = 0
     gap = settings.ARTICLE_GAP_SECONDS
     for i, row in enumerate(rows):
+        left = sa_block_guard.remaining_seconds()
+        if left:
+            # 봇 확인 쿨다운 중이면 남은 기사는 SA에 접속하지 않고 다음 배치로 넘긴다
+            print(f"     SA 봇 확인 쿨다운 {left // 60 + 1}분 남음 — 남은 {len(rows) - i}건은 다음 배치로")
+            break
         if i and gap > 0:
-            print(f"     SA 요청 간격 {gap}s …")
-            time.sleep(gap)
+            wait = gap + random.uniform(0, settings.ARTICLE_GAP_JITTER_SECONDS)
+            print(f"     SA 요청 간격 {wait:.0f}s …")
+            time.sleep(wait)
         if process_article(row):
             ok += 1
         else:

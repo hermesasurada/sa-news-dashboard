@@ -40,3 +40,5 @@ grok_model.json
 static/fonts/PretendardVariable.subset.*.woff2
 .sa_login_state.json
 .sa_login_state.json.*.tmp
+.sa_block_state.json
+.sa_block_state.json.*.tmp
