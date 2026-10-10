@@ -392,7 +392,35 @@ def process_article(row: dict, *, reuse_source: bool = False) -> bool:
 
 # ── 배치 실행 ──────────────────────────────────────────────────────────────
 
+def run_grok_batch(batch_size: int) -> BatchResult:
+    """Grok Bot 원문 모드: 드라이브로 요청을 올리고 결과를 가져온 뒤, 원문이 들어온 기사만 요약한다.
+    SA 사이트에는 접속하지 않는다(2026-10-11 사용자 결정)."""
+    import grok_bridge
+    try:
+        stats = grok_bridge.sync()
+        print(f"Grok 연동: 요청 {stats.get('sent', 0)}건 · 원문 도착 {stats.get('ready', 0)}건 · "
+              f"대기 {stats.get('waiting', 0)}건 · 실패 {stats.get('failed', 0) + stats.get('timeout', 0)}건")
+    except Exception as exc:                       # 드라이브 장애여도 이미 받은 원문은 요약한다
+        print(f"Grok 연동 오류(다음 주기에 다시): {type(exc).__name__}: {exc}", file=sys.stderr)
+    ready = {r["id"] for r in grok_bridge.ready_rows(1000)}
+    rows = [r for r in db.get_pending_due(batch_size=1000) if r["id"] in ready][:batch_size]
+    if not rows:
+        print("SA summarize (claude): 요약할 Grok 원문 없음")
+        return BatchResult(attempted=0, succeeded=0, failed=0)
+    print(f"SA summarize (claude): {len(rows)}건 처리 시작 (Grok 원문)")
+    ok = fail = 0
+    for row in rows:
+        if process_article(row, reuse_source=True):
+            ok += 1
+        else:
+            fail += 1
+    print(f"SA summarize (claude): 완료 — 성공 {ok}건 / 실패 {fail}건")
+    return BatchResult(attempted=len(rows), succeeded=ok, failed=fail)
+
+
 def run_batch(batch_size: int) -> BatchResult:
+    if settings.SOURCE_MODE == "grok":
+        return run_grok_batch(batch_size)
     rows = db.get_pending_due(batch_size=batch_size)
     if not rows:
         print("SA summarize (claude): pending 없음")
@@ -443,7 +471,8 @@ def main(argv: list[str] | None = None) -> int:
                 return EXIT_INFRA_FAILURE
             return (
                 EXIT_OK
-                if process_article(dict(r), reuse_source=args.reuse_source)
+                # Grok 원문 모드에서는 수동 재처리도 SA에 접속하지 않고 저장된 원문만 쓴다
+                if process_article(dict(r), reuse_source=args.reuse_source or settings.SOURCE_MODE == "grok")
                 else EXIT_PARTIAL_FAILURE
             )
 

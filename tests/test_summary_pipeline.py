@@ -513,8 +513,12 @@ class BatchResilienceTests(unittest.TestCase):
         self._load.start()
         self._gap = settings.ARTICLE_GAP_SECONDS
         settings.ARTICLE_GAP_SECONDS = 0
+        # SA 페이지 직접 수집(site) 경로 검증 — 2026-10-11부터 기본은 Grok 원문 모드
+        self._mode = patch.object(settings, "SOURCE_MODE", "site")
+        self._mode.start()
 
     def tearDown(self):
+        self._mode.stop()
         self._load.stop()
         settings.ARTICLE_GAP_SECONDS = self._gap
         db.DB_PATH = self._original_path
@@ -835,3 +839,111 @@ class ForeignTickerBackfillTests(unittest.TestCase):
         for symbol, _name, aliases, _equiv in foreign_tickers._COMPANIES:
             self.assertRegex(symbol, r"^[A-Z0-9.]{1,12}$", symbol)
             self.assertTrue(aliases, symbol)
+
+
+class GrokBridgeTests(unittest.TestCase):
+    """Grok Bot 원문 연동(2026-10-11) — 드라이브는 가짜로 바꿔 끼운다."""
+
+    def setUp(self):
+        import grok_bridge
+        self.gb = grok_bridge
+        self._original_path = db.DB_PATH
+        self._tempdir = tempfile.TemporaryDirectory()
+        db.DB_PATH = Path(self._tempdir.name) / "grok.db"
+        with contextlib.redirect_stdout(io.StringIO()):
+            db.init_db()
+        self.gb.ensure_columns()
+        self.uploads, self.results = [], {}
+        fake = {
+            "upload_json": lambda name, parent, obj: self.uploads.append((name, obj)) or "f1",
+            "list_children": lambda parent, prefix="": [
+                {"id": k, "name": k, "modifiedTime": v[0]} for k, v in self.results.items()],
+            "download_text": lambda fid: json.dumps(self.results[fid][1]),
+        }
+        self._patches = [patch.object(self.gb.gdrive, k, v) for k, v in fake.items()]
+        for p in self._patches:
+            p.start()
+        self.fold = {"root": "r", "requests": "q", "results": "s"}
+
+    def tearDown(self):
+        for p in self._patches:
+            p.stop()
+        db.DB_PATH = self._original_path
+        self._tempdir.cleanup()
+
+    def _pending(self, nid: str, url: str | None = None) -> int:
+        return int(db.insert_pending_article(
+            email_id=nid, ticker="AAPL", article_url=url or f"https://seekingalpha.com/news/{nid}-x",
+            original_title="AAPL: t", email_time_et="2026-10-11 01:00 KST"))
+
+    def _status(self, aid):
+        with db.get_conn() as conn:
+            return dict(conn.execute("SELECT pub_status, source_method, source_text, grok_requested_at "
+                                     "FROM articles WHERE id=?", (aid,)).fetchone())
+
+    def test_requests_once_and_bad_url_fails(self):
+        a = self._pending("111")
+        b = self._pending("222", url="NO_MAIN_ARTICLE (found 0 related links)")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.gb.send_requests(self.fold), 1)
+            self.assertEqual(self.gb.send_requests(self.fold), 0)        # 두 번 요청하지 않는다
+        self.assertEqual(self.uploads[0][1]["items"], [{"news_id": "111", "url": "https://seekingalpha.com/news/111-x"}])
+        self.assertIsNotNone(self._status(a)["grok_requested_at"])
+        self.assertEqual(self._status(b)["pub_status"], "failed")
+
+    def test_full_result_becomes_source_partial_waits_until_last_attempt(self):
+        a = self._pending("111")
+        b = self._pending("222")
+        c = self._pending("333")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.gb.send_requests(self.fold)
+        self.results = {
+            "sa_111.json": ("t1", {"status": "full", "attempt": 1, "title": "T", "subtitle": "S",
+                                   "key_facts": ["사실 1 " + "가" * 150, "사실 2 " + "나" * 150]}),
+            "sa_222.json": ("t1", {"status": "partial", "attempt": 1, "title": "T", "body": "P" * 300}),
+            "sa_333.json": ("t1", {"status": "failed", "attempt": 3, "body": "", "note": "blocked"}),
+        }
+        st = self.gb.collect_results(self.fold)
+        self.assertEqual((st["ready"], st["waiting"], st["failed"]), (1, 1, 1))
+        self.assertEqual(self._status(a)["source_method"], "grok")
+        self.assertTrue(self._status(a)["source_text"].startswith("T\n\nS\n\n- 사실 1"))
+        self.assertIsNone(self._status(b)["source_method"])
+        self.assertEqual(self._status(c)["pub_status"], "failed")
+        self.assertEqual([r["id"] for r in self.gb.ready_rows(10)], [a])
+        # 같은 결과 파일은 다시 내려받지 않고, 3회차 partial이 오면 그걸로 요약
+        self.results["sa_222.json"] = ("t2", {"status": "partial", "attempt": 3, "title": "T", "body": "P" * 300})
+        self.gb.collect_results(self.fold)
+        self.assertEqual(self._status(b)["source_method"], "grok_partial")
+
+    def test_grok_batch_never_touches_sa_site(self):
+        a = self._pending("111")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.gb.send_requests(self.fold)
+        self.results = {"sa_111.json": ("t1", {"status": "full", "attempt": 1, "title": "T", "body": "B" * 300})}
+        with (
+            patch.object(settings, "SOURCE_MODE", "grok"),
+            patch.object(self.gb, "folders", return_value=self.fold),
+            patch.object(self.gb, "cleanup_requests", return_value=0),
+            patch.object(sa_summarize_claude, "process_article", return_value=True) as proc,
+            patch.object(sa_summarize_claude.subprocess, "run") as site,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            sa_summarize_claude.run_batch(10)
+        site.assert_not_called()
+        self.assertEqual(proc.call_args.kwargs.get("reuse_source"), True)
+        self.assertEqual(proc.call_args.args[0]["id"], a)
+
+    def test_newest_duplicate_result_wins(self):
+        """교체 시 Grok은 새 파일을 올리고 옛 파일을 휴지통으로 보낸다 — 잠깐 둘이면 최신 것."""
+        a = self._pending("111")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.gb.send_requests(self.fold)
+        files = [{"id": "old", "name": "sa_111.json", "modifiedTime": "2026-10-11T01:00:00Z"},
+                 {"id": "new", "name": "sa_111.json", "modifiedTime": "2026-10-11T02:00:00Z"}]
+        data = {"old": {"status": "failed", "attempt": 1},
+                "new": {"status": "full", "attempt": 2, "title": "T", "key_facts": ["가" * 300]}}
+        with patch.object(self.gb.gdrive, "list_children", lambda parent, prefix="": files), \
+             patch.object(self.gb.gdrive, "download_text", lambda fid: json.dumps(data[fid])):
+            self.gb.collect_results(self.fold)
+        self.assertEqual(self._status(a)["source_method"], "grok")
+

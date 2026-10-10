@@ -50,6 +50,11 @@ PUBLISH_PARSE_TIMEOUT_SECONDS = _env_int("SA_PARSE_TIMEOUT_SECONDS", 200)
 # 20초로는 16건 연속 배치 후반에 SA가 차단을 걸었다(직전에 4021자를 받던
 # 기사가 같은 쿠키로 2자·locked 반환). 25초로 올린다.
 ARTICLE_GAP_SECONDS = _env_int("SA_ARTICLE_GAP_SECONDS", 25, minimum=0)
+# 원문 출처(2026-10-11 사용자 결정): 'grok' = sa는 SA 사이트에 접속하지 않고 Grok Bot이 드라이브에
+# 올린 원문으로만 요약한다(grok_bridge). 'site' = 예전 방식(sa가 SA 페이지를 직접 받음).
+SOURCE_MODE = os.environ.get("SA_SOURCE_MODE", "grok").strip().lower()
+# Grok에 요청한 뒤 이 시간이 지나도 결과가 없으면 실패 처리
+GROK_TIMEOUT_HOURS = _env_int("SA_GROK_TIMEOUT_HOURS", 48, minimum=1)
 SOURCE_MIN_CHARS = _env_int("SA_SOURCE_MIN_CHARS", 700)
 # 로그인 세션 사용 여부. 2026-10-11 사용자 결정으로 기본 끔: 로그인 쿠키를 붙인 자동 수집이
 # 거듭 봇으로 판정돼(PerimeterX) 유료 계정 정지 위험이 있다. 비로그인 미리보기(~500자)로 요약한다.

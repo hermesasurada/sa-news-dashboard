@@ -175,6 +175,81 @@ def api(method: str, path: str, params: dict | None = None, body: dict | None = 
     return _http_json(method, url, body=body, headers={"Authorization": f"Bearer {access_token()}"})
 
 
+FOLDER_MIME = "application/vnd.google-apps.folder"
+
+
+def _q(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def find_folder(name: str, parent: str = "root") -> str | None:
+    q = f"name = '{_q(name)}' and mimeType = '{FOLDER_MIME}' and '{parent}' in parents and trashed = false"
+    files = api("GET", "/files", {"q": q, "fields": "files(id,name)", "pageSize": 10}).get("files") or []
+    return files[0]["id"] if files else None
+
+
+def ensure_folder(name: str, parent: str = "root") -> str:
+    fid = find_folder(name, parent)
+    if fid:
+        return fid
+    return api("POST", "/files", {"fields": "id"},
+               body={"name": name, "mimeType": FOLDER_MIME, "parents": [parent]})["id"]
+
+
+def list_children(parent: str, name_prefix: str = "") -> list[dict]:
+    """폴더 안 파일 목록(id, name, modifiedTime). 이름 접두어로 거른다."""
+    q = f"'{parent}' in parents and trashed = false and mimeType != '{FOLDER_MIME}'"
+    if name_prefix:
+        q += f" and name contains '{_q(name_prefix)}'"
+    out, token = [], None
+    while True:
+        params = {"q": q, "fields": "nextPageToken,files(id,name,modifiedTime)", "pageSize": 1000}
+        if token:
+            params["pageToken"] = token
+        res = api("GET", "/files", params)
+        out += [f for f in res.get("files") or [] if f.get("name", "").startswith(name_prefix)]
+        token = res.get("nextPageToken")
+        if not token:
+            return out
+
+
+def download_text(file_id: str) -> str:
+    req = urllib.request.Request(f"{API}/files/{file_id}?alt=media",
+                                 headers={"Authorization": f"Bearer {access_token()}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.read().decode("utf-8-sig", "replace")
+    except urllib.error.HTTPError as e:
+        raise DriveError(f"HTTP {e.code}: {e.read()[:200]!r}") from None
+    except urllib.error.URLError as e:
+        raise DriveError(f"네트워크 오류: {e.reason}") from None
+
+
+def upload_json(name: str, parent: str, obj) -> str:
+    """JSON 파일을 새로 만든다(멀티파트 업로드). 파일 id를 돌려준다."""
+    boundary = "sa" + secrets.token_hex(12)
+    meta = json.dumps({"name": name, "parents": [parent], "mimeType": "application/json"})
+    content = json.dumps(obj, ensure_ascii=False, indent=1)
+    data = (f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n"
+            f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{content}\r\n"
+            f"--{boundary}--\r\n").encode("utf-8")
+    req = urllib.request.Request(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", data=data,
+        headers={"Authorization": f"Bearer {access_token()}",
+                 "Content-Type": f"multipart/related; boundary={boundary}"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.loads(r.read().decode())["id"]
+    except urllib.error.HTTPError as e:
+        raise DriveError(f"HTTP {e.code}: {e.read()[:200]!r}") from None
+    except urllib.error.URLError as e:
+        raise DriveError(f"네트워크 오류: {e.reason}") from None
+
+
+def delete_file(file_id: str) -> None:
+    api("DELETE", f"/files/{file_id}")
+
+
 def whoami() -> str:
     return (api("GET", "/about", {"fields": "user(emailAddress,displayName)"}).get("user") or {}).get(
         "emailAddress", "")
