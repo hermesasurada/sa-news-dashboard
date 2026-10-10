@@ -43,6 +43,11 @@ class CookieLoadTests(unittest.TestCase):
         self.assertIn("user_id=1", header)
         self.assertIn("user_remember_token=tok", header)
 
+    def test_korean_locale_is_forced_to_english_original(self):
+        """계정 언어 ko면 SA가 번역판(앞부분만)을 준다 — 영문 원문으로 고정(2026-10-10)."""
+        self._write([{"name": "user_locale", "value": "ko", "domain": ".seekingalpha.com", "path": "/", "expires": -1}])
+        self.assertEqual([c["value"] for c in parser.load_sa_cookies()], ["en"])
+
     def test_missing_file_is_anonymous(self):
         self.assertEqual(parser.load_sa_cookies(), [])
         self.assertFalse(parser.has_login_cookies([]))

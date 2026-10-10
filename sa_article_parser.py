@@ -83,6 +83,10 @@ def load_sa_cookies() -> List[Dict[str, Any]]:
         value = item.get("value")
         if not name or value is None:
             continue
+        if name == "user_locale":
+            # 계정 언어가 ko면 SA가 한국어 AI 번역판을 주는데, 그 페이지에서는 본문 앞부분만
+            # 뽑혀 로그인해도 원문이 잘렸다(2026-10-10, 쿠키 갱신 후 확인). 원문(영문)으로 고정한다.
+            value = "en"
         same_site = item.get("sameSite") or "Lax"
         if same_site not in ("Strict", "Lax", "None"):
             same_site = "Lax"
@@ -209,7 +213,7 @@ def parse_with_sa_api(
     if not m:
         return None
     nid = m.group(1)
-    headers = {"User-Agent": UA, "Accept": "application/json"}
+    headers = {"User-Agent": UA, "Accept": "application/json", "Accept-Language": "en-US,en;q=0.9"}
     if cookies:
         headers["Cookie"] = cookie_header(cookies)
         headers["Referer"] = f"https://seekingalpha.com/news/{nid}"
@@ -280,6 +284,7 @@ def parse_with_playwright_stealth(
                 user_data_dir=PW_PROFILE_DIR,
                 headless=True,
                 user_agent=UA,
+                locale="en-US",     # 번역판이 아닌 영문 원문(user_locale 쿠키와 함께)
             )
             ctx.add_init_script(STEALTH_INIT)
             if cookies:
