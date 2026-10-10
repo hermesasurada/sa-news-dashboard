@@ -13,8 +13,12 @@ class LoginStateTests(unittest.TestCase):
         self.tmp = settings.BASE_DIR / f".sa_login_state.test.{id(self)}.json"
         self._patch = patch.object(settings, "LOGIN_STATE_PATH", self.tmp)
         self._patch.start()
+        # 로그인 모드 동작 검증 — 2026-10-11부터 기본은 로그인 끔이라 명시적으로 켠다
+        self._login = patch.object(settings, "USE_LOGIN_SESSION", True)
+        self._login.start()
 
     def tearDown(self):
+        self._login.stop()
         self._patch.stop()
         self.tmp.unlink(missing_ok=True)
 

@@ -134,8 +134,11 @@ class FetchOrderTests(unittest.TestCase):
             settings, "LOGIN_STATE_PATH", Path(self._dir.name) / "state.json"
         )
         self._patch.start()
+        self._login = patch.object(settings, "USE_LOGIN_SESSION", True)   # 로그인 모드 순서 검증
+        self._login.start()
 
     def tearDown(self):
+        self._login.stop()
         self._patch.stop()
         self._dir.cleanup()
 
@@ -209,6 +212,7 @@ class NoLoginWarningTests(unittest.TestCase):
              patch.object(parser, "parse_with_curl_cffi_rotated", return_value=None), \
              patch.object(parser, "parse_with_sa_api", return_value=None), \
              patch.object(parser.settings, "ALLOW_ANON_FETCH", False), \
+             patch.object(parser.settings, "USE_LOGIN_SESSION", True), \
              contextlib.redirect_stderr(err):
             parser.parse_sa_article("https://seekingalpha.com/news/1-x")
         return err.getvalue()
@@ -237,3 +241,21 @@ class NoLoginWarningTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LoginOffDefaultTests(unittest.TestCase):
+    """2026-10-11 사용자 결정: 로그인 수집 기본 끔 — 계정 쿠키 없이 비로그인 경로만."""
+
+    def test_login_off_uses_anonymous_paths_without_cookies(self):
+        calls = []
+        with patch.object(parser.settings, "USE_LOGIN_SESSION", False), \
+             patch.object(parser.settings, "ALLOW_ANON_FETCH", False), \
+             patch.object(parser, "_og_lead", return_value=""), \
+             patch.object(parser, "parse_with_jina_reader", return_value=None), \
+             patch.object(parser, "parse_with_sa_api", side_effect=lambda u, cookies=None, **k: calls.append(("api", cookies)) or {
+                 "content": "x" * 600, "method": "sa_api", "locked": True, "tickers": []}), \
+             patch.object(parser, "parse_with_playwright_stealth", side_effect=lambda u, cookies=None: calls.append(("pw", cookies))):
+            r = parser.parse_sa_article("https://seekingalpha.com/news/1-x")
+        self.assertTrue(r["success"])
+        self.assertEqual(calls, [("api", None)])
+

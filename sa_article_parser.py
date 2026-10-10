@@ -503,7 +503,8 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
             )
         )
     steps.append(("jina_reader", lambda: parse_with_jina_reader(url)))
-    if settings.ALLOW_ANON_FETCH or degraded:
+    # 로그인을 끈 모드(2026-10-11 기본)에서는 비로그인 경로가 유일한 길이다
+    if settings.ALLOW_ANON_FETCH or degraded or not settings.USE_LOGIN_SESSION:
         steps.append(("sa_api", lambda: parse_with_sa_api(url)))
         steps.append(("playwright_stealth", lambda: parse_with_playwright_stealth(url)))
         steps.append(("curl_cffi", lambda: parse_with_curl_cffi_rotated(url)))

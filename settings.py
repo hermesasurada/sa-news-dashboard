@@ -51,9 +51,10 @@ PUBLISH_PARSE_TIMEOUT_SECONDS = _env_int("SA_PARSE_TIMEOUT_SECONDS", 200)
 # 기사가 같은 쿠키로 2자·locked 반환). 25초로 올린다.
 ARTICLE_GAP_SECONDS = _env_int("SA_ARTICLE_GAP_SECONDS", 25, minimum=0)
 SOURCE_MIN_CHARS = _env_int("SA_SOURCE_MIN_CHARS", 700)
-# 로그인 세션 사용 여부. SA가 세션을 무효화(403)하면 인증 경로가 기사마다
-# ~11초를 헛되이 쓰고 403을 반복 유발하므로, 재로그인 전까지 0으로 꺼둔다.
-USE_LOGIN_SESSION = os.environ.get("SA_USE_LOGIN", "1").strip().lower() not in {
+# 로그인 세션 사용 여부. 2026-10-11 사용자 결정으로 기본 끔: 로그인 쿠키를 붙인 자동 수집이
+# 거듭 봇으로 판정돼(PerimeterX) 유료 계정 정지 위험이 있다. 비로그인 미리보기(~500자)로 요약한다.
+# 다시 켜려면 SA_USE_LOGIN=1.
+USE_LOGIN_SESSION = os.environ.get("SA_USE_LOGIN", "0").strip().lower() not in {
     "0",
     "false",
     "no",
