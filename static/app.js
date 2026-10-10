@@ -252,6 +252,8 @@ function parseMethodLabel(m) {
   if (m.startsWith('jina')) return 'Jina';
   if (m.startsWith('playwright')) return 'Playwright';
   if (m.startsWith('curl_cffi')) return 'curl';
+  if (m === 'grok_partial') return 'Grok Bot(일부)';   // Grok Bot이 드라이브로 넘긴 원문(2026-10-11)
+  if (m.startsWith('grok')) return 'Grok Bot';
   return m;
 }
 
