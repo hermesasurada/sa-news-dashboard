@@ -260,10 +260,12 @@ class BlockGuardTests(unittest.TestCase):
         self.assertFalse(self.guard.is_block_page(403, "<html>Forbidden</html>"))
         self.assertFalse(self.guard.is_block_page(200, page))
 
-    def test_cooldown_doubles_and_resets(self):
+    def test_cooldown_is_fixed_even_when_repeated(self):
+        """연속 차단이어도 쉬는 시간은 늘리지 않는다(2026-10-10 사용자 지시)."""
         with patch("sys.stdout"), patch("sys.stderr"):
             self.assertEqual(self.guard.record_block("t"), settings.BLOCK_COOLDOWN_MINUTES)
-            self.assertEqual(self.guard.record_block("t"), settings.BLOCK_COOLDOWN_MINUTES * 2)
+            self.assertEqual(self.guard.record_block("t"), settings.BLOCK_COOLDOWN_MINUTES)
+        self.assertEqual(self.guard.load_state()["consecutive_blocks"], 2)
         self.assertGreater(self.guard.remaining_seconds(), 0)
         self.guard.record_ok()
         self.assertEqual(self.guard.load_state()["consecutive_blocks"], 0)

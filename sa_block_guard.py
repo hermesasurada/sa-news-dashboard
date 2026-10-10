@@ -4,8 +4,8 @@
 SA에 접속하지 않는다. 차단 중에 기사마다 폴백 경로(브라우저·curl 3종·API)를 연달아 두드리면
 차단이 길어지기만 한다(2026-10-10: 확인 요청 몇 번에 403이 걸렸다). 확인 화면은 우회하지 않는다.
 
-  - 쿨다운: BLOCK_COOLDOWN_MINUTES부터 연속 차단마다 두 배, 최대 BLOCK_COOLDOWN_MAX_MINUTES
-  - 본문을 정상으로 받으면 연속 횟수를 0으로 돌린다
+  - 쿨다운: 차단마다 BLOCK_COOLDOWN_MINUTES로 고정(연속 차단 두 배 늘리기는 2026-10-10 사용자 지시로 없앰)
+  - 연속 횟수는 알림·기록용으로만 센다(본문을 정상으로 받으면 0)
   - 프로세스는 배치마다 새로 뜨므로 상태는 파일에 남긴다(로그인 상태 파일 옆)
 """
 
@@ -72,7 +72,7 @@ def record_block(where: str = "") -> int:
     """차단을 기록하고 쿨다운(분)을 돌려준다."""
     state = load_state()
     n = int(state.get("consecutive_blocks") or 0) + 1
-    minutes = min(settings.BLOCK_COOLDOWN_MINUTES * (2 ** (n - 1)), settings.BLOCK_COOLDOWN_MAX_MINUTES)
+    minutes = settings.BLOCK_COOLDOWN_MINUTES
     state.update(consecutive_blocks=n, blocked_until=time.time() + minutes * 60, last_block=time.time())
     _save(state)
     msg = (f"     ⛔ SA 봇 확인 화면 감지({where or 'SA'}) — {minutes}분 동안 SA 요청을 멈춥니다"
