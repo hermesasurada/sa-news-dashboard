@@ -55,8 +55,7 @@ def cmd_parse(article_id: int):
             print("SA_TICKERS: " + json.dumps(tickers, ensure_ascii=False), file=sys.stderr)
         print(content)
         return
-    if not r.get("blocked"):           # 봇 확인 쿨다운이면 받은 게 없다 — 저장된 본문을 덮지 않는다
-        db.save_source(article_id, text=content, method=method or None, locked=True)
+    db.save_source(article_id, text=content, method=method or None, locked=True)
     print(f"PARSE_FAIL: {r.get('error') or 'preview-only'}", file=sys.stderr)
     print(f"PARSE_CHARS: {len(content)}", file=sys.stderr)
     print("PARSE_LOCKED: 1", file=sys.stderr)
