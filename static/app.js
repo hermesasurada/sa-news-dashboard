@@ -37,8 +37,9 @@ async function fetchJSON(url, options) {
 }
 
 async function copyArticleId(button) {
-  const value = button.dataset.articleId || '';
-  if (!value) return;
+  const id = button.dataset.articleId || '';
+  if (!id) return;
+  const value = `sa ${id}`;   // 서비스 약칭을 붙여 복사(2026-10-12 사용자 지시 — 'sa 9061')
   try {
     await navigator.clipboard.writeText(value);
   } catch (error) {
