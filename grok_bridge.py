@@ -47,7 +47,9 @@ def ensure_columns() -> None:
     with db.get_conn() as conn:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(articles)")}
         for col, ddl in (("grok_requested_at", "TEXT"), ("grok_status", "TEXT"),
-                         ("grok_attempt", "INTEGER"), ("grok_result_mtime", "TEXT")):
+                         ("grok_attempt", "INTEGER"), ("grok_result_mtime", "TEXT"),
+                         # 결과 JSON 원본(작성자·게시 시각·메모 포함) — Grok이 완료 5일 뒤 드라이브에서 지운다(2026-10-12)
+                         ("grok_result_json", "TEXT")):
             if col not in cols:
                 conn.execute(f"ALTER TABLE articles ADD COLUMN {col} {ddl}")
 
@@ -160,8 +162,10 @@ def collect_results(fold: dict) -> dict:
         text = _source_text(res)
         final = attempt >= MAX_ATTEMPTS
         with db.get_conn() as conn:
-            conn.execute("UPDATE articles SET grok_status = ?, grok_attempt = ?, grok_result_mtime = ? "
-                         "WHERE id = ?", (status or "unknown", attempt, f.get("modifiedTime"), r["id"]))
+            conn.execute("UPDATE articles SET grok_status = ?, grok_attempt = ?, grok_result_mtime = ?, "
+                         "grok_result_json = ? WHERE id = ?",
+                         (status or "unknown", attempt, f.get("modifiedTime"),
+                          json.dumps(res, ensure_ascii=False), r["id"]))
         if status == "full" and text:
             db.save_source(r["id"], text=text, method="grok", locked=False)
             stats["ready"] += 1
@@ -181,6 +185,33 @@ def _fail(article_id: int, reason: str, now: str) -> None:
         conn.execute("UPDATE articles SET pub_status = 'failed', fail_reason = ?, last_modified = ?, "
                      "grok_status = COALESCE(grok_status, 'timeout') WHERE id = ? AND pub_status = 'pending'",
                      (reason[:200], now, article_id))
+
+
+def backfill_result_json(fold: dict) -> int:
+    """이미 처리했지만 원본 JSON을 아직 안 남긴 기사의 결과 파일을 내려받아 저장한다(드라이브에서 지워지기 전에)."""
+    with db.get_conn() as conn:
+        rows = conn.execute("SELECT id, article_url FROM articles WHERE grok_status IS NOT NULL "
+                            "AND grok_status <> 'requested' AND grok_result_json IS NULL").fetchall()
+    if not rows:
+        return 0
+    files: dict = {}
+    for f in gdrive.list_children(fold["results"], "sa_"):
+        if f["name"] not in files or f.get("modifiedTime", "") > files[f["name"]].get("modifiedTime", ""):
+            files[f["name"]] = f
+    n = 0
+    for r in rows:
+        f = files.get(f"sa_{news_id(r['article_url'])}.json")
+        if not f:
+            continue
+        try:
+            res = json.loads(gdrive.download_text(f["id"]))
+        except (ValueError, gdrive.DriveError):
+            continue
+        with db.get_conn() as conn:
+            conn.execute("UPDATE articles SET grok_result_json = ? WHERE id = ?",
+                          (json.dumps(res, ensure_ascii=False), r["id"]))
+        n += 1
+    return n
 
 
 def cleanup_requests(fold: dict, keep_days: int = 7) -> int:
@@ -219,6 +250,10 @@ def sync() -> dict:
     sent = send_requests(fold)
     stats = collect_results(fold)
     stats["sent"] = sent
+    try:
+        stats["json_saved"] = backfill_result_json(fold)
+    except gdrive.DriveError:
+        stats["json_saved"] = 0
     try:
         stats["cleaned"] = cleanup_requests(fold)
     except gdrive.DriveError:

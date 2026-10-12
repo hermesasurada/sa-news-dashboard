@@ -907,6 +907,9 @@ class GrokBridgeTests(unittest.TestCase):
         self.assertEqual((st["ready"], st["waiting"], st["failed"]), (1, 1, 1))
         self.assertEqual(self._status(a)["source_method"], "grok")
         self.assertTrue(self._status(a)["source_text"].startswith("T\n\nS\n\n- 사실 1"))
+        with db.get_conn() as conn:                     # 결과 JSON 원본도 남는다(Grok이 5일 뒤 드라이브에서 지움)
+            raw = conn.execute("SELECT grok_result_json FROM articles WHERE id=?", (a,)).fetchone()[0]
+        self.assertEqual(json.loads(raw)["status"], "full")
         self.assertIsNone(self._status(b)["source_method"])
         self.assertEqual(self._status(c)["pub_status"], "failed")
         self.assertEqual([r["id"] for r in self.gb.ready_rows(10)], [a])
