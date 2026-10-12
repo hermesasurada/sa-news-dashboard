@@ -50,6 +50,19 @@ class SummaryChainTests(unittest.TestCase):
         c.assert_called_once_with("p", title="T", model="gpt-6-luna", reasoning="low")
         g.assert_called_once_with("p", title="T", model="grok-4.6", reasoning="default")
 
+    def test_round_robin_by_article_id(self):
+        """2026-10-12: 순차 폴백 → 라운드로빈. 시작 모델은 기사 id로 돌고, 나머지가 뒤를 받는다."""
+        cfg = {"providers": ["claude", "codex", "grok"], "claude_model": "claude-opus-5-5",
+               "codex_model": "gpt-6-sol", "grok_model": "grok-4.7",
+               "reasoning": {"claude": "default", "codex": "default", "grok": "default"}}
+        names = lambda aid: [n for n, _ in sa_summarize_claude.summary_chain(cfg, article_id=aid)]
+        self.assertEqual(names(9), ["claude-opus-5-5", "gpt-6-sol", "grok-4.7"])
+        self.assertEqual(names(10), ["gpt-6-sol", "grok-4.7", "claude-opus-5-5"])
+        self.assertEqual(names(11), ["grok-4.7", "claude-opus-5-5", "gpt-6-sol"])
+        self.assertEqual(names(None), ["claude-opus-5-5", "gpt-6-sol", "grok-4.7"])
+        one = dict(cfg, providers=["grok"])
+        self.assertEqual([n for n, _ in sa_summarize_claude.summary_chain(one, article_id=10)], ["grok-4.7"])
+
     def test_config_normalize_and_validate(self):
         import summary_config as sc
         base = sc.DEFAULT_CONFIG
@@ -368,7 +381,8 @@ class LlmLogWiringTests(unittest.TestCase):
                         "usage": {"input_tokens": 10, "output_tokens": 5},
                         "modelUsage": {"claude-opus-4-8": {"outputTokens": 5}}}),
         ])
-        row = {"id": 1, "ticker": "AAPL", "original_title": "AAPL: Apple raises prices"}
+        # id 2 → 라운드로빈 시작이 0번(grok), 실패하면 claude
+        row = {"id": 2, "ticker": "AAPL", "original_title": "AAPL: Apple raises prices"}
         with (
             patch.object(sa_summarize_claude.summary_config, "load", return_value=GROK_THEN_CLAUDE),
             patch.object(sa_summarize_claude, "parse_article",
@@ -511,6 +525,11 @@ class BatchResilienceTests(unittest.TestCase):
         self._load = patch.object(sa_summarize_claude.summary_config, "load",
                                   return_value=CLAUDE_THEN_GROK)
         self._load.start()
+        # 라운드로빈 회전(기사 id)은 끄고 설정 순서 그대로 — 회전은 SummaryChainTests에서 검증.
+        _chain = sa_summarize_claude.summary_chain
+        self._rr = patch.object(sa_summarize_claude, "summary_chain",
+                                side_effect=lambda config=None, article_id=None: _chain(config))
+        self._rr.start()
         self._gap = settings.ARTICLE_GAP_SECONDS
         settings.ARTICLE_GAP_SECONDS = 0
         # SA 페이지 직접 수집(site) 경로 검증 — 2026-10-11부터 기본은 Grok 원문 모드
@@ -519,6 +538,7 @@ class BatchResilienceTests(unittest.TestCase):
 
     def tearDown(self):
         self._mode.stop()
+        self._rr.stop()
         self._load.stop()
         settings.ARTICLE_GAP_SECONDS = self._gap
         db.DB_PATH = self._original_path

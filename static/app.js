@@ -1119,8 +1119,8 @@ init();
 
 /* ── 요약 모델 설정(wm 설정 팝업 이식, 2026-09-26) ─────────────────────────────
    화면은 공통 ModelSelector(계열 모드)가 그리고 여기서는 상태·저장만 맡는다.
-   모델 목록은 서버가 공용 LLM 카탈로그에서 준다(Claude·GPT·Grok). 순차 폴백:
-   1순위가 요약하고 실패하면 다음 순위, '사용 안 함' 칸은 건너뛴다. */
+   모델 목록은 서버가 공용 LLM 카탈로그에서 준다(Claude·GPT·Grok). 라운드로빈(2026-10-12,
+   예전엔 순차 폴백): 기사마다 시작 모델을 돌려 나눠 맡고, 실패하면 나머지가 받는다. */
 const MC_SLOTS = ['claude', 'codex', 'grok'];
 const MC_MODEL_KEY = { claude: 'claude_model', codex: 'codex_model', grok: 'grok_model' };
 let _mc = null;
@@ -1141,8 +1141,8 @@ function _mcState() {
     effort: cfg.reasoning, next: null,
     versions: (_mc.model_options || []).map(v => ({ ...v, slot: v.provider })),
     efforts: _mc.reasoning_options || [],
-    allowNone: true, tag: '순차 폴백',
-    hint: '1순위 모델이 요약하고, 실패하면 다음 순위가 받는다. 사용 안 함 칸은 건너뛴다.',
+    allowNone: true, tag: '라운드로빈',
+    hint: '선택한 모델이 기사마다 돌아가며 요약하고, 실패하면 나머지 모델이 받는다. 사용 안 함 칸은 건너뛴다.',
     status: _mcStatus,
     notes: [],
   };

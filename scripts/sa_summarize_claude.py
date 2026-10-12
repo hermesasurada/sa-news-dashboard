@@ -247,11 +247,13 @@ def parse_article(
 
 # ── 단일 기사 처리 ─────────────────────────────────────────────────────────
 
-def summary_chain(config: dict | None = None) -> list[tuple[str, object]]:
-    """대시보드 설정(summary_config) 순번대로 [(모델, 호출함수)] — 순차 폴백.
+def summary_chain(config: dict | None = None, article_id: int | None = None) -> list[tuple[str, object]]:
+    """대시보드 설정(summary_config)의 모델들로 [(모델, 호출함수)] — 라운드로빈.
 
-    2026-09-26부터 설정 팝업이 정한다(모델은 공용 LLM 카탈로그). 1순위가 요약하고,
-    실패하면 다음 순위가 받는다. 순번 밖 모델로는 가지 않는다.
+    2026-09-26부터 설정 팝업이 정한다(모델은 공용 LLM 카탈로그). 2026-10-12 사용자
+    지시로 순차 폴백 → 라운드로빈: 기사 id로 시작 모델을 돌려(id % 모델 수) 요약을
+    나눠 맡기고, 시작 모델이 실패하면 나머지 모델이 순서대로 한 번씩 받는다(wm과 같은
+    방식). article_id가 없으면 설정 순서 그대로. 설정 밖 모델로는 가지 않는다.
     """
     cfg = config or summary_config.load()
     callers = {"claude": call_claude, "codex": call_codex, "grok": call_grok}
@@ -264,6 +266,9 @@ def summary_chain(config: dict | None = None) -> list[tuple[str, object]]:
         effort = cfg["reasoning"].get(provider, "default")
         chain.append((model, lambda prompt, title=None, _f=fn, _m=model, _e=effort:
                       _f(prompt, title=title, model=_m, reasoning=_e)))
+    if chain and article_id is not None:
+        start = int(article_id) % len(chain)
+        chain = chain[start:] + chain[:start]
     return chain
 
 
@@ -325,8 +330,8 @@ def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess 
     # 실패하면 다음 순번 모델로 넘긴다(Astra 검토, 2026-09-26 — 예전엔 문자열만 오면
     # 체인을 끝내고 검증에서 실패해 다음 모델을 한 번도 부르지 않았다).
     data, summary_model, reason = None, None, "요약 모델 응답 없음"
-    for i, (name, summarize) in enumerate(summary_chain()):
-        # 앞 순번 실패 → 다음 순번 (이력에는 실패 행 + 다음 행이 각각 남는다)
+    for i, (name, summarize) in enumerate(summary_chain(article_id=article_id)):
+        # 라운드로빈 시작 모델 실패 → 남은 모델 (이력에는 실패 행 + 다음 행이 각각 남는다)
         print(f"{' 실패 →' if i else '    '} {name} 요약 중…", end="", flush=True)
         response, model = summarize(prompt, title=log_title)
         if not response:

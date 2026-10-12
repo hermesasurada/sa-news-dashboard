@@ -2,8 +2,8 @@
 
 wm의 요약 모델 설정을 옮겼다(2026-09-26 사용자 지시). 모델 목록은 다른 서비스처럼
 공용 LLM 카탈로그(hermes-llm-log/llm_catalog)의 Claude·GPT(Codex)·Grok 모델이다.
-순번은 '순차 폴백' — 1순위가 요약하고, 실패하면 다음 순위가 받는다('사용 안 함'
-칸은 건너뜀). 기본값은 Grok 4.7 한 칸. 저장은 sa_news.db의 app_settings
+선택한 모델들은 '라운드로빈'(2026-10-12 사용자 지시, 예전엔 순차 폴백) — 기사 id로
+시작 모델을 돌려 나눠 맡고, 실패하면 나머지가 받는다('사용 안 함' 칸은 건너뜀). 기본값은 Grok 4.7 한 칸. 저장은 sa_news.db의 app_settings
 ('summary_config'). 어떤 이유로든 읽지 못하면 기본값으로 요약을 계속한다.
 """
 from __future__ import annotations
