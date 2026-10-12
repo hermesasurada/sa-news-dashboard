@@ -2,8 +2,8 @@
 
 wm의 요약 모델 설정을 옮겼다(2026-09-26 사용자 지시). 모델 목록은 다른 서비스처럼
 공용 LLM 카탈로그(hermes-llm-log/llm_catalog)의 Claude·GPT(Codex)·Grok 모델이다.
-선택한 모델들은 '라운드로빈'(2026-10-12 사용자 지시, 예전엔 순차 폴백) — 기사 id로
-시작 모델을 돌려 나눠 맡고, 실패하면 나머지가 받는다('사용 안 함' 칸은 건너뜀). 기본값은 Grok 4.7 한 칸. 저장은 sa_news.db의 app_settings
+요약 슬롯(칸마다 모델+추론, 1~5칸, 2026-10-12 사용자 지시)을 '라운드로빈'으로 돈다 —
+기사 id로 시작 슬롯을 돌려 나눠 맡고, 실패하면 나머지 모델이 한 번씩 받는다. 기본값은 Grok 4.7 한 칸. 저장은 sa_news.db의 app_settings
 ('summary_config'). 어떤 이유로든 읽지 못하면 기본값으로 요약을 계속한다.
 """
 from __future__ import annotations
@@ -29,11 +29,11 @@ import db
 SETTINGS_KEY = "summary_config"
 PROVIDERS = ("claude", "codex", "grok")
 MODEL_KEYS = {"claude": "claude_model", "codex": "codex_model", "grok": "grok_model"}
-DEFAULT_CONFIG = {
-    "providers": ["grok"],
-    "claude_model": "claude-opus-5-5", "codex_model": "gpt-6-sol", "grok_model": "grok-4.7",
-    "reasoning": {"claude": "default", "codex": "default", "grok": "default"},
-}
+# 요약 슬롯(2026-10-12 사용자 지시, wm·yt와 같은 방식): 칸마다 모델+추론, 1~5칸.
+# 같은 제공사·같은 모델을 여러 칸에 둘 수 있다(그만큼 자주 시작 모델이 된다).
+MIN_SLOTS, MAX_SLOTS = 1, 5
+DEFAULT_SLOTS = [{"model": "grok-4.7", "effort": "default"}]
+_FAMILY_DEFAULTS = {"claude": "claude-opus-5-5", "codex": "gpt-6-sol", "grok": "grok-4.7"}
 FALLBACK_LEVELS = ("default", "low", "medium", "high")
 # 카탈로그를 못 읽을 때만 쓰는 최소 목록(설정 화면이 비지 않게)
 _FALLBACK_MODELS = {"claude": [("claude-opus-5-5", "Opus 5.5")], "codex": [("gpt-6-sol", "GPT 6 Sol")],
@@ -45,26 +45,45 @@ def _ensure(conn: sqlite3.Connection) -> None:
         key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)""")
 
 
+def family(model: str) -> str:
+    """모델 ID → 호출할 CLI 계열(claude/codex/grok). 카탈로그가 알면 카탈로그, 모르면 ID 접두어."""
+    if llm_catalog:
+        try:
+            entry = llm_catalog.resolve(model)
+            if entry and entry.get("provider") in PROVIDERS:
+                return entry["provider"]
+        except Exception:
+            pass
+    m = str(model or "").strip().lower()
+    if m.startswith("grok"):
+        return "grok"
+    if m.startswith(("gpt", "codex")):
+        return "codex"
+    return "claude"
+
+
 def model_options(config: dict | None = None) -> list[dict]:
-    """설정 팝업의 모델 목록 — 카탈로그에서 켜진 모델 + 지금 저장된 모델(비활성이어도 보존)."""
+    """설정 팝업의 모델 목록 — 카탈로그에서 켜진 모델 + 지금 슬롯에 저장된 모델(비활성이어도 보존)."""
     cfg = config or DEFAULT_CONFIG
+    saved = [s["model"] for s in cfg.get("slots") or []]
     out = []
     for provider in PROVIDERS:
-        current = cfg.get(MODEL_KEYS[provider])
+        current = [m for m in saved if family(m) == provider]
         items = None
         if llm_catalog:
             try:
-                items = llm_catalog.options(provider, selected=[current] if current else [])
+                items = llm_catalog.options(provider, selected=current)
             except Exception:
                 items = None
         if items is None:
             items = [{"value": v, "label": label, "provider": provider,
                       "reasoning": list(FALLBACK_LEVELS), "enabled": True}
                      for v, label in _FALLBACK_MODELS[provider]]
-            # 카탈로그 장애 중에도 지금 저장된 모델은 목록에 남긴다 — 빠지면 화면이 실제 실행
-            # 모델과 다른 모델을 보여 준다(Astra 검토, 2026-09-26).
-            if current and all(o["value"] != current for o in items):
-                items.insert(0, {"value": current, "label": current, "provider": provider,
+        # 카탈로그 장애 중에도 지금 저장된 모델은 목록에 남긴다 — 빠지면 화면이 실제 실행
+        # 모델과 다른 모델을 보여 준다(Astra 검토, 2026-09-26).
+        for m in current:
+            if all(o["value"] != m for o in items):
+                items.insert(0, {"value": m, "label": m, "provider": provider,
                                  "reasoning": list(FALLBACK_LEVELS), "enabled": True})
         out.extend(dict(o, provider=provider) for o in items)
     return out
@@ -80,47 +99,70 @@ def reasoning_options() -> list[dict]:
     return [{"value": v, "label": names[v]} for v in FALLBACK_LEVELS]
 
 
-def _levels(provider: str, model: str, config: dict | None = None) -> list[str]:
-    hit = next((o for o in model_options(config) if o["provider"] == provider and o["value"] == model), None)
-    return list(hit["reasoning"]) if hit else list(FALLBACK_LEVELS)
+def _normalize_slots(raw_slots) -> list[dict]:
+    out = []
+    for item in raw_slots if isinstance(raw_slots, list) else []:
+        if not isinstance(item, dict):
+            continue
+        model = str(item.get("model") or "").strip()
+        if model:
+            out.append({"model": model, "effort": str(item.get("effort") or "default").strip() or "default"})
+    return out[:MAX_SLOTS]
 
 
-def normalize(raw) -> dict:
-    """저장값을 형식에 맞춘다(모르는 칸은 기본값). 카탈로그에서 빠진 기존 모델은 보존한다."""
-    cfg = json.loads(json.dumps(DEFAULT_CONFIG))
-    if not isinstance(raw, dict):
-        return cfg
-    providers = [p for p in raw.get("providers") or [] if p in PROVIDERS]
-    cfg["providers"] = list(dict.fromkeys(providers)) or cfg["providers"]
-    for provider, key in MODEL_KEYS.items():
-        value = raw.get(key)
-        if isinstance(value, str) and value.strip():
-            cfg[key] = value.strip()
-    reasoning = raw.get("reasoning") if isinstance(raw.get("reasoning"), dict) else {}
-    for provider in PROVIDERS:
-        effort = str(reasoning.get(provider) or "default")
-        cfg["reasoning"][provider] = effort
+def _legacy_slots(raw: dict) -> list[dict]:
+    """옛 저장값(제공사 순번 + 제공사별 모델·추론, 2026-10-12 이전)을 슬롯으로 옮긴다."""
+    levels = raw.get("reasoning") if isinstance(raw.get("reasoning"), dict) else {}
+    slots = []
+    for p in dict.fromkeys(p for p in raw.get("providers") or [] if p in PROVIDERS):
+        model = raw.get(MODEL_KEYS[p])
+        model = model.strip() if isinstance(model, str) and model.strip() else _FAMILY_DEFAULTS[p]
+        slots.append({"model": model, "effort": str(levels.get(p) or "default")})
+    return slots
+
+
+def _with_family_fields(cfg: dict) -> dict:
+    """옛 필드(providers·*_model·reasoning)를 슬롯에서 만들어 둔다 — 읽기 호환용."""
+    firsts: dict = {}
+    for slot in cfg["slots"]:
+        firsts.setdefault(family(slot["model"]), slot)
+    cfg["providers"] = list(firsts)
+    for p in PROVIDERS:
+        cfg[MODEL_KEYS[p]] = firsts[p]["model"] if p in firsts else _FAMILY_DEFAULTS[p]
+    cfg["reasoning"] = {p: (firsts[p]["effort"] if p in firsts else "default") for p in PROVIDERS}
     return cfg
 
 
+DEFAULT_CONFIG = _with_family_fields({"slots": json.loads(json.dumps(DEFAULT_SLOTS))})
+
+
+def normalize(raw) -> dict:
+    """저장값을 형식에 맞춘다. 슬롯이 없으면 옛 형식을 슬롯으로 옮긴다. 비면 기본값."""
+    slots = []
+    if isinstance(raw, dict):
+        slots = _normalize_slots(raw.get("slots")) if "slots" in raw else _legacy_slots(raw)
+    if len(slots) < MIN_SLOTS:
+        slots = json.loads(json.dumps(DEFAULT_SLOTS))
+    return _with_family_fields({"slots": slots})
+
+
 def validate(raw, current: dict | None = None) -> str | None:
-    """POST 본문 검사 — 문제가 있으면 사유. 이미 저장돼 있던 값은 카탈로그에서 빠져도 통과."""
+    """POST 본문 검사 — 문제가 있으면 사유. 이미 저장돼 있던 조합은 카탈로그에서 빠져도 통과."""
     if not isinstance(raw, dict):
         return "설정 형식이 잘못됐습니다"
-    providers = raw.get("providers")
-    if not isinstance(providers, list) or not providers:
-        return "요약 모델을 하나 이상 켜 두어야 합니다"
-    if any(p not in PROVIDERS for p in providers) or len(set(providers)) != len(providers):
-        return "요약 순번이 잘못됐습니다"
+    slots = raw.get("slots")
+    if not isinstance(slots, list) or not (MIN_SLOTS <= len(slots) <= MAX_SLOTS):
+        return f"요약 슬롯은 {MIN_SLOTS}~{MAX_SLOTS}개여야 합니다"
     current = current or {}
-    for provider in PROVIDERS:
-        model = raw.get(MODEL_KEYS[provider])
-        effort = str((raw.get("reasoning") or {}).get(provider) or "default")
-        kept = (model == current.get(MODEL_KEYS[provider])
-                and effort == (current.get("reasoning") or {}).get(provider))
-        if kept:
+    saved = [{"model": s["model"], "effort": s["effort"]} for s in current.get("slots") or []]
+    options = model_options(current)
+    for slot in slots:
+        if not isinstance(slot, dict) or not str(slot.get("model") or "").strip():
+            return "슬롯 형식이 잘못됐습니다"
+        model, effort = str(slot["model"]).strip(), str(slot.get("effort") or "default")
+        if {"model": model, "effort": effort} in saved:
             continue
-        option = next((o for o in model_options(current) if o["provider"] == provider and o["value"] == model), None)
+        option = next((o for o in options if o["value"] == model), None)
         if not option or not option.get("enabled", True):
             return f"선택할 수 없는 모델입니다: {model}"
         if effort not in option["reasoning"]:

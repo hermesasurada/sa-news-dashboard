@@ -248,27 +248,27 @@ def parse_article(
 # ── 단일 기사 처리 ─────────────────────────────────────────────────────────
 
 def summary_chain(config: dict | None = None, article_id: int | None = None) -> list[tuple[str, object]]:
-    """대시보드 설정(summary_config)의 모델들로 [(모델, 호출함수)] — 라운드로빈.
+    """대시보드 설정(summary_config)의 요약 슬롯으로 [(모델, 호출함수)] — 라운드로빈.
 
-    2026-09-26부터 설정 팝업이 정한다(모델은 공용 LLM 카탈로그). 2026-10-12 사용자
-    지시로 순차 폴백 → 라운드로빈: 기사 id로 시작 모델을 돌려(id % 모델 수) 요약을
-    나눠 맡기고, 시작 모델이 실패하면 나머지 모델이 순서대로 한 번씩 받는다(wm과 같은
-    방식). article_id가 없으면 설정 순서 그대로. 설정 밖 모델로는 가지 않는다.
+    2026-09-26부터 설정 팝업이 정한다(모델은 공용 LLM 카탈로그). 2026-10-12 사용자 지시로
+    순차 폴백 → 라운드로빈, 같은 날 슬롯(칸마다 모델+추론, 1~5칸, 같은 모델 여러 칸 가능)으로:
+    기사 id로 시작 슬롯을 돌리고(id % 칸 수) 실패하면 나머지 슬롯이 순서대로 받는다. 같은
+    모델은 한 번만 부른다(여러 칸에 두는 건 시작 비중을 높이려는 것 — wm과 같은 규칙).
+    article_id가 없으면 1번 칸부터. 설정 밖 모델로는 가지 않는다.
     """
-    cfg = config or summary_config.load()
+    cfg = summary_config.normalize(config) if config is not None else summary_config.load()
     callers = {"claude": call_claude, "codex": call_codex, "grok": call_grok}
-    chain = []
-    for provider in cfg["providers"]:
-        fn = callers.get(provider)
-        if not fn:
+    slots = cfg["slots"]
+    start = int(article_id) % len(slots) if article_id is not None else 0
+    chain, seen = [], set()
+    for slot in slots[start:] + slots[:start]:
+        model, effort = slot["model"], slot["effort"]
+        fn = callers.get(summary_config.family(model))
+        if not fn or model in seen:
             continue
-        model = cfg[summary_config.MODEL_KEYS[provider]]
-        effort = cfg["reasoning"].get(provider, "default")
+        seen.add(model)
         chain.append((model, lambda prompt, title=None, _f=fn, _m=model, _e=effort:
                       _f(prompt, title=title, model=_m, reasoning=_e)))
-    if chain and article_id is not None:
-        start = int(article_id) % len(chain)
-        chain = chain[start:] + chain[:start]
     return chain
 
 

@@ -1118,31 +1118,21 @@ async function init() {
 init();
 
 /* ── 요약 모델 설정(wm 설정 팝업 이식, 2026-09-26) ─────────────────────────────
-   화면은 공통 ModelSelector(계열 모드)가 그리고 여기서는 상태·저장만 맡는다.
-   모델 목록은 서버가 공용 LLM 카탈로그에서 준다(Claude·GPT·Grok). 라운드로빈(2026-10-12,
-   예전엔 순차 폴백): 기사마다 시작 모델을 돌려 나눠 맡고, 실패하면 나머지가 받는다. */
-const MC_SLOTS = ['claude', 'codex', 'grok'];
-const MC_MODEL_KEY = { claude: 'claude_model', codex: 'codex_model', grok: 'grok_model' };
+   화면은 공통 ModelSelector(슬롯 모드, 2026-10-12 — wm·yt와 같은 방식)가 그리고 여기서는
+   상태·저장만 맡는다. 모델 목록은 서버가 공용 LLM 카탈로그에서 준다(Claude·GPT·Grok).
+   슬롯: 칸마다 모델+추론, 1~5칸, 같은 모델 여러 칸 가능. 라운드로빈: 기사마다 시작 칸을
+   돌려 나눠 맡고, 실패하면 나머지 모델이 한 번씩 받는다. */
+const MC_LIMITS = { min: 1, max: 5 };
 let _mc = null;
-let _mcOrder = [];
 let _mcStatus = '';
 
-function _mcRowsFrom(providers) {
-  const rows = (providers || []).filter(p => MC_SLOTS.includes(p)).slice(0, MC_SLOTS.length);
-  while (rows.length < MC_SLOTS.length) rows.push(null);
-  return rows;
-}
-
 function _mcState() {
-  const cfg = _mc.config;
   return {
-    order: _mcOrder,
-    version: Object.fromEntries(MC_SLOTS.map(p => [p, cfg[MC_MODEL_KEY[p]]])),
-    effort: cfg.reasoning, next: null,
+    slots: _mc.config.slots, nextIndex: null, limits: MC_LIMITS,
     versions: (_mc.model_options || []).map(v => ({ ...v, slot: v.provider })),
     efforts: _mc.reasoning_options || [],
-    allowNone: true, tag: '라운드로빈',
-    hint: '선택한 모델이 기사마다 돌아가며 요약하고, 실패하면 나머지 모델이 받는다. 사용 안 함 칸은 건너뛴다.',
+    tag: '라운드로빈',
+    hint: '기사마다 시작 슬롯이 돌아가며 요약하고, 실패하면 나머지 모델이 받는다. 같은 모델을 여러 칸에 두면 그만큼 자주 먼저 쓰인다.',
     status: _mcStatus,
     notes: [],
   };
@@ -1150,26 +1140,32 @@ function _mcState() {
 
 function renderModelConfig() {
   const root = document.getElementById('model-selector');
+  const slots = _mc.config.slots;
+  const options = _mc.model_options || [];
   ModelSelector.render(root, _mcState(), {
-    onModel(index, value) {
-      const st = _mcState();
-      const r = ModelSelector.pick({ order: _mcOrder, version: st.version, versions: st.versions }, index, value);
-      if (!r) { _mcStatus = '하나는 켜 두어야 합니다'; return renderModelConfig(); }
+    onSlotModel(i, value) {
       saveModelConfig(() => {
-        _mcOrder = r.order;
-        _mc.config.providers = r.order.filter(Boolean);
-        for (const p of MC_SLOTS) {
-          _mc.config[MC_MODEL_KEY[p]] = r.version[p];
-          const item = (_mc.model_options || []).find(o => o.provider === p && o.value === r.version[p]);
-          if (item && !item.reasoning.includes(_mc.config.reasoning[p])) {
-            _mc.config.reasoning[p] = 'default';
-            _mcStatus = '모델에 맞게 추론 수준을 기본값으로 변경했습니다';
-          }
-        }
+        const option = options.find(o => o.value === value);
+        const previous = slots[i];
+        const effort = option && option.reasoning && !option.reasoning.includes(previous.effort) ? 'default' : previous.effort;
+        slots[i] = { ...previous, model: value, effort };
+        if (effort !== previous.effort) _mcStatus = '모델에 맞게 추론 수준을 기본값으로 변경했습니다';
       });
     },
-    onEffort(slot, level) {
-      saveModelConfig(() => { _mc.config.reasoning = { ..._mc.config.reasoning, [slot]: level }; });
+    onSlotEffort(i, value) {
+      saveModelConfig(() => { slots[i] = { ...slots[i], effort: value }; });
+    },
+    onAddSlot() {
+      if (slots.length >= MC_LIMITS.max) return;
+      // 아직 안 쓴 모델을 먼저 제안한다(다 쓰였으면 첫 모델).
+      const used = new Set(slots.map(x => x.model));
+      const fresh = options.find(o => o.enabled !== false && !used.has(o.value)) || options.find(o => o.enabled !== false);
+      if (!fresh) return;
+      saveModelConfig(() => { slots.push({ model: fresh.value, effort: 'default' }); });
+    },
+    onRemoveSlot(i) {
+      if (slots.length <= MC_LIMITS.min) return;
+      saveModelConfig(() => { slots.splice(i, 1); });
     },
   });
 }
@@ -1180,8 +1176,7 @@ async function openModelConfig() {
   document.getElementById('model-modal').classList.add('show');
   try {
     _mc = await fetchJSON('/api/summary-config');
-    _mcOrder = _mcRowsFrom(_mc.config.providers);
-    _mcConfirmed = JSON.stringify([_mc.config, _mcOrder]);
+    _mcConfirmed = JSON.stringify(_mc.config);
     _mcStatus = '';
     renderModelConfig();
   } catch (e) {
@@ -1200,10 +1195,10 @@ function closeModelConfig() {
  */
 let _mcSaveSeq = 0;
 let _mcSaveChain = Promise.resolve();
-let _mcConfirmed = null;           // 서버가 마지막으로 확인한 [config, order]
+let _mcConfirmed = null;           // 서버가 마지막으로 확인한 config
 
 function saveModelConfig(mutate) {
-  if (_mcConfirmed === null) _mcConfirmed = JSON.stringify([_mc.config, _mcOrder]);
+  if (_mcConfirmed === null) _mcConfirmed = JSON.stringify(_mc.config);
   _mcStatus = '';
   mutate();
   const adjusted = _mcStatus;
@@ -1214,18 +1209,17 @@ function saveModelConfig(mutate) {
     if (seq !== _mcSaveSeq) return;          // 뒤의 요청이 최신 상태를 통째로 보낸다
     try {
       const r = await fetch('/api/summary-config', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_mc.config),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: _mc.config.slots }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || r.status);
-      _mcConfirmed = JSON.stringify([d.config, _mcRowsFrom(d.config.providers)]);
+      _mcConfirmed = JSON.stringify(d.config);
       if (seq !== _mcSaveSeq) return;        // 기다리는 사이 새 변경이 생겼다
       _mc = d;
-      _mcOrder = _mcRowsFrom(d.config.providers);
       _mcStatus = adjusted || '저장됨';
     } catch (e) {
       if (seq !== _mcSaveSeq) return;
-      [_mc.config, _mcOrder] = JSON.parse(_mcConfirmed);
+      _mc.config = JSON.parse(_mcConfirmed);
       _mcStatus = '저장 실패: ' + e.message;
     }
     renderModelConfig();

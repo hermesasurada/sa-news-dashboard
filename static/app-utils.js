@@ -74,12 +74,14 @@
     if (claude) {
       const family = claude[1][0].toUpperCase() + claude[1].slice(1).toLowerCase();
       const version = claude[3] ? `${claude[2]}.${claude[3]}` : claude[2];
-      return `Claude ${family} ${version}`;
+      return `${family} ${version}`;          // 제공사명(Claude) 없이 모델명만(2026-10-12 사용자 지시)
     }
     if (model.startsWith('claude')) return 'Claude';
     const grok = model.match(/^grok-([\d.]+)/);
     if (grok) return `Grok ${grok[1]}`;
     if (model.startsWith('grok')) return 'Grok';
+    const gpt = model.match(/^gpt-([\d.]+)(?:-([a-z]+))?$/i);
+    if (gpt) return `GPT-${gpt[1]}` + (gpt[2] ? ` ${gpt[2][0].toUpperCase()}${gpt[2].slice(1)}` : '');
     return model;
   }
 

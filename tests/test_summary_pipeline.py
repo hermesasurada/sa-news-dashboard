@@ -18,8 +18,10 @@ from scripts import sa_claude_cli, sa_publish, sa_summarize_claude
 
 # 폴백 동작 검증용 순번(설정 화면에서는 아직 Claude를 고를 수 없다)
 import summary_config as _sc  # noqa: E402
-GROK_THEN_CLAUDE = dict(_sc.DEFAULT_CONFIG, providers=["grok", "claude"])
-CLAUDE_THEN_GROK = dict(_sc.DEFAULT_CONFIG, providers=["claude", "grok"])
+GROK_THEN_CLAUDE = _sc.normalize({"slots": [{"model": "grok-4.7", "effort": "default"},
+                                             {"model": "claude-opus-5-5", "effort": "default"}]})
+CLAUDE_THEN_GROK = _sc.normalize({"slots": [{"model": "claude-opus-5-5", "effort": "default"},
+                                             {"model": "grok-4.7", "effort": "default"}]})
 
 
 class SummaryChainTests(unittest.TestCase):
@@ -66,27 +68,46 @@ class SummaryChainTests(unittest.TestCase):
     def test_config_normalize_and_validate(self):
         import summary_config as sc
         base = sc.DEFAULT_CONFIG
-        self.assertEqual(sc.normalize({"providers": ["nope"]})["providers"], ["grok"])
-        ok = dict(base, providers=["claude", "codex"], codex_model=_sc.llm_catalog.options("codex")[0]["value"],  # 카탈로그 이름 변경(gpt-6.1-sol)에도 안 깨지게
-                  reasoning={"claude": "high", "codex": "medium", "grok": "default"})
+        self.assertEqual(base["slots"], [{"model": "grok-4.7", "effort": "default"}])
+        self.assertEqual(sc.normalize({"slots": []})["slots"], base["slots"])          # 비면 기본값
+        codex = _sc.llm_catalog.options("codex")[0]["value"]   # 카탈로그 이름 변경에도 안 깨지게
+        ok = {"slots": [{"model": "claude-opus-5-5", "effort": "high"}, {"model": codex, "effort": "medium"},
+                        {"model": "claude-opus-5-5", "effort": "high"}]}                # 같은 모델 여러 칸 허용
         self.assertIsNone(sc.validate(ok, base))
-        self.assertIsNotNone(sc.validate(dict(base, providers=[]), base))
-        self.assertIsNotNone(sc.validate(dict(base, providers=["grok", "grok"]), base))
-        self.assertIsNotNone(sc.validate(dict(base, grok_model="grok-9"), base))
-        self.assertIsNotNone(sc.validate(dict(base, reasoning={"grok": "ultra"}), base))
-        # 카탈로그에서 빠진 기존 저장값은 그대로 두면 통과
-        legacy = dict(base, grok_model="grok-old")
+        self.assertIsNotNone(sc.validate({"slots": []}, base))
+        self.assertIsNotNone(sc.validate({"slots": [{"model": "grok-4.7"}] * 6}, base))   # 최대 5칸
+        self.assertIsNotNone(sc.validate({"slots": [{"model": "grok-9", "effort": "default"}]}, base))
+        self.assertIsNotNone(sc.validate({"slots": [{"model": "grok-4.7", "effort": "ultra"}]}, base))
+        self.assertIsNotNone(sc.validate({"providers": ["grok"]}, base))               # 옛 형식 POST는 거부
+        # 옛 저장값(제공사 순번)은 읽을 때 슬롯으로 옮긴다
+        legacy = sc.normalize({"providers": ["codex", "grok"], "codex_model": "gpt-6-astra",
+                               "reasoning": {"codex": "low"}})
+        self.assertEqual(legacy["slots"], [{"model": "gpt-6-astra", "effort": "low"},
+                                           {"model": "grok-4.7", "effort": "default"}])
+        self.assertEqual(legacy["providers"], ["codex", "grok"])
         self.assertIsNone(sc.validate(legacy, legacy))
+
+    def test_slots_round_robin_with_duplicates(self):
+        cfg = {"slots": [{"model": "claude-opus-5-5", "effort": "default"},
+                         {"model": "grok-4.7", "effort": "high"},
+                         {"model": "claude-opus-5-5", "effort": "default"}]}
+        names = lambda aid: [n for n, _ in sa_summarize_claude.summary_chain(cfg, article_id=aid)]
+        self.assertEqual(names(3), ["claude-opus-5-5", "grok-4.7"])
+        self.assertEqual(names(4), ["grok-4.7", "claude-opus-5-5"])
+        self.assertEqual(names(5), ["claude-opus-5-5", "grok-4.7"])    # 3번 칸 시작, 같은 모델은 한 번만
+        with patch.object(sa_summarize_claude, "call_grok", return_value=("t", "grok-4.7")) as g:
+            sa_summarize_claude.summary_chain(cfg, article_id=4)[0][1]("p", title="T")
+        g.assert_called_once_with("p", title="T", model="grok-4.7", reasoning="high")
 
     def test_catalog_outage_keeps_saved_model_in_options(self):
         """Astra 검토(2026-09-26): 카탈로그 장애 중에도 저장된 모델이 목록에 남아야 화면이 실제와 같다."""
         import summary_config as sc
-        cfg = sc.normalize({"providers": ["codex"], "codex_model": "gpt-6-astra"})
+        cfg = sc.normalize({"slots": [{"model": "gpt-6-astra", "effort": "default"}]})
         with patch.object(sc, "llm_catalog", None):
             values = [o["value"] for o in sc.model_options(cfg) if o["provider"] == "codex"]
             self.assertIn("gpt-6-astra", values)
             self.assertIsNone(sc.validate(cfg, cfg))
-            self.assertIsNotNone(sc.validate(dict(cfg, codex_model="gpt-9-bogus"), cfg))
+            self.assertIsNotNone(sc.validate({"slots": [{"model": "gpt-9-bogus", "effort": "default"}]}, cfg))
 
 class SummaryPipelineTests(unittest.TestCase):
     def test_validate_normalizes_tickers_and_markdown(self):
