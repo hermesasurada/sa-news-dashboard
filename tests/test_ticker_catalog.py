@@ -60,6 +60,42 @@ class CxmtTests(unittest.TestCase):
         self.assertEqual(foreign_tickers.missing_from_title("CXMT plans plant", ["688825.SS"]), [])
 
 
+class FalsePositiveGuardTests(unittest.TestCase):
+    """후보 75건 점검(2026-10-12)에서 확인된 오탐 — 칩을 붙이지 않는다."""
+
+    def test_guards(self):
+        with patch.object(ft, "portfolio_companies", return_value=[
+            ("FMNB.DE", "Leonardo", ("Leonardo",), ()), ("F", "Ford", ("Ford",), ()),
+            ("CVX", "Chevron", ("Chevron",), ()), ("MSTR", "Strategy", ("Strategy",), ()),
+            ("8058.T", "Mitsubishi", ("Mitsubishi",), ()), ("ETN", "Eaton", ("Eaton",), ()),
+            ("RS", "Reliance", ("Reliance",), ()), ("MRK", "Merck", ("Merck",), ()),
+            ("BN", "Brookfield", ("Brookfield",), ()), ("RDDT", "Reddit", ("Reddit",), ()),
+            ("BLK", "BlackRock", ("BlackRock",), ()), ("AIR.PA", "Airbus", ("Airbus",), ()),
+            ("SPCX", "SpaceX", ("SpaceX",), ()), ("BA.L", "BAE Systems", ("BAE Systems",), ()),
+            ("BSP.DE", "BAE Systems", ("BAE Systems",), ())]):
+            for title, have in (
+                ("Leonardo DRS declares $0.09 dividend", ["DRS"]),
+                ("HII: Trump orders Navy to return to steam catapults on future Ford-class carriers", ["HII"]),
+                ("NOC: Northrop names former Chevron investor relations head to lead IR", ["NOC"]),
+                ("ClearBridge ESG Strategy adds SpaceX, AMD", ["SPCX"]),
+                ("NVDA: Nvidia, Mitsubishi Heavy mull team up", ["NVDA"]),
+                ("MS: Mitsubishi UFJ, Morgan Stanley JV seek to boost assets", ["MS"]),
+                ("VZ: Bain Capital, Tillman to invest $1.5B in Eaton Fiber", ["VZ"]),
+                ("Meta teams up with billionaire Mukesh Ambani's Reliance", ["META"]),
+                ("WST: Merck's Bio-Techne buyout put sector in focus", ["TECH", "MKGAF"]),
+                ("BX: Brookfield to purchase battery firm", ["BAM", "BX"]),
+                ("Meta launches Reddit-like Forum app", ["META"]),
+                ("IBIT: Sidelined cash unleashed: BlackRock's Rieder explains market melt-up", ["IBIT"]),
+                ("RTX: Jackson Square selects GTF engines for Airbus aircraft", ["RTX"]),
+                ("Planet Labs launches satellite aboard SpaceX", ["PL"]),
+                ("BAE Systems unveils Ukraine artillery partnership", ["BAESF"])):
+                self.assertEqual(ft.missing_from_title(title, have), [], title)
+            self.assertEqual(ft.missing_from_title("Strategy buys more bitcoin", []), [("MSTR", "Strategy")])
+            self.assertEqual(ft.missing_from_title("Mitsubishi raises buyback", []), [("8058.T", "Mitsubishi")])
+            self.assertEqual(ft.missing_from_title("BlackRock earnings beat", []), [("BLK", "BlackRock")])
+            self.assertEqual(ft.missing_from_title("BAE Systems wins order", []), [("BA.L", "BAE Systems")])
+
+
 if __name__ == "__main__":
     unittest.main()
 

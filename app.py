@@ -87,7 +87,15 @@ def get_articles_state():
 
 @app.get("/api/filters")
 def get_filters():
-    return db.get_filter_options()
+    data = db.get_filter_options()
+    # 숫자 종목코드(2330.TW·688825.SS·005930.KS) 칩은 기업명으로 표기한다(2026-10-12 사용자 지시) —
+    # 포트폴리오 카탈로그의 표시명칭을 내려 준다. 카탈로그를 못 읽으면 빈 맵(칩은 기사 회사명으로 폴백).
+    try:
+        import foreign_tickers
+        data["home_names"] = foreign_tickers.numeric_code_names()
+    except Exception:  # noqa: BLE001
+        data["home_names"] = {}
+    return data
 
 
 @app.get("/api/price-quote")

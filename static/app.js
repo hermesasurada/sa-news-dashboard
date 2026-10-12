@@ -67,9 +67,10 @@ async function loadFilters() {
   try {
     const data = await fetchJSON('/api/filters');
     TICKER_ALIASES = data.aliases || {};   // db가 단일 소스
+    HOME_NAMES = data.home_names || {};
     try {
       localStorage.setItem(FILTERS_CACHE_KEY,
-        JSON.stringify({ aliases: TICKER_ALIASES }));
+        JSON.stringify({ aliases: TICKER_ALIASES, home_names: HOME_NAMES }));
     } catch (e) {}
   } catch(e) { console.error('필터 로드 실패', e); }
 }
@@ -81,6 +82,7 @@ function loadFiltersFromCache() {
     const cached = JSON.parse(localStorage.getItem(FILTERS_CACHE_KEY) || 'null');
     if (cached && cached.aliases) {
       TICKER_ALIASES = cached.aliases;
+      HOME_NAMES = cached.home_names || {};
       return true;
     }
   } catch (e) {}
@@ -212,8 +214,23 @@ const EXTRA_LISTINGS = {
   TSM:  [{ ticker: '2330.TW', name: 'TSMC' }],             // NYSE + 대만
   SKHY: [{ ticker: '000660.KS', name: 'SK하이닉스', byName: true }],  // 미국 OTC + 한국
 };
-// 자국 티커가 숫자 코드라 읽기 어려운 종목은 기업명으로 표기(2026-10-12, sa 9081 CXMT — 688825.SS)
-const HOME_NAME_LABELS = { '688825.SS': 'CXMT' };
+// 숫자 종목코드(2330.TW·688825.SS·005930.KS)는 읽기 어려워 칩에 기업명을 쓴다(2026-10-12 사용자 지시).
+// 이름은 포트폴리오 표시명칭(/api/filters의 home_names) > 매핑 표의 이름 > 기사 회사명(법인 접미사 제거) 순.
+let HOME_NAMES = {};
+const NUMERIC_CODE_RE = /^\d[0-9A-Z]*(?:\.[A-Z]{1,3})?$/;
+function shortCompany(name) {
+  let n = String(name || '').trim(), prev;
+  do {   // 'Holding Co., Ltd.'처럼 겹친 법인 접미사는 거듭 뗀다
+    prev = n;
+    n = n.replace(/,?\s+(?:Co\.,?\s*Ltd\.?|Company Limited|Corporation|Corp\.?|Inc\.?|Limited|Ltd\.?|Holdings?|Group|plc|S\.A\.|AG|N\.V\.)$/i, '').trim();
+  } while (n !== prev);
+  return n.length > 22 ? n.slice(0, 21) + '…' : n;
+}
+function codeLabel(label, quoteTicker, ...names) {
+  if (!NUMERIC_CODE_RE.test(label)) return label;
+  const n = HOME_NAMES[quoteTicker] || HOME_NAMES[label] || names.map(shortCompany).find(Boolean);
+  return n || label;
+}
 // 추가 상장 티커 → 표기 정보 역인덱스 (한국 종목은 기업명 표기 관례를 따름)
 const EXTRA_BY_TICKER = {};
 for (const list of Object.values(EXTRA_LISTINGS)) {
@@ -289,11 +306,11 @@ function renderCard(a) {
     const fl = FOREIGN_LISTINGS[t.ticker];
     let label, companyName, quoteTicker;
     if (fl && fl.byName)   { label = fl.name; companyName = fl.name; quoteTicker = fl.home; }
-    else if (fl)       { label = fl.home; companyName = fl.name || t.name; quoteTicker = fl.home; }
+    else if (fl)       { label = codeLabel(fl.home, fl.home, fl.name, t.name); companyName = fl.name || t.name; quoteTicker = fl.home; }
     else {
       // 추가 상장 칩 중 byName 지정분(한국 등)은 기업명으로 표기
       const ex = EXTRA_BY_TICKER[t.ticker];
-      label = (ex && ex.byName && ex.name) ? ex.name : (HOME_NAME_LABELS[t.ticker] || t.ticker);
+      label = (ex && ex.byName && ex.name) ? ex.name : codeLabel(t.ticker, t.ticker, ex && ex.name, t.name);
       companyName = t.name || t.ticker;
       quoteTicker = t.ticker;
     }

@@ -15,12 +15,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--days", type=int, default=31)
+    parser.add_argument("--exclude", default="", help="적용에서 뺄 기사 id(콤마 구분, 사람이 검토해 제외한 건)")
     args = parser.parse_args()
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=args.days)).isoformat()[:10]
     with sqlite3.connect(settings.DB_PATH) as conn:
         rows = conn.execute("SELECT id, original_title, ticker, company_name FROM articles WHERE email_time_et >= ? AND pub_status = 'published'", (cutoff,)).fetchall()
         changes = []
+        excluded = {int(x) for x in args.exclude.split(",") if x.strip()}
         for ident, title, ticker, company in rows:
+            if ident in excluded:
+                continue
             updated = supplement_pairs(title or "", ticker or "", company or "")
             if updated != (ticker or "", company or ""):
                 changes.append((ident, title, ticker, company, *updated))

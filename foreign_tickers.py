@@ -55,6 +55,14 @@ def portfolio_companies():
         _catalog_cache = (time.monotonic(), _catalog_cache[1])
         return _catalog_cache[1]
 
+def numeric_code_names() -> dict[str, str]:
+    """숫자로 시작하는 종목코드 → 포트폴리오 표시명칭(칩 표기용, 2026-10-12)."""
+    with closing(sqlite3.connect(PORTFOLIO_DB.as_uri() + "?mode=ro", uri=True, timeout=2)) as conn:
+        rows = conn.execute("SELECT ticker, COALESCE(NULLIF(display_name, ''), name) FROM tickers "
+                            "WHERE ticker GLOB '[0-9]*' AND COALESCE(category, '') != 'crypto'").fetchall()
+    return {t: n for t, n in rows if n}
+
+
 # (티커, 정식 영문 기업명, 제목에서 찾을 별칭, 같은 회사를 가리키는 다른 심볼)
 # 티커는 quote_service가 조회할 수 있는 포트폴리오 형식이어야 한다.
 _COMPANIES: list[tuple[str, str, tuple[str, ...], tuple[str, ...]]] = [
@@ -102,9 +110,10 @@ def missing_from_title(title: str, tickers: list[str]) -> list[tuple[str, str]]:
                    "7731.T": ("NINOY",), "ADS.DE": ("ADDYY",), "BMW.DE": ("BMWKY",),
                    "VOW3.DE": ("VWAGY",), "SAF.PA": ("SAFRF", "SAFRY"),
                    "RMS.PA": ("HESAY", "HESAF"), "AM.PA": ("DUAVF",),
-                   "RR.L": ("RYCEY", "RYCEF"), "BA.L": ("BAESY",),
+                   "RR.L": ("RYCEY", "RYCEF"), "BA.L": ("BAESY", "BAESF", "BSP.DE"),
                    "SAAB-B.ST": ("SAABF", "SAABY"), "D05.SI": ("DBSDY",),
-                   "IFX.DE": ("IFNNY", "IFNNF"), "STM.PA": ("STM",)}
+                   "IFX.DE": ("IFNNY", "IFNNF"), "STM.PA": ("STM",),
+                   "LDO.MI": ("FMNB.DE", "FINMY"), "688825.SS": ("688825",)}
     for home, others in equivalents.items():
         if have & {home, *others}:
             have.update({home, *others})
@@ -120,18 +129,36 @@ def missing_from_title(title: str, tickers: list[str]) -> list[tuple[str, str]]:
         if match:
             after = title[match.end():]
             before = title[:match.start()]
-            if symbol in {"JPM", "GS", "MS", "C", "BAC", "UBS", "DB", "WFC", "BCS", "HSBC", "MCO", "NDAQ"}:
+            if symbol in {"JPM", "GS", "MS", "C", "BAC", "UBS", "DB", "WFC", "BCS", "HSBC", "MCO", "NDAQ", "BLK"}:
                 if not re.match(r"(?:['’]s)?\s+(?:earnings|revenue|profit|dividend|acquires|partners|shares|stock|launches)\b", after, re.I):
                     continue
-            if symbol == "LDO.MI" and re.match(r"\s+DRS\b", after):
+            if symbol in {"LDO.MI", "FMNB.DE"} and re.match(r"\s+DRS\b", after):
                 continue
+            # 후보 75건 점검(2026-10-12)에서 확인된 동명·부분일치 오탐
+            if re.match(r"-(?:class|like|style|type)\b", after, re.I):
+                continue                   # Ford-class 항모, Reddit-like 앱
+            if symbol == "MSTR" and re.search(r"[A-Z][\w&-]*\s*$", before):
+                continue                   # ClearBridge Growth Strategy 등 펀드 전략명
+            if symbol == "8058.T" and re.match(r"\s+(?:Heavy|UFJ|Electric|Motors|Estate|Chemical|HC|Materials|Logistics)\b", after):
+                continue                   # 미쓰비시상사가 아닌 그룹 계열사
+            if symbol == "ETN" and re.match(r"\s+(?:Fiber|Vance)\b", after):
+                continue
+            if symbol == "RS" and (re.match(r"\s+(?:Industries|Jio|Retail)\b", after)
+                                   or re.search(r"Ambani['’]s\s*$", before)):
+                continue                   # Reliance Industries ≠ Reliance, Inc.(RS)
+            if symbol == "MRK" and have & {"MKGAF", "MKKGY", "MRK.DE"}:
+                continue                   # Merck KGaA ≠ Merck & Co.
+            if symbol == "BN" and have & {"BAM", "BEP", "BIP", "BBU"}:
+                continue                   # 다른 Brookfield 상장사가 이미 있음
+            if symbol == "AIR.PA" and re.match(r"\s+aircraft\b", after) and re.search(r"\bfor\s*$", before):
+                continue                   # 'for Airbus aircraft' 제품 언급
             if symbol == "SIE.DE" and re.match(r"\s+Energy\b", after):
                 continue
             if symbol == "BLK" and re.match(r"\s+TCP\b", after):
                 continue
             if symbol == "FDX" and re.match(r"\s+Freight\b", after):
                 continue
-            if re.search(r"(?:according to|analysts? at|rated by|unlike|compared (?:with|to)|ahead of|cites|hires from|older)\s*$", before, re.I):
+            if re.search(r"(?:according to|analysts? at|rated by|unlike|compared (?:with|to)|ahead of|cites|hires from|older|former|aboard)\s*$", before, re.I):
                 continue
             out.append((symbol, name))
             have.update(known)
