@@ -45,3 +45,21 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(ft.missing_from_title("SoftBank raises capital", ["SFTBY"]), [])
             self.assertEqual(ft.missing_from_title("Leonardo DRS wins contract", ["DRS"]), [])
             self.assertEqual(ft.missing_from_title("BlackRock TCP CEO resigns", ["TCPC"]), [])
+
+
+class CxmtTests(unittest.TestCase):
+    """sa 9081(2026-10-12): 카탈로그 이름이 전부 대문자라 빠지던 CXMT를 직접 등록."""
+
+    def test_cxmt_and_changxin_titles_get_chip(self):
+        import foreign_tickers
+        self.assertEqual(foreign_tickers.missing_from_title(
+            "SKHY: China’s CXMT makes ‘key progress’ on new chip structure: SCMP", ["SSNLF", "SKHY"]),
+            [("688825.SS", "CXMT")])
+        self.assertEqual(foreign_tickers.missing_from_title("MU: ChangXin hopes to raise $8.5B in IPO", ["MU"]),
+                         [("688825.SS", "CXMT")])
+        self.assertEqual(foreign_tickers.missing_from_title("CXMT plans plant", ["688825.SS"]), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
+

@@ -68,6 +68,9 @@ _COMPANIES: list[tuple[str, str, tuple[str, ...], tuple[str, ...]]] = [
     ("2382.TW", "Quanta Computer", ("Quanta Computer",), ("QUCCF",)),
     ("2308.TW", "Delta Electronics", ("Delta Electronics",), ("DLTLF",)),
     ("3231.TW", "Wistron", ("Wistron",), ("WICOF", "WICOY")),
+    # 2026-10-12 사용자 지적(sa 9081): 카탈로그 이름이 'CXMT CORPORATION'(전부 대문자)이라 짧은 대문자 약어 제외
+    # 규칙에 걸려 별칭이 하나도 없었다. 'CXMT'는 다른 뜻으로 쓰이지 않는 고유 약어라 대소문자 구분해 직접 등록.
+    ("688825.SS", "CXMT", ("CXMT", "ChangXin Memory", "ChangXin"), ()),
 ]
 
 _PATTERNS = [

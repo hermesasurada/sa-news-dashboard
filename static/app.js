@@ -212,6 +212,8 @@ const EXTRA_LISTINGS = {
   TSM:  [{ ticker: '2330.TW', name: 'TSMC' }],             // NYSE + 대만
   SKHY: [{ ticker: '000660.KS', name: 'SK하이닉스', byName: true }],  // 미국 OTC + 한국
 };
+// 자국 티커가 숫자 코드라 읽기 어려운 종목은 기업명으로 표기(2026-10-12, sa 9081 CXMT — 688825.SS)
+const HOME_NAME_LABELS = { '688825.SS': 'CXMT' };
 // 추가 상장 티커 → 표기 정보 역인덱스 (한국 종목은 기업명 표기 관례를 따름)
 const EXTRA_BY_TICKER = {};
 for (const list of Object.values(EXTRA_LISTINGS)) {
@@ -291,7 +293,7 @@ function renderCard(a) {
     else {
       // 추가 상장 칩 중 byName 지정분(한국 등)은 기업명으로 표기
       const ex = EXTRA_BY_TICKER[t.ticker];
-      label = (ex && ex.byName && ex.name) ? ex.name : t.ticker;
+      label = (ex && ex.byName && ex.name) ? ex.name : (HOME_NAME_LABELS[t.ticker] || t.ticker);
       companyName = t.name || t.ticker;
       quoteTicker = t.ticker;
     }
