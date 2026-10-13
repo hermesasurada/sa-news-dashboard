@@ -959,6 +959,25 @@ class GrokBridgeTests(unittest.TestCase):
         self.gb.collect_results(self.fold)
         self.assertEqual(self._status(b)["source_method"], "grok_partial")
 
+    def test_final_flag_overrides_attempt(self):
+        """2026-10-13: final=true면 1회차여도 끝(프리미엄 전용 partial은 읽은 만큼으로 요약), false면 3회차여도 기다린다."""
+        a, b, c = self._pending("411"), self._pending("422"), self._pending("433")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.gb.send_requests(self.fold)
+        self.results = {
+            "sa_411.json": ("t1", {"status": "partial", "attempt": 1, "final": True, "reason": "premium",
+                                   "title": "T", "body": "P" * 300}),
+            "sa_422.json": ("t1", {"status": "partial", "attempt": 3, "final": False, "reason": "truncated",
+                                   "title": "T", "body": "P" * 300}),
+            "sa_433.json": ("t1", {"status": "failed", "attempt": 1, "final": "true", "reason": "not_found"}),
+        }
+        with contextlib.redirect_stdout(io.StringIO()):
+            st = self.gb.collect_results(self.fold)
+        self.assertEqual((st["ready"], st["waiting"], st["failed"]), (1, 1, 1))
+        self.assertEqual(self._status(a)["source_method"], "grok_partial")
+        self.assertIsNone(self._status(b)["source_method"])
+        self.assertEqual(self._status(c)["pub_status"], "failed")
+
     def test_grok_batch_never_touches_sa_site(self):
         a = self._pending("111")
         with contextlib.redirect_stdout(io.StringIO()):

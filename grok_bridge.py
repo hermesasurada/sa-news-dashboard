@@ -8,9 +8,13 @@
 
 결과 판정
   - status=full                → 그 원문으로 요약
-  - status=partial, attempt<3  → Grok이 다시 시도하도록 기다린다
-  - status=partial, attempt>=3 → 읽은 만큼으로 요약(source_method='grok_partial')
-  - status=failed,  attempt>=3 → 실패 처리(pub_status='failed')
+  - 결과 파일에 final(true/false)이 있으면 그것을 따른다(2026-10-13 Grok Bot 제안·사용자 승인):
+    final=true면 Grok이 더 시도하지 않는다는 뜻 — partial은 읽은 만큼으로 요약, failed는 실패 처리.
+    final=false면 Grok이 다시 시도하므로 기다린다. reason(premium·truncated·retries_exhausted 등)은 기록용.
+  - final이 없는 예전 형식은 attempt로 판단한다:
+    status=partial, attempt<3  → Grok이 다시 시도하도록 기다린다
+    status=partial, attempt>=3 → 읽은 만큼으로 요약(source_method='grok_partial')
+    status=failed,  attempt>=3 → 실패 처리(pub_status='failed')
   - 요청 후 GROK_TIMEOUT_HOURS가 지나도 결과가 없으면 실패 처리
 
 드라이브 접근은 gdrive.py(ses1430 계정, drive.file + drive.readonly). 여기서 나는 예외는 요약 배치를
@@ -160,7 +164,7 @@ def collect_results(fold: dict) -> dict:
         status = str(res.get("status") or "").lower()
         attempt = int(res.get("attempt") or 1)
         text = _source_text(res)
-        final = attempt >= MAX_ATTEMPTS
+        final = _is_final(res, attempt)
         with db.get_conn() as conn:
             conn.execute("UPDATE articles SET grok_status = ?, grok_attempt = ?, grok_result_mtime = ?, "
                          "grok_result_json = ? WHERE id = ?",
@@ -173,11 +177,22 @@ def collect_results(fold: dict) -> dict:
             db.save_source(r["id"], text=text, method="grok_partial", locked=False)
             stats["ready"] += 1
         elif final:
-            _fail(r["id"], f"Grok 원문 실패: {str(res.get('note') or status)[:120]}", now)
+            why = " · ".join(str(x) for x in (res.get("reason"), res.get("note") or status) if x)
+            _fail(r["id"], f"Grok 원문 실패: {why[:120]}", now)
             stats["failed"] += 1
         else:
             stats["waiting"] += 1              # partial/failed 1~2회차 — Grok이 다시 시도한다
     return stats
+
+
+def _is_final(res: dict, attempt: int) -> bool:
+    """Grok이 이 기사를 더 시도하지 않는가. final 필드가 있으면 그것, 없으면 attempt>=3(예전 형식)."""
+    flag = res.get("final")
+    if isinstance(flag, bool):
+        return flag
+    if isinstance(flag, str) and flag.strip().lower() in ("true", "false"):
+        return flag.strip().lower() == "true"
+    return attempt >= MAX_ATTEMPTS
 
 
 def _fail(article_id: int, reason: str, now: str) -> None:
