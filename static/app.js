@@ -819,9 +819,70 @@ function toastAction() {
   if (action) action();
 }
 
+/* ── 모바일 무한 스크롤(2026-10-20 사용자 지시, wm과 같은 방식) ──
+   폭 640px 이하는 페이지 버튼 대신 목록 끝이 화면 아래 600px 안에 들어오면 다음 묶음을 이어 붙인다.
+   다음 시작 위치는 '지금 화면에 남은 카드 수'로 정한다 — 읽음·삭제로 카드가 빠지면 서버 목록이
+   당겨지므로 저장된 페이지 번호로 받으면 그만큼 건너뛴다. 겹친 카드는 data-id로 거른다. */
+const _isMobileList = () => window.matchMedia('(max-width: 640px)').matches;
+const _feed = { loading: false, done: false, seq: 0 };
+function _nearListEnd() {
+  const pag = document.getElementById('pagination');
+  return !!pag && pag.getBoundingClientRect().top < window.innerHeight + 600;
+}
+async function loadMoreArticles() {
+  if (!_isMobileList() || _feed.loading || _feed.done || currentListTotal === null) return;
+  const cardsEl = document.getElementById('cards');
+  const shown = cardsEl.querySelectorAll('.card').length;
+  if (!shown || shown >= currentListTotal) { _feed.done = true; renderPagination(currentListTotal, currentOffset); return; }
+  _feed.loading = true;
+  const seq = _feed.seq;
+  const params = getParams(currentOffset + shown);
+  params.set('include_total', 'false');
+  params.set('include_queue', 'false');
+  try {
+    const data = await fetchJSON('/api/articles?' + params.toString());
+    if (seq !== _feed.seq) return;                       // 그사이 검색·필터가 바뀌었다
+    const have = new Set([...cardsEl.querySelectorAll('.card[data-id]')].map(c => c.dataset.id));
+    const fresh = (data.items || []).filter(a => !have.has(String(Number(a.id) || 0)));
+    if (!data.items || !data.items.length) _feed.done = true;
+    if (fresh.length) {
+      cardsEl.insertAdjacentHTML('beforeend', fresh.map(renderCard).join(''));
+      attachSwipeHandlers();
+      attachTickerQuoteHandlers();
+    }
+    const now = cardsEl.querySelectorAll('.card').length;
+    if (now >= currentListTotal) _feed.done = true;
+    document.getElementById('stats').innerHTML =
+      statsLine(currentListTotal, currentOffset, now, queueBadges(currentQueue));
+  } catch (e) {
+    console.error('다음 기사 불러오기 실패', e);
+  } finally {
+    if (seq === _feed.seq) {
+      _feed.loading = false;
+      renderPagination(currentListTotal, currentOffset);
+      if (!_feed.done && _nearListEnd()) setTimeout(loadMoreArticles, 0);   // 붙인 뒤에도 끝이 보이면 이어서
+    }
+  }
+}
+(function setupInfiniteScroll() {
+  const pag = document.getElementById('pagination');
+  if (pag && 'IntersectionObserver' in window) {
+    new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) loadMoreArticles(); },
+                             { rootMargin: '0px 0px 600px 0px' }).observe(pag);
+  }
+  window.addEventListener('scroll', () => { if (_nearListEnd()) loadMoreArticles(); }, { passive: true });
+})();
+
 /* ── Pagination ── */
 function renderPagination(total, offset) {
   const pag = document.getElementById('pagination');
+  if (_isMobileList()) {                                  // 모바일: 페이지 버튼 대신 진행 표시
+    const shown = document.getElementById('cards').querySelectorAll('.card').length;
+    pag.innerHTML = !total || !shown ? ''
+      : `<span class="page-info">${(_feed.done || offset + shown >= total)
+          ? `${offset + shown}건 · 끝` : `${offset + shown}/${total}건 · ${_feed.loading ? '불러오는 중…' : '내리면 더 불러옵니다'}`}</span>`;
+    return;
+  }
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const currentPage = Math.floor(offset / PAGE_SIZE);
   if (totalPages <= 1) { pag.innerHTML = ''; return; }
@@ -947,6 +1008,7 @@ async function refillGrid() {
 
 async function search(offset = 0, refreshMeta = true) {
   currentOffset = offset;
+  _feed.seq++; _feed.loading = false; _feed.done = false;   // 이어 받기 상태 초기화(늦게 온 응답은 버린다)
   const params = getParams(offset);
 
   // #9: URL 동기화
