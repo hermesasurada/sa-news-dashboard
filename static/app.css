@@ -324,6 +324,9 @@ body {
 }
 /* 평소엔 overflow 없이 카드 뉴모피즘 그림자 노출, 스와이프 중에만 밀려나는 카드를 클리핑 */
 .swipe-row.swiping { overflow: hidden; }
+/* 세로 스크롤만 브라우저에 맡기고 가로 밀기는 스크립트가 받는다(안드로이드 크롬은 지정이 없으면 먼저 스크롤을
+   가져가 가로 스와이프를 취소한다, 2026-10-20). */
+.swipe-row { touch-action: pan-y; }
 .swipe-action {
   position: absolute;
   top: 0; bottom: 0;
@@ -852,12 +855,17 @@ body[data-reader-font="mono"] .card-summary {
   body { padding: 14px; }
   .card { padding: 18px; border-radius: 4px; }
   .card-title { font-size: 16px; }
+  /* 안드로이드 크롬(2026-10-20 사용자 제보 '토스트가 잘림'): 100vw·left 50%+translateX(-50%) 대신 좌우 여백으로
+     고정한다 — 주소창이 접히고 펴지며 뷰포트 폭이 바뀌어도 화면 안에 머문다. 숨김은 아래로 내리기만. */
   #toast {
-    bottom: calc(14px + env(safe-area-inset-bottom));
-    width: calc(100vw - 28px);
+    left: 14px; right: 14px; width: auto; max-width: none;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    transform: translateY(calc(100% + 40px));
     justify-content: space-between;
     padding: 10px 12px 10px 16px;
   }
+  #toast.show { transform: translateY(0); }
+  #toast > span { flex: 1; overflow-wrap: anywhere; }
   .toast-action { min-height: 40px; padding: 0 14px; }
 
 }

@@ -617,6 +617,12 @@ function attachSwipeHandlers() {
     }, { passive: false });
 
     const unswipe = () => setTimeout(() => row.classList.remove('swiping'), 220);
+    // 브라우저가 터치를 가져가면(touchcancel) 밀던 카드를 제자리로 — 없으면 카드가 밀린 채 남고 다음 터치가 꼬인다.
+    row.addEventListener('touchcancel', () => {
+      if (!active) return;
+      active = false; axis = null; dx = 0;
+      reset(true); unswipe();
+    });
     row.addEventListener('touchend', () => {
       if (!active) return;
       active = false;
