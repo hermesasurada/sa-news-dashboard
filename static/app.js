@@ -1133,19 +1133,22 @@ document.addEventListener('keydown', e => {
    설정 창(⚙️) 안 '요약 본문 글꼴' 절에서 고른다(2026-09-30, 별도 버튼·모달 폐지).
    상태 = localStorage 'saReaderFont'. body[data-reader-font]로 카드 요약 본문
    (.card-details/.card-summary)에 적용. */
-const _READER_FONTS = ['sans', 'noto', 'chosun', 'serif', 'gowun', 'nanum', 'song', 'system', 'mono'];
+// 2026-10-20: 송명 빼고 SUIT·Wanted Sans·마루 부리 추가, 이름표는 wm·td·yt와 통일
+const _READER_FONTS = ['sans', 'noto', 'suit', 'wanted', 'maru', 'chosun', 'serif', 'gowun', 'nanum', 'system', 'mono'];
 const _FONT_LABELS = {
-  sans: 'Pretendard', noto: 'Noto Sans KR', chosun: '조선일보명조', serif: 'Noto Serif KR',
-  gowun: '고운바탕', nanum: '나눔명조', song: '송명', system: '시스템', mono: '고정폭',
+  sans: 'Pretendard', noto: 'Noto Sans KR', suit: 'SUIT', wanted: 'Wanted Sans', maru: '마루 부리',
+  chosun: '조선일보명조', serif: 'Noto Serif KR', gowun: '고운바탕', nanum: '나눔명조', system: '시스템', mono: '고정폭',
 };
 const _FONT_STACKS = {
   sans: '"Pretendard Variable", "Pretendard", sans-serif',
   noto: "'Noto Sans KR', sans-serif",
+  suit: "'SUIT Variable', sans-serif",
+  wanted: "'Wanted Sans Variable', sans-serif",
+  maru: "'MaruBuri', serif",
   chosun: '"Chosunilbo_myungjo", serif',
   serif: '"Noto Serif KR", serif',
   gowun: '"Gowun Batang", serif',
   nanum: '"Nanum Myeongjo", serif',
-  song: '"Song Myung", serif',
   system: '-apple-system, BlinkMacSystemFont, sans-serif',
   mono: '"JetBrains Mono", ui-monospace, monospace',
 };
