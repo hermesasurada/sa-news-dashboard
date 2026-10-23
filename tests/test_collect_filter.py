@@ -303,6 +303,8 @@ class IndicatorScreenTests(unittest.TestCase):
             "CEG: These eight utilities stocks all carry A- or better growth grades",
             "COST: Ten consumer staples stocks with the strongest dividend growth grades",
             "DIS: Growth scores put streaming and internet platforms ahead of telecom peers",
+            "PFE: Centene, Harmony Biosciences lead list of undervalued healthcare stocks",
+            "SHW: Q3 earnings: Glencore, Nucor lead top-rated 'strong buy' materials stocks",
         ):
             self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "지표스크린", msg=subject)
 
@@ -316,6 +318,10 @@ class IndicatorScreenTests(unittest.TestCase):
             "MU: Memory stocks face a new test as pricing momentum cools ahead of Micron",
             "GS: Goldman Sachs tests 200-day average as momentum weakens",
             "AAPL: Apple's growth grade slips after guidance cut",
+            "MAR: Top-rated travel stocks gain spotlight amid sector-wide rally as oil price drops",
+            "Ford's earnings beat puts spotlight on these top-rated global auto manufacturer stocks",
+            "PFE: Is Pfizer undervalued after the selloff?",
+            "NVDA: Nvidia leads chip stocks higher",
         ):
             self.assertFalse(sa_collect.is_indicator_screen(subject), msg=subject)
 

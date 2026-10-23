@@ -234,6 +234,11 @@ _SCREEN_RES = (
     # 단일 종목('Apple's growth grade slips')은 남기도록 복수 종목 표현이 함께 있을 때만.
     re.compile(r"^(?=.*\b(?:stocks|peers|among|lead)\b).*\b(?:EPS\s+revisions?|revisions?|valuation|growth|profitability"
                r"|dividend\s+(?:safety|growth|yield|consistency))\s+(?:grades?|scores?)\b", re.I),
+    # 제목에 등급 낱말 없이 '○○·○○ lead list of undervalued healthcare stocks'처럼 쓰는 같은 퀀트 목록
+    # (2026-10-23 사용자 지시, 기사 9942 — 본문은 밸류에이션 등급 A+~A 7종목). 실적·섹터 뉴스에 퀀트 순위가
+    # 곁들여진 기사('Top-rated travel stocks gain spotlight amid … rally' 1673, 'Ford's earnings beat puts
+    # spotlight on these top-rated …' 4420)는 남기도록 'lead … stocks' 줄 세우기 표현이 있을 때만.
+    re.compile(r"\blead\b.*\b(?:list of|undervalued|overvalued|top[- ]rated|cheapest)\b.*\bstocks\b", re.I),
 )
 
 
