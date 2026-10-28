@@ -248,6 +248,27 @@ def is_indicator_screen(subject: str) -> bool:
     return any(rx.search(s) for rx in _SCREEN_RES)
 
 
+# 증권사 추천 종목 목록(2026-10-28 사용자 지시, 기사 10156 'Oppenheimer flags 16 Buys outside the AI trade'):
+# 증권사·기관이 Buy 목록·best ideas·conviction·top picks 명단을 내거나 갱신한 기사 — 한 기사에 수십 종목이
+# 이름만 나열된다. 사용자가 전에 지운 8534('refreshes its analyst conviction list')·9633('updates its top 50
+# buy list')도 같은 유형. 등급 상·하향이나 커버리지 개시와 함께 나온 top picks(945·3057·402)는 견해 변화라
+# 남기고, 단일 종목 'top pick'(단수)도 남는다.
+_PICK_N = r"(?:\d{1,3}|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|dozen)"
+_PICK_LIST_RE = re.compile(
+    rf"\b(?:flags|names|picks|lists|highlights|unveils)\s+{_PICK_N}\s+(?:new\s+)?(?:Buys|Buy-rated|top picks|stock picks)\b"
+    r"|\bBuy\s+list\b"
+    r"|\b(?:best\s+ideas|top\s+picks|conviction|franchise\s+picks|focus)'?\s+(?:list|roster)\b"
+    r"|\blead\s+(?:new\s+)?top\s+picks\s+at\b"
+    r"|^(?!.*\b(?:upgrad|downgrad|initiat))[^:]*:?\s*\w[\w&.\-]*'s\s+top\s+picks\b",
+    re.I,
+)
+
+
+def is_broker_pick_list(subject: str) -> bool:
+    """증권사·기관의 추천 종목 명단(Buy 목록·best ideas·top picks) 기사인가 → 수집 제외."""
+    return bool(_PICK_LIST_RE.search(subject or ""))
+
+
 def excluded_reason(subject: str, ticker: str) -> str | None:
     """수집 제외 대상이면 사유 라벨, 아니면 None."""
     if is_preferred_dividend(subject, ticker):
@@ -266,6 +287,8 @@ def excluded_reason(subject: str, ticker: str) -> str | None:
         return '주가연속'
     if is_indicator_screen(subject):
         return '지표스크린'
+    if is_broker_pick_list(subject):
+        return '추천목록'
     return None
 
 

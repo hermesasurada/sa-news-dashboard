@@ -326,5 +326,33 @@ class IndicatorScreenTests(unittest.TestCase):
             self.assertFalse(sa_collect.is_indicator_screen(subject), msg=subject)
 
 
+class BrokerPickListTests(unittest.TestCase):
+    def test_pick_lists_are_filtered(self):
+        for subject in (
+            "CTAS: Oppenheimer flags 16 Buys outside the AI trade as S&P 500 stalls near highs",
+            "IRDM: Oppenheimer's top 50 small- and mid-cap Buy list",
+            "AAPL: Oppenheimer updates its top 50 buy list, rotating away from big banks",
+            "AEHR: William Blair refreshes its analyst conviction list",
+            "BABA: StoneX updates its best ideas list",
+            "CRWD: Benchmark refreshes 'best ideas' roster",
+            "ABBV: HSBC's top picks heading into earnings season",
+            "ORCL: Oracle, ServiceTitan, Everpure, Dynatrace added to Conviction List at William Blair",
+            "Jefferies updates Franchise Picks list, adding AMZN, APP, MCD and more",
+            "WMB: Devon, Williams and Targa lead new top picks at Stifel on higher commodity prices, tighter supply",
+        ):
+            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "추천목록", msg=subject)
+
+    def test_rating_changes_and_single_picks_kept(self):
+        for subject in (
+            "Eagle Materials upgraded at JPM; Cemex, CRH, Amrize top picks in construction materials",
+            "NVDA: Nvidia remains top pick at Morgan Stanley",
+            "DECK: Burry flags six stocks as likely tax-loss sale candidates",
+            "AMAT: S&P 500 tags an all-time high and these 20 names have helped fuel the rally",
+            "CRM: Salesforce agrees to buy Listen Labs",
+            "CTAS: Cintas upgraded to Buy at Oppenheimer",
+        ):
+            self.assertFalse(sa_collect.is_broker_pick_list(subject), msg=subject)
+
+
 if __name__ == "__main__":
     unittest.main()
