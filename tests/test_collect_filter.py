@@ -305,6 +305,10 @@ class IndicatorScreenTests(unittest.TestCase):
             "DIS: Growth scores put streaming and internet platforms ahead of telecom peers",
             "PFE: Centene, Harmony Biosciences lead list of undervalued healthcare stocks",
             "SHW: Q3 earnings: Glencore, Nucor lead top-rated 'strong buy' materials stocks",
+            "MTZ: Undervalued industrial stocks with strong year-over-year revenue growth",
+            "COIN: Ten financial stocks that outperformed in September",
+            "ABBV: Goldman's defensive stocks with quality-growth characteristics",
+            "GOOGL: Stocks with rising earnings estimates despite YTD share-price declines",
         ):
             self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "지표스크린", msg=subject)
 
@@ -322,6 +326,8 @@ class IndicatorScreenTests(unittest.TestCase):
             "Ford's earnings beat puts spotlight on these top-rated global auto manufacturer stocks",
             "PFE: Is Pfizer undervalued after the selloff?",
             "NVDA: Nvidia leads chip stocks higher",
+            "ONON: Stocks that are benefiting from the Hyrox global fitness trend",
+            "AMD: Piper Sandler initiates semi stocks with high ratings as market is 'starving for compute'",
         ):
             self.assertFalse(sa_collect.is_indicator_screen(subject), msg=subject)
 

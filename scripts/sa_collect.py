@@ -239,6 +239,20 @@ _SCREEN_RES = (
     # 곁들여진 기사('Top-rated travel stocks gain spotlight amid … rally' 1673, 'Ford's earnings beat puts
     # spotlight on these top-rated …' 4420)는 남기도록 'lead … stocks' 줄 세우기 표현이 있을 때만.
     re.compile(r"\blead\b.*\b(?:list of|undervalued|overvalued|top[- ]rated|cheapest)\b.*\bstocks\b", re.I),
+    # 제목이 '(N개) (형용사) (섹터) stocks with/that …'로 시작하는 스크리닝 목록(2026-10-28 사용자 지시, 기사 10176
+    # 'Undervalued industrial stocks with strong year-over-year revenue growth' — 본문은 퀀트 밸류에이션 등급 11종목).
+    # 사용자가 전에 지운 8316 'Ten financial stocks that outperformed in September'·8409·9345·9584도 같은 꼴.
+    # 앞머리가 목록 이름일 때만이라 'Piper Sandler initiates semi stocks with …' 같은 기사 문장은 남고,
+    # 테마 기사('Stocks that are benefiting from the Hyrox …' 7022)도 'that are/could/may …'라 남는다.
+    re.compile(
+        r"^(?:[A-Z0-9.,&\s-]+:\s*)?(?:[\w&.]+'s\s+)?"
+        r"(?:(?:\d{1,3}|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)\s+)?"
+        r"(?:(?:undervalued|overvalued|cheap(?:est)?|top(?:-rated)?|best|high-quality|quality|dividend|defensive"
+        r"|small-cap|mid-cap|large-cap|high-growth)\s+)*"
+        r"(?:(?:industrials?|tech(?:nology)?|financials?|energy|materials|utilit(?:y|ies)|health\s?care|biotech"
+        r"|consumer(?:\s+(?:discretionary|staples))?|communications?\s+services|real\s+estate|REIT|semiconductor|semi"
+        r"|chip|software|AI|growth|value|bank|insurance|retail|defense|aerospace|transportation)\s+)?"
+        r"stocks\s+(?:with|that(?!\s+(?:are|could|may|might|will|can|stand)\b))\b", re.I),
 )
 
 
