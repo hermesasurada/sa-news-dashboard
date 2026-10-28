@@ -354,5 +354,24 @@ class BrokerPickListTests(unittest.TestCase):
             self.assertFalse(sa_collect.is_broker_pick_list(subject), msg=subject)
 
 
+class MoversListTests(unittest.TestCase):
+    def test_movers_lists_are_filtered(self):
+        for subject in (
+            "BE: Midday Pulse: S&P 500 top intraday gainers",
+            "FICO: Midday Pulse: S&P 500 top intraday losers",
+            "GS: S&P 500 gainers: Today\u2019s top performers ranked by Quant",
+        ):
+            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "등락목록", msg=subject)
+
+    def test_market_wraps_kept(self):
+        for subject in (
+            "CRWD: Tech stocks weigh on Nasdaq for second week; Roper leads gainers",
+            "BRK.A: Berkshire Hathaway, Blackstone in gainers; HSBC, Globe Life among losers: week's financials wrap",
+            "CEG: Utilities sector slips in Q2 as Vistra leads gainers, Constellation Energy lags",
+            "PANW: Wedbush picks winners and losers in the cybersecurity sector",
+        ):
+            self.assertFalse(sa_collect.is_movers_list(subject), msg=subject)
+
+
 if __name__ == "__main__":
     unittest.main()

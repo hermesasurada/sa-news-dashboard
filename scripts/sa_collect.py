@@ -269,6 +269,23 @@ def is_broker_pick_list(subject: str) -> bool:
     return bool(_PICK_LIST_RE.search(subject or ""))
 
 
+# 장중·당일 등락 상위 종목 목록(2026-10-28 사용자 지시, 기사 10170·10171 'Midday Pulse: S&P 500 top intraday
+# gainers/losers'): 종목명과 등락률만 나열하는 자동 생성 기사. 사용자가 그 전에도 여러 번 지웠다(9462·9463·9540 등,
+# 퀀트 순위판 'S&P 500 gainers: Today's top performers ranked by Quant' 9219 포함). 섹터·주간 시황 기사의
+# 'leads gainers'·'week's financials wrap'은 남긴다(제목 앞머리가 목록 이름일 때만).
+_MOVERS_LIST_RE = re.compile(
+    r"\bMidday\s+Pulse\b"
+    r"|^(?:[A-Z0-9.,\s-]+:\s*)?(?:S&P\s*500|Nasdaq|Dow)\s+(?:top\s+)?(?:gainers|losers|decliners|movers)\s*:"
+    r"|\btop\s+performers\s+ranked\s+by\s+Quant\b",
+    re.I,
+)
+
+
+def is_movers_list(subject: str) -> bool:
+    """장중·당일 등락 상위 종목 목록 기사인가 → 수집 제외."""
+    return bool(_MOVERS_LIST_RE.search(subject or ""))
+
+
 def excluded_reason(subject: str, ticker: str) -> str | None:
     """수집 제외 대상이면 사유 라벨, 아니면 None."""
     if is_preferred_dividend(subject, ticker):
@@ -289,6 +306,8 @@ def excluded_reason(subject: str, ticker: str) -> str | None:
         return '지표스크린'
     if is_broker_pick_list(subject):
         return '추천목록'
+    if is_movers_list(subject):
+        return '등락목록'
     return None
 
 
