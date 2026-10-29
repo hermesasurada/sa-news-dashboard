@@ -2,6 +2,7 @@
 SA News Dashboard — FastAPI 앱
 """
 from fastapi import FastAPI, Query, Body, HTTPException
+import lan_guard  # 로컬·Tailscale 외 접속 차단(2026-10-30)
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -15,6 +16,7 @@ READER_FONT_DIR = Path.home() / "projects" / "hermes-reader-fonts"
 
 app = FastAPI(title="SA News Dashboard")
 app.add_middleware(GZipMiddleware, minimum_size=500)
+app.add_middleware(lan_guard.ASGIGuard)
 
 # DB 초기화
 db.init_db()
