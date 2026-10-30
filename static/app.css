@@ -633,35 +633,17 @@ body[data-reader-font="noto"] .card-summary {
   font-family: 'Noto Sans KR', sans-serif; }
 body[data-reader-font="chosun"] .card-details,
 body[data-reader-font="chosun"] .card-summary {
-  font-family: "Chosunilbo_myungjo", "Gowun Batang", "Nanum Myeongjo", "Noto Serif KR", serif;
+  font-family: "Chosunilbo_myungjo", serif;
   letter-spacing: -.01em; word-break: keep-all; line-height: 1.75; }
-body[data-reader-font="serif"] .card-details,
-body[data-reader-font="serif"] .card-summary {
-  font-family: "Noto Serif KR", "Apple Myungjo", Georgia, serif; word-break: keep-all; line-height: 1.72; }
-body[data-reader-font="gowun"] .card-details,
-body[data-reader-font="gowun"] .card-summary {
-  font-family: "Gowun Batang", "Nanum Myeongjo", "Noto Serif KR", serif;
-  letter-spacing: -.01em; word-break: keep-all; line-height: 1.72; }
-body[data-reader-font="nanum"] .card-details,
-body[data-reader-font="nanum"] .card-summary {
-  font-family: "Nanum Myeongjo", "Gowun Batang", "Noto Serif KR", serif;
-  letter-spacing: -.01em; word-break: keep-all; line-height: 1.72; }
 body[data-reader-font="suit"] .card-details,
 body[data-reader-font="suit"] .card-summary {
   font-family: "SUIT Variable", "Pretendard Variable", sans-serif; }
 body[data-reader-font="wanted"] .card-details,
 body[data-reader-font="wanted"] .card-summary {
   font-family: "Wanted Sans Variable", "Pretendard Variable", sans-serif; }
-body[data-reader-font="maru"] .card-details,
-body[data-reader-font="maru"] .card-summary {
-  font-family: "MaruBuri", "Gowun Batang", "Noto Serif KR", serif;
-  letter-spacing: -.01em; word-break: keep-all; line-height: 1.74; }
 body[data-reader-font="system"] .card-details,
 body[data-reader-font="system"] .card-summary {
   font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", sans-serif; }
-body[data-reader-font="mono"] .card-details,
-body[data-reader-font="mono"] .card-summary {
-  font-family: 'JetBrains Mono', ui-monospace, monospace; letter-spacing: -.01em; }
 
 /* 글꼴 선택 — 설정 창 안 '요약 본문 글꼴' 절(wm과 같은 구성) */
 .mc-font { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--sh-dark); }
