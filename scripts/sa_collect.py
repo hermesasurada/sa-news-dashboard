@@ -300,6 +300,63 @@ def is_movers_list(subject: str) -> bool:
     return bool(_MOVERS_LIST_RE.search(subject or ""))
 
 
+_PM_VERB = (r"(?:falls?|slides?|slumps?|sinks?|drops?|declines?|tumbles?|plunges?|dips?|slips?|retreats?|sheds?|"
+            r"rises?|gains?|jumps?|climbs?|soars?|surges?|rallies|advances?|pops?|spikes?|rebounds?|"
+            r"(?:finishes|ends|closes)\s+(?:lower|higher)\s+by|(?:lower|higher)\s+by)")
+_PM_MOVE_RE = re.compile(
+    rf"\b{_PM_VERB}\s+(?:another\s+|an\s+additional\s+|over\s+|nearly\s+|about\s+|almost\s+|more\s+than\s+)?\d+(?:\.\d+)?%"
+    r"|\bwith\s+(?:another\s+|an?\s+)?\d+(?:\.\d+)?%\s+(?:retreat|rally|gain|drop|decline|slide)\b", re.I)
+# 등락 문구 앞뒤에 남아도 되는 '일반 낱말' — 업종·시장 분위기, 최근 흐름, 신고가·신저가뿐. 이 밖의 낱말
+# (실적·거래·등급·제품·인물·규제 등 회사 고유 재료)이 하나라도 있으면 단순 등락 기사가 아니다.
+_PM_GENERIC = set("""
+amid as in with on along part of the a an to after again another additional from by and its
+broader broad wider tech technology tech-sector sector sector-wide crypto-sector semiconductor semiconductors chip chips
+storage neocloud optical networking cybersecurity crypto bitcoin software enterprise equipment peer peers infrastructure ai
+selloff sell-off selling slide rout plunge weakness pressure decline retreat rally rallies strength upswing advance surge
+recovery gains gain losses loss rebound bouncing back reversing resuming continuing continues continued extending extends
+adding adds renews renewing moderating rebounding slump drop pullback run ends sends dragged down pulled lower higher
+recent previous prior earlier sharp steep deep heavy longer-term multi-session session sessions day days week weeks
+three-day four-session three-session two-day straight second third some today prior-session day's late following consecutive two three four five six seven eight nine ten
+volatile choppy trading whipsaw new high highs low lows 52-week multi-month fresh set setting reach reaches record
+profit-taking falls fall gets hammered stock shares up over last month bounces retreats rebounds fades posts partial
+""".split())
+_PM_DAYS = {"monday's", "tuesday's", "wednesday's", "thursday's", "friday's"}
+
+def is_simple_price_move(subject: str) -> bool:
+    """회사 고유 재료 없이 주가 등락폭만 전하는 기사인가 → 수집 제외(2026-10-31 사용자 지시).
+    예: 'Dell slumps 12% as tech sector gets hammered', 'Tech drop sends Datadog lower by 12%',
+    'CoreWeave surges 8%, bouncing back from recent weakness', 'Moderna rallies 12% to set new high'.
+    등락 문구(동사+N%) 앞은 회사명(대문자 낱말 1~6개)과 일반 낱말, 뒤는 일반 낱말(_PM_GENERIC)뿐일 때만
+    판정한다 — 실적·가이던스·거래·등급·제품·인물·규제 같은 재료 낱말이 하나라도 있으면 남는다
+    ('Intel plunges 29% on weak Q4 guidance', 'CoreWeave declines 10% amid financing concerns …').
+    지수·원자재·업종 시황('Nasdaq tanks 5% …', 'Gold jumps 3%; …')도 앞부분 낱말 검사에서 빠진다."""
+    s = re.sub(r"^[A-Z0-9.,\s-]+:\s*", "", subject or "")           # 'TICKER: ' 머리
+    s = re.sub(r"\s*\([A-Z0-9.]{1,6}\)", "", s)                      # 'Okta (OKTA)'
+    m = _PM_MOVE_RE.search(s)
+    if not m:
+        return False
+    head, tail = s[:m.start()], s[m.end():]
+    words = lambda t: re.findall(r"[A-Za-z0-9&'’.-]+", t.replace("’", "'"))
+    # 앞부분: 대문자로 시작하는 낱말은 회사명(최대 6개), 소문자 낱말은 일반 낱말이어야 한다
+    caps = 0
+    for w in words(head):
+        if w[0].isupper() or w[0].isdigit() or w == "&":
+            if w.lower() in _PM_GENERIC and caps == 0 and w.lower() in {"tech", "technology"}:
+                continue                                              # 'Tech drop sends Datadog lower …'
+            caps += 1
+        elif w.lower().strip(".,") not in _PM_GENERIC:
+            return False
+    if not 1 <= caps <= 6:
+        return False
+    # 뒷부분: 전부 일반 낱말(숫자·% 표현 포함)
+    for w in words(tail):
+        lw = w.lower().strip(".,")
+        if not lw or re.fullmatch(r"[\d.,%]+", lw) or lw in _PM_GENERIC or lw in _PM_DAYS:
+            continue
+        return False
+    return True
+
+
 _MONTHS = r"(?:January|February|March|April|May|June|July|August|September|October|November|December)"
 _MONTHLY_RANKING_RE = re.compile(
     rf"\b{_MONTHS}(?:'s|\u2019s)\s+top\s+[\w&\s-]{{1,40}}?\s*(?:gainers|losers|decliners|performers)\b"
@@ -341,6 +398,8 @@ def excluded_reason(subject: str, ticker: str) -> str | None:
         return '등락목록'
     if is_monthly_ranking(subject):
         return '월간순위'
+    if is_simple_price_move(subject):
+        return '주가등락'
     return None
 
 

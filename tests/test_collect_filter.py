@@ -401,5 +401,41 @@ class MonthlyRankingTests(unittest.TestCase):
         ):
             self.assertFalse(sa_collect.is_monthly_ranking(subject), msg=subject)
 
+
+class SimplePriceMoveTests(unittest.TestCase):
+    def test_simple_moves_are_filtered(self):
+        for subject in (
+            "Dell slumps 12% as tech sector gets hammered",
+            "DDOG: Tech drop sends Datadog lower by 12%",
+            "STX: Seagate Technology dragged down by tech retreat, falls 8%",
+            "AMD: Advanced Micro Devices slides 13% as part of tech selloff",
+            "CRWV: CoreWeave surges 8%, bouncing back from recent weakness",
+            "AT&T extends recent slump with another 8% retreat",
+            "HPE: Hewlett Packard Enterprise retreats again, slides an additional 7%",
+            "MRNA: Moderna rallies 12% to set new high",
+            "CRWD: Okta (OKTA) rises 11% to set new high",
+            "INTC: Intel advances 8%, adding to prior day\u2019s gains",
+        ):
+            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "주가등락", msg=subject)
+
+    def test_moves_with_company_news_kept(self):
+        for subject in (
+            "INTC: Intel plunges 29% on weak Q4 guidance",
+            "RDDT: Reddit falls 29% to new 52-week low on weak Q4 guidance",
+            "SNDK: Sandisk slides 13% on post-earnings selloff",
+            "CRWV: CoreWeave declines 10% amid financing concerns and tech selloff",
+            "Dell Technologies tumbles 11% on Barclays downgrade, tech slide",
+            "MU: Micron jumps 12% on BofA note, chip rally",
+            "TSLA: Tesla climbs 6% ahead of Cybercab event",
+            "Dell Technologies continues AI server whipsaw with 8% drop",
+            "SNDK: SanDisk drops 20% in two weeks: What's next for the stock?",
+            "CRWV: Nasdaq tanks 5% in October as tech bloodbath deepens",
+            "GLD: Gold jumps 3%; LBMA weighs earlier auction for Asian traders",
+            "UNH: Obamacare premiums could rise 14% in 2027",
+            "SMCI: Top ETF holders of Super Micro watch the stock surge 15%",
+            "Intel, AMD lead semiconductor rout as SOXX drops about 10%",
+        ):
+            self.assertFalse(sa_collect.is_simple_price_move(subject), msg=subject)
+
 if __name__ == "__main__":
     unittest.main()
