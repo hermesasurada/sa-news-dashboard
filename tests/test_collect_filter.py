@@ -379,5 +379,27 @@ class MoversListTests(unittest.TestCase):
             self.assertFalse(sa_collect.is_movers_list(subject), msg=subject)
 
 
+
+class MonthlyRankingTests(unittest.TestCase):
+    def test_monthly_sector_rankings_are_filtered(self):
+        for subject in (
+            "HII: Consulting, defense stocks feature among October's top industrials gainers",
+            "KDP: Maplebear, Coty lead consumer staples stock gainers in October",
+            "BX: These ten financial stocks posted the biggest one-month losses",
+            "XLK: Memory names top September\u2019s top tech performers",
+        ):
+            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "월간순위", msg=subject)
+
+    def test_sector_reviews_and_news_kept(self):
+        for subject in (
+            "CEG: Utilities sector slips in Q2 as Vistra leads gainers, Constellation Energy lags",
+            "AAOI: Lumentum, Corning among gainers in optical networking as Nvidia praises Marvell",
+            "CDNS: PayPal tops Nasdaq weekly decliners as deal talks fall off; CrowdStrike leads gainers after stellar results",
+            "CRWV: Nasdaq tanks 5% in October as tech bloodbath deepens",
+            "AMZN: S&P 500 ends week lower as AI concerns fuel rotation into defensive sectors",
+            "CVX: Top energy gainers, losers as the sector slips in volatile Q2",
+        ):
+            self.assertFalse(sa_collect.is_monthly_ranking(subject), msg=subject)
+
 if __name__ == "__main__":
     unittest.main()

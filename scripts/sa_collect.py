@@ -300,6 +300,23 @@ def is_movers_list(subject: str) -> bool:
     return bool(_MOVERS_LIST_RE.search(subject or ""))
 
 
+_MONTHS = r"(?:January|February|March|April|May|June|July|August|September|October|November|December)"
+_MONTHLY_RANKING_RE = re.compile(
+    rf"\b{_MONTHS}(?:'s|\u2019s)\s+top\s+[\w&\s-]{{1,40}}?\s*(?:gainers|losers|decliners|performers)\b"
+    rf"|\b(?:stock\s+|stocks\s+)?(?:gainers|losers|decliners|performers)\s+(?:in|for)\s+{_MONTHS}\b"
+    r"|\bstocks\s+posted\s+the\s+(?:biggest|best|worst)\s+(?:one|1)-month\s+(?:gains|losses)\b",
+    re.I,
+)
+
+
+def is_monthly_ranking(subject: str) -> bool:
+    """섹터별 한 달 등락률 상위 종목 순위 기사(SA 월간 정기물)인가 → 수집 제외.
+    예: "October's top industrials gainers", "consumer staples stock gainers in October",
+    "These ten financial stocks posted the biggest one-month losses". 분기 섹터 리뷰("sector slips in Q2
+    as … leads gainers")와 주간 시황은 남긴다 — 월 이름·한 달 등락이 순위의 기준일 때만 판정."""
+    return bool(_MONTHLY_RANKING_RE.search(subject or ""))
+
+
 def excluded_reason(subject: str, ticker: str) -> str | None:
     """수집 제외 대상이면 사유 라벨, 아니면 None."""
     if is_preferred_dividend(subject, ticker):
@@ -322,6 +339,8 @@ def excluded_reason(subject: str, ticker: str) -> str | None:
         return '추천목록'
     if is_movers_list(subject):
         return '등락목록'
+    if is_monthly_ranking(subject):
+        return '월간순위'
     return None
 
 
