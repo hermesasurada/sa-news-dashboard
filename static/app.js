@@ -1133,40 +1133,28 @@ document.addEventListener('keydown', e => {
    설정 창(⚙️) 안 '요약 본문 글꼴' 절에서 고른다(2026-09-30, 별도 버튼·모달 폐지).
    상태 = localStorage 'saReaderFont'. body[data-reader-font]로 카드 요약 본문
    (.card-details/.card-summary)에 적용. */
-// 2026-10-30: 마루 부리·Noto Serif KR·고운바탕·나눔명조·고정폭 제거(사용자 지시 — 공용 글꼴 자원과 함께). 지운 값이 저장돼 있으면 기본값으로
-// 2026-10-20: 송명 빼고 SUIT·Wanted Sans·마루 부리 추가, 이름표는 wm·td·yt와 통일
-const _READER_FONTS = ['sans', 'noto', 'suit', 'wanted', 'chosun', 'system'];
-const _FONT_LABELS = {
-  sans: 'Pretendard', noto: 'Noto Sans KR', suit: 'SUIT', wanted: 'Wanted Sans',
-  chosun: '조선일보명조', system: '시스템',
-};
-const _FONT_STACKS = {
-  sans: '"Pretendard Variable", "Pretendard", sans-serif',
-  noto: "'Noto Sans KR', sans-serif",
-  suit: "'SUIT Variable', sans-serif",
-  wanted: "'Wanted Sans Variable', sans-serif",
-  chosun: '"Chosunilbo_myungjo", serif',
-  system: '-apple-system, BlinkMacSystemFont, sans-serif',
-};
-let _readerFont = localStorage.getItem('saReaderFont') || 'sans';
-if (!_READER_FONTS.includes(_readerFont)) _readerFont = 'sans';
+// 글꼴 목록·글꼴 값은 공용 hermes-reader-fonts/fonts.js가 정본(2026-11-01 사용자 지시) — 공용 목록에 글꼴을 더하면
+// 여기 고칠 것 없이 나타난다. 옛 저장값 'sans'는 Pretendard였다. 목록에 없는 값(지운 글꼴)은 기본값으로.
+const _RF = window.HermesReaderFonts
+  || {list: [], get: () => null, resolve: () => null, apply() {}, fillSelect() {}, ensureWeb() {}};
+let _readerFont = _RF.resolve(localStorage.getItem('saReaderFont'), {legacy: {sans: 'pretendard'}, fallback: 'pretendard'});
 
 function applyReaderFont() {
-  document.body.dataset.readerFont = _readerFont;
+  _RF.apply(document.body, _readerFont);
 }
 function setReaderFont(key) {
-  if (!_READER_FONTS.includes(key)) return;
+  if (!_RF.get(key)) return;
   _readerFont = key;
   localStorage.setItem('saReaderFont', key);
   applyReaderFont();
   if (document.getElementById('model-modal').classList.contains('show')) renderFontList();
 }
 function renderFontList() {
-  document.getElementById('font-list').innerHTML = _READER_FONTS.map(k => `
-    <button type="button" class="font-opt ${k === _readerFont ? 'sel' : ''}" onclick="setReaderFont('${k}')">
-      <span>${escapeHTML(_FONT_LABELS[k])}</span>
-      <span class="fo-sample" style="font-family:${_FONT_STACKS[k]}">본문 가나다 AaBb</span>
-      ${k === _readerFont ? '<span class="fo-check">✓</span>' : ''}
+  document.getElementById('font-list').innerHTML = _RF.list.map(f => `
+    <button type="button" class="font-opt ${f.id === _readerFont ? 'sel' : ''}" onclick="setReaderFont('${escapeHTML(f.id)}')">
+      <span>${escapeHTML(f.label)}</span>
+      <span class="fo-sample" style="font-family:${escapeHTML(f.stack)}">본문 가나다 AaBb</span>
+      ${f.id === _readerFont ? '<span class="fo-check">✓</span>' : ''}
     </button>`).join('');
 }
 

@@ -51,6 +51,11 @@ def root():
         except OSError:
             v = 0
         html = html.replace(f'/static/{asset}"', f'/static/{asset}?v={v}"')
+    try:   # 공용 글꼴 목록(fonts.js)도 고치면 바로 보이게
+        v = int((READER_FONT_DIR / "fonts.js").stat().st_mtime)
+    except OSError:
+        v = 0
+    html = html.replace('/reader-fonts/fonts.js"', f'/reader-fonts/fonts.js?v={v}"')
     return HTMLResponse(html)
 
 

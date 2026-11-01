@@ -626,24 +626,14 @@ body {
 .card-details li:last-child { margin-bottom: 0; }
 
 /* ── 요약 본문 글꼴 선택 (website-monitor 이식) ──
-   body[data-reader-font=key] → 카드 요약 본문(.card-details/.card-summary)에 적용.
-   localStorage 'saReaderFont' 공유. 'sans'(기본)는 규칙 없음 → 기본 폰트 상속. */
-body[data-reader-font="noto"] .card-details,
-body[data-reader-font="noto"] .card-summary {
-  font-family: 'Noto Sans KR', sans-serif; }
+   body[data-reader-font] + --reader-font(공용 fonts.js가 싣는다) → 카드 요약 본문(.card-details/.card-summary).
+   글꼴별 font-family 규칙을 두지 않아 공용 목록에 더한 글꼴도 그대로 적용된다(2026-11-01). */
+body[data-reader-font] .card-details,
+body[data-reader-font] .card-summary {
+  font-family: var(--reader-font); }
 body[data-reader-font="chosun"] .card-details,
 body[data-reader-font="chosun"] .card-summary {
-  font-family: "Chosunilbo_myungjo", serif;
   letter-spacing: -.01em; word-break: keep-all; line-height: 1.75; }
-body[data-reader-font="suit"] .card-details,
-body[data-reader-font="suit"] .card-summary {
-  font-family: "SUIT Variable", "Pretendard Variable", sans-serif; }
-body[data-reader-font="wanted"] .card-details,
-body[data-reader-font="wanted"] .card-summary {
-  font-family: "Wanted Sans Variable", "Pretendard Variable", sans-serif; }
-body[data-reader-font="system"] .card-details,
-body[data-reader-font="system"] .card-summary {
-  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", sans-serif; }
 
 /* 글꼴 선택 — 설정 창 안 '요약 본문 글꼴' 절(wm과 같은 구성) */
 .mc-font { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--sh-dark); }
