@@ -374,6 +374,25 @@ def is_monthly_ranking(subject: str) -> bool:
     return bool(_MONTHLY_RANKING_RE.search(subject or ""))
 
 
+# SA 퀀트 등급 기사(2026-11-03 사용자 지시, 기사 10758 "Intel's Quant Rating plunges to 3.26 as weak Q4 outlook
+# weighs on sentiment"): 단일 종목의 Quant Rating 상·하향과 뉴스에 곁들인 퀀트 순위('… top Quant list',
+# 'rank on quant', 'Quant Holds')까지 — 지표스크린은 복수 종목 목록만 잡아 이것들이 빠졌다. SA 퀀트 용어가
+# 제목에 있을 때만 판정하므로 quantum·Quanta·Quantinuum·'Quant giant Jane Street'·'Quant's QNT token'은 남는다.
+_QUANT_RATING_RE = re.compile(
+    r"\bquant[- ]rated\b"
+    r"|\bQuant\s+(?:ratings?|rankings?|scores?|grades?|metrics|lists?|picks|snapshot|signals?|Holds?"
+    r"|Strong\s+Buys?|Buys?|Sells?)\b"
+    r"|\b(?:rank|ranks|ranked|ranking)\s+(?:on|by)\s+quant\b"
+    r"|\b(?:longest|persistent)\s+Strong\s+Buy\b|\bstocks\s+(?:flashing|with)\s+Strong\s+Buy\s+ratings\b",
+    re.I,
+)
+
+
+def is_quant_rating_news(subject: str) -> bool:
+    """SA 퀀트 등급·순위가 주제인 기사인가 → 수집 제외."""
+    return bool(_QUANT_RATING_RE.search(subject or ""))
+
+
 def excluded_reason(subject: str, ticker: str) -> str | None:
     """수집 제외 대상이면 사유 라벨, 아니면 None."""
     if is_preferred_dividend(subject, ticker):
@@ -400,6 +419,8 @@ def excluded_reason(subject: str, ticker: str) -> str | None:
         return '월간순위'
     if is_simple_price_move(subject):
         return '주가등락'
+    if is_quant_rating_news(subject):
+        return '퀀트등급'
     return None
 
 

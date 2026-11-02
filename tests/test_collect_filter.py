@@ -332,6 +332,35 @@ class IndicatorScreenTests(unittest.TestCase):
             self.assertFalse(sa_collect.is_indicator_screen(subject), msg=subject)
 
 
+class QuantRatingTests(unittest.TestCase):
+    def test_quant_rating_news_is_filtered(self):
+        for subject in (
+            "INTC: Intel's Quant Rating plunges to 3.26 as weak Q4 outlook weighs on sentiment",
+            "NVDA: Nvidia's Quant Rating upgraded to Strong Buy after upbeat outlook",
+            "SOXX: Semiconductor stocks in focus after SK Hynix results; Micron, Nvidia top Quant list",
+            "SPCX: SpaceX Spectrum deal triggers telecom selloff: How T, VZ, and TMUS rank on quant",
+            "ABBV: Healthcare breadth hits 15-year high, but XLV’s top holdings remain Quant Holds",
+            "DLR: Welltower, Equinix lead XLRE quant rankings as real estate outperforms the S&P 500",
+            "HD: Homebuilder ETF's rebound accelerates: Which top holdings score highest on Quant metrics?",
+            "AMZN: Quant snapshot: HF Sinclair, Intel lead top-rated names; Community Financial System lag",
+            "OKLO: Companhia and Iberdrola lead utilities quant picks ahead of Q3 earnings",
+            "GM: General Motors leads consumer discretionary stocks with longest Strong Buy streak",
+        ):
+            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "퀀트등급", msg=subject)
+
+    def test_quantum_and_other_quant_kept(self):
+        for subject in (
+            "IONQ: Quantum computing stocks give back some gains after federal government-induced rally",
+            "PWR: Quanta Services raised to Buy at Guggenheim after powerful Q2 beat-and-raise",
+            "HON: Quantinuum leaps in IPO debut as quantum era approaches",
+            "Quant giant Jane Street discloses $1B+ Bitcoin ETF stake led by BlackRock’s IBIT",
+            "BAC: Quant’s QNT token surges after Clearing House taps tech for bank payments",
+            "CRWV: CoreWeave inks cloud deal with quantitative trading firm Hudson River",
+            "XYZ: Raymond James upgrades Block to Strong Buy on payments momentum",
+        ):
+            self.assertFalse(sa_collect.is_quant_rating_news(subject), msg=subject)
+
+
 class BrokerPickListTests(unittest.TestCase):
     def test_pick_lists_are_filtered(self):
         for subject in (
