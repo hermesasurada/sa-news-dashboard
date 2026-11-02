@@ -361,6 +361,42 @@ class QuantRatingTests(unittest.TestCase):
             self.assertFalse(sa_collect.is_quant_rating_news(subject), msg=subject)
 
 
+class AnalystRatingTests(unittest.TestCase):
+    def test_simple_analyst_reports_are_filtered(self):
+        for subject in (
+            "LITE: Lumentum upgraded as market reaction to Marvell deal appears overdone",
+            "LITE: Marvell downgraded to hold on likely overhang from Lumentum deal",
+            "MU: Micron's price target boosted to $1,500 at Deutsche Bank",
+            "NVDA: Nvidia rises as Bernstein reiterates Outperform rating",
+            "TGT: HSBC upgrades Target to Buy, raises PT to $190",
+            "Dell Technologies tumbles 11% on Barclays downgrade, tech slide",
+            "AMKR: Amkor price target trimmed by analysts after earnings miss",
+            "NVDA: Nvidia in focus as Seaport keeps Sell rating, citing 'growing' balance sheet worries",
+            "AAPL: Apple gets rating cut at Jefferies as planned all-glass iPhone is canceled",
+            "INTC: Intel wins multiple upgrades on SA after earnings-led selloff",
+            "GOOGL: SA analyst upgrades/downgrades: GOOG, MSFT, NBIS, MU",
+            "Eagle Materials upgraded at JPM; Cemex, CRH, Amrize top picks in construction materials",
+        ):
+            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "애널리스트", msg=subject)
+
+    def test_company_news_and_other_ratings_kept(self):
+        for subject in (
+            "AAPL: Apple slides on Q3 results, guidance; GF Securities downgrades",
+            "Enphase sinks to six-year low on Q3 miss; Oppenheimer, Roth pile on with downgrades",
+            "MRK: Moderna surges on trial win for cancer shot; William Blair upgrades",
+            "MU: Micron surges after Q3 as analysts tout AI-driven demand, contracts; Susquehanna boosts PT to $2,000",
+            "Boeing upgrades Ghost Bat drone as Germany weighs combat aircraft orders",
+            "BA: Boeing wins $112.4M Saudi F-15 training upgrade contract",
+            "ADBE: What’s new at Adobe? Acrobat gets a major AI upgrade",
+            "BABA: MiniMax, ByteDance unveil upgraded AI video models",
+            "Realty Income gets 'A' issuer default rating from Fitch; outlook stable",
+            "TSLA: SpaceX draws MSCI's lowest ESG rating, matching Russia after Ukraine invasion",
+            "BX: Anthropic may get junk credit rating after its IPO, Blackstone says: report",
+            "WMT: Walmart forecasts Q2 EPS of $0.72-$0.74 amid higher fuel costs while reiterating FY sales growth of 3.5%-4.5%",
+        ):
+            self.assertIsNone(sa_collect.excluded_reason(subject, "NONE"), msg=subject)
+
+
 class BrokerPickListTests(unittest.TestCase):
     def test_pick_lists_are_filtered(self):
         for subject in (

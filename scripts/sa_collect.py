@@ -127,7 +127,7 @@ _COVERAGE_INIT_RE = re.compile(
 
 def is_coverage_initiation(subject: str) -> bool:
     """증권사·기관의 커버리지 개시 뉴스인가 → 수집 제외 대상.
-    등급 상·하향(upgrade/downgrade)과 목표주가 변경은 견해 '변화'라 제외하지 않음."""
+    등급 상·하향·목표가 변경은 '애널리스트'(is_analyst_rating_news)가 따로 거른다(2026-11-03)."""
     return bool(_COVERAGE_INIT_RE.search(subject or ''))
 
 
@@ -393,6 +393,78 @@ def is_quant_rating_news(subject: str) -> bool:
     return bool(_QUANT_RATING_RE.search(subject or ""))
 
 
+# 단순 애널리스트 리포트(2026-11-03 사용자 지시, 10818 'Lumentum upgraded as market reaction
+# to Marvell deal appears overdone'): 증권사 등급 상·하향·목표가·등급 유지가 주제인 기사.
+# 등급 문구 앞에(또는 ';'로 나뉜 다른 절에) 회사 고유 재료(실적·가이던스·계약·임상 등)가
+# 있으면 남긴다 — 'Apple slides on Q3 results, guidance; GF Securities downgrades'.
+# 등급 문구 뒤의 이유('on Marvell deal', 'after earnings miss')는 리포트 근거라 제외 대상이다.
+# 신용·ESG 등급(Fitch·Moody's·MSCI)과 상품 'upgrade'(Ghost Bat drone)는 남는다.
+_AR_RATING = (r"(?:Strong\s+Buy|Buy|Strong\s+Sell|Sell|Hold|Neutral|Outperform|Underperform|Overweight"
+              r"|Underweight|Equal[-\s]?Weight|Market\s+Perform|Sector\s+Perform|Peer\s+Perform|Sector\s+Weight"
+              r"|Accumulate|Reduce|In[-\s]Line)")
+_AR_BROKER_RE = re.compile(
+    r"\b(?:J\.?\s?P\.?\s?Morgan|JPMorgan|JPM|Morgan\s+Stanley|Goldman(?:\s+Sachs)?|BofA|Bank\s+of\s+America"
+    r"|Citi(?:group)?|Wells\s+Fargo|WF|UBS|Barclays|Deutsche\s+Bank|Jefferies|Bernstein|Baird|Mizuho|Stifel"
+    r"|Cantor(?:\s+Fitzgerald)?|KeyBanc|Needham|Piper\s+Sandler|Oppenheimer|Raymond\s+James|Truist|Evercore"
+    r"|Wolfe(?:\s+Research)?|Guggenheim|HSBC|BNP(?:\s+Paribas)?|Seaport(?:\s+Research)?|Susquehanna"
+    r"|Loop(?:\s+Capital)?|Northland|Rothschild|Redburn|Wedbush|Benchmark|Rosenblatt|BTIG|Macquarie|Nomura"
+    r"|Melius|Argus|D\.?\s?A\.?\s+Davidson|Roth(?:\s+Capital)?|TD\s+Cowen|Cowen|Citizens(?:\s+JMP)?|JMP"
+    r"|Craig[-\s]Hallum|Monness|Freedom(?:\s+Capital|\s+Broker)?|GLJ(?:\s+Research)?|Morningstar|CFRA|Erste"
+    r"|Daiwa|Canaccord(?:\s+Genuity)?|William\s+Blair|Lake\s+Street|B\.\s?Riley|H\.?C\.?\s+Wainwright"
+    r"|Ladenburg|New\s+Street|MoffettNathanson|BMO|RBC|Scotiabank|CIBC|Desjardins|Exane|Kepler|Berenberg"
+    r"|Itau|Arete|Telsey|Stephens|Sidoti|GF(?:\s+Securities)?|China\s+Renaissance|StoneX|Capital\s+One"
+    r"|FBN|FCM|Phill?ip(?:\s?Capital)?|Titan\s+Partners|Vertical\s+Research|CLSA|CICC|Haitong"
+    r"|analysts?|Wall\s+Street(?:'s)?|on\s+SA)\b")
+_AR_ACTION_RE = re.compile(
+    r"\b(?:double[-\s]?)?(?:upgraded|downgraded)\b(?=\s*(?:to|at|by|as|on|amid|after|from|in|following|due|,|;|$|--|—))"
+    r"|\b(?:raised|cut|lowered|lifted|moved|bumped|boosted|hiked|trimmed|reduced)\s+to\s+" + _AR_RATING + r"\b"
+    r"|\bprice\s+targets?\b|\bPTs?\b|\btarget\s+price\b|\btargets\s+set\s+higher\b"
+    r"|\b(?:EPS\s+)?estimates?\s+(?:cut|raised|lowered|lifted|boosted|trimmed|hiked)\s+(?:at|by)\b"
+    r"|\breiterat\w*\s+(?:its\s+|an?\s+)?" + _AR_RATING + r"\b"
+    r"|\bassigned\s+(?:an?\s+)?" + _AR_RATING + r"\s+rating\b"
+    r"|\b(?:on|amid|after)\s+(?:an?\s+)?(?:rare\s+)?(?:upgrade|downgrade)s?\b"
+    r"|\brating\s+(?:cut|upgrade|downgrade|changes)\b"
+    r"|\banalyst\s+upgrades?\s*/\s*downgrades?\b")
+# 등급 이름+rating(s), 등급 유지·변경 동사, upgrade/downgrade 낱말은 증권사·애널리스트가 함께 있을 때만.
+_AR_WITH_BROKER_RE = re.compile(
+    r"\b(?:" + _AR_RATING + r"|bull(?:ish)?|bear(?:ish)?|Top\s+Pick|high)['’]?\s+(?:equivalent\s+)?ratings?\b"
+    r"|\b(?:keeps?|cuts?|lifts?|raises?|lowers?|shuffles?)\s+(?:[\w.'’&-]+\s+){0,3}?ratings?\b"
+    r"|\b(?:double[-\s]?)?(?:upgrade|downgrade)s?\b", re.I)
+_AR_CREDIT_RE = re.compile(r"\b(?:credit|ESG|issuer|Fitch|Moody['’]?s|MSCI|bonds?)\b", re.I)
+_AR_MATERIAL_RE = re.compile(
+    r"\b(?:Q[1-4]|[1-4]Q|results?|earnings|beats?|miss(?:es)?|guidance|forecasts?|outlook|reports?|posts?"
+    r"|revenue|sales|EPS|contracts?|deal|acquir\w*|acquisition|merger|buyout|takeover|lawsuit|FDA|approval"
+    r"|trials?|setback|launch\w*|unveil\w*|IPO|layoffs?|CEO|CFO|dividend|buyback|offering|bankruptcy|recall"
+    r"|probe|investigation|tariffs?)\b", re.I)
+
+
+def _analyst_action(clause: str):
+    if _AR_CREDIT_RE.search(clause):
+        return None
+    m = _AR_ACTION_RE.search(clause)
+    if m:
+        return m
+    m = _AR_WITH_BROKER_RE.search(clause)
+    if m and _AR_BROKER_RE.search(clause):
+        return m
+    return None
+
+
+def is_analyst_rating_news(subject: str) -> bool:
+    """증권사 등급·목표가 변경이 주제인 단순 애널리스트 리포트 기사인가 → 수집 제외."""
+    s = re.sub(r"^[A-Z0-9.\-, ]{1,30}:\s+", "", subject or "")
+    found = False
+    for clause in (c for c in re.split(r";\s*", s) if c.strip()):
+        m = _analyst_action(clause)
+        if m:
+            found = True
+            if _AR_MATERIAL_RE.search(clause[:m.start()]):
+                return False
+        elif _AR_MATERIAL_RE.search(clause):
+            return False
+    return found
+
+
 def excluded_reason(subject: str, ticker: str) -> str | None:
     """수집 제외 대상이면 사유 라벨, 아니면 None."""
     if is_preferred_dividend(subject, ticker):
@@ -421,6 +493,8 @@ def excluded_reason(subject: str, ticker: str) -> str | None:
         return '주가등락'
     if is_quant_rating_news(subject):
         return '퀀트등급'
+    if is_analyst_rating_news(subject):
+        return '애널리스트'
     return None
 
 
