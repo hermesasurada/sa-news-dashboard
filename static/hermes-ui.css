@@ -355,17 +355,18 @@ button, input, select { font-family: inherit; }
 .app-wm .ticker-chip,
 .app-sa .ticker-badge { color: var(--ui-accent); }
 .app-td .ticker-chip,
-.app-sa .ticker-badge {
+.app-sa .ticker-badge {  /* 컴팩트(2026-11-02 사용자 지시) */
   display: inline-flex;
   align-items: center;
-  height: 20px;
-  min-height: 20px;
-  padding: 0 7px;
+  height: 17px;
+  min-height: 17px;
+  padding: 0 5px;
   font-size: 10px;
-  line-height: 18px;
+  font-weight: 600;
+  line-height: 15px;
   letter-spacing: 0;
 }
-.app-sa .card-tickers { padding-bottom: 8px; }
+.app-sa .card-tickers { padding-bottom: 8px; gap: 4px; }
 .app-td :is(.card-meta, .meta-msg-id, .meta-collected),
 .app-wm :is(.card-date, .card-size, .card-id),
 .app-sa :is(.footer-left, .footer-method, .card-time, .article-id) {
