@@ -420,15 +420,15 @@ body {
   align-items: center;
 }
 
-/* ── Ticker Badge (모노스페이스·부드러운 파스텔 pill) ── */
+/* ── Ticker Badge (부드러운 파스텔 pill, 고정폭 글꼴 금지 — 2026-11-02 사용자 지시) ── */
 .ticker-badge {
   display: inline-block;
   padding: 3px 9px;
   border-radius: 4px;
-  font-family: var(--mono);
+  font-family: inherit;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.3px;
+  letter-spacing: .02em;
   white-space: nowrap;
   flex-shrink: 0;
   cursor: default;
