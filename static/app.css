@@ -630,7 +630,7 @@ body {
    글꼴별 font-family 규칙을 두지 않아 공용 목록에 더한 글꼴도 그대로 적용된다(2026-11-01). */
 body[data-reader-font] .card-details,
 body[data-reader-font] .card-summary {
-  font-family: var(--reader-font); }
+  font-family: var(--reader-font); -webkit-text-stroke: var(--reader-stroke, 0); }
 body[data-reader-font="chosun"] .card-details,
 body[data-reader-font="chosun"] .card-summary {
   letter-spacing: -.01em; word-break: keep-all; line-height: 1.75; }
