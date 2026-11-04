@@ -70,6 +70,18 @@ def _minimal_args(kind):
         return []
 
 
+def _codex_env():
+    """codex exec 자식 환경(cli_minimal.codex_env: CODEX_HOME 고정 + HOME만 빈 폴더). codex가 HOME
+    아래 ~/.agents 스킬 목록을 요청마다 넣는 것을 막는다(2026-11-04, 호출당 입력 약 15k 절감).
+    None이면 부모 환경 그대로."""
+    try:
+        if _cli_minimal is not None and hasattr(_cli_minimal, "codex_env"):
+            return _cli_minimal.codex_env()
+    except Exception:
+        pass
+    return None
+
+
 SERVICE_CODE = "sa"
 
 
@@ -329,7 +341,8 @@ def call_codex(
             cmd += _minimal_args("codex")
             cmd += ["--json", "-o", out_path, "-"]
             proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
-                                  encoding="utf-8", timeout=timeout, cwd=tempfile.gettempdir())
+                                  encoding="utf-8", timeout=timeout, cwd=tempfile.gettempdir(),
+                                  env=_codex_env())
             try:
                 text = Path(out_path).read_text(encoding="utf-8", errors="replace").strip()
             except OSError:
