@@ -1158,9 +1158,32 @@ function renderFontList() {
     </button>`).join('');
 }
 
+/* ── 요약 본문 글자 크기(2026-11-05 사용자 지시, xw와 같은 방식) ──
+   상태 = localStorage 'saReaderSize'(xw와 같은 12~17, 기본 13). body --reader-scale(값/13)을 hermes-ui.css의
+   기본 12.75px에 곱하므로 기본 화면은 그대로이고 .card-details/.card-summary만 바뀐다. */
+const SIZE_BASE = 13, SIZES = [12, 13, 14, 15, 16, 17];
+let _readerSize = Number((() => { try { return localStorage.getItem('saReaderSize'); } catch (e) { return null; } })());
+if (!SIZES.includes(_readerSize)) _readerSize = SIZE_BASE;
+
+function applyReaderSize() {
+  document.body.style.setProperty('--reader-scale', String(_readerSize / SIZE_BASE));
+}
+function setReaderSize(px) {
+  if (!SIZES.includes(px)) return;
+  _readerSize = px;
+  try { localStorage.setItem('saReaderSize', String(px)); } catch (e) {}
+  applyReaderSize();
+  renderSizeSeg();
+}
+function renderSizeSeg() {
+  document.getElementById('size-seg').innerHTML = SIZES.map(px =>
+    `<button type="button" role="radio" aria-checked="${px === _readerSize}" onclick="setReaderSize(${px})">${px}</button>`).join('');
+}
+
 /* ── Init ── */
 async function init() {
   applyReaderFont();               // 저장된 글꼴을 로드 시점에 반영
+  applyReaderSize();
   // 첫 방문도 필터 목록과 기사 목록을 병렬로 요청한다. 발행 시 티커가 이미
   // 정규화되므로 필터 응답이 카드 첫 렌더를 막을 이유가 없다.
   loadFiltersFromCache();
@@ -1228,6 +1251,7 @@ function renderModelConfig() {
 async function openModelConfig() {
   ensureReaderWebFonts();          // 글꼴 견본을 제 글꼴로 보여 주려면 웹폰트가 필요하다
   renderFontList();
+  renderSizeSeg();
   document.getElementById('model-modal').classList.add('show');
   try {
     _mc = await fetchJSON('/api/summary-config');

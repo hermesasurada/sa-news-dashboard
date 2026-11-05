@@ -644,6 +644,16 @@ body[data-reader-font="chosun"] .card-summary {
 .mc-font .font-opt { padding: 9px 12px; font-size: 13.5px; }
 .mc-font .font-opt .fo-sample { font-size: 12.5px; }
 @media (max-width: 640px) { .font-list { grid-template-columns: 1fr; } }
+/* 글자 크기 — 같은 창 '요약 본문 글자 크기' 절. 실제 기본값은 hermes-ui.css의 12.75px(공용 파일이라 그대로 두고 여기서 이긴다). */
+body.app-sa :is(.card-summary, .card-details) { font-size: calc(12.75px * var(--reader-scale, 1)); }
+.size-seg { display: flex; gap: 6px; padding: 2px; }
+.size-seg button {
+  flex: 1; height: 32px; border: none; border-radius: 4px; cursor: pointer;
+  background: var(--surface); box-shadow: var(--nm-raised-sm); color: var(--ink-2);
+  font: inherit; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.size-seg button[aria-checked="true"] { color: var(--accent); font-weight: 700; box-shadow: var(--nm-inset-sm); }
+.size-preview { margin-top: 10px; }
 .font-opt {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   background: var(--surface); border: none; box-shadow: var(--nm-raised-sm); border-radius: 4px;
