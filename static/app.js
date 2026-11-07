@@ -411,9 +411,9 @@ function renderQuoteStats(el, d) {
         }).join('<span class="tqp-sep">·</span>') : '';
     const rsi = s ? tri(s.rsi, 20) : '', bb = s ? tri(s.bollinger_pband, 50) : '';
     const perf = (s && s.performance) || {};
-    // 1W·1M 소수 1자리, 3M·YTD 정수(포트폴리오 차트 지표 팝업과 같은 자릿수). 한 줄에 두 개씩(2026-11-07)
+    // 1W·1M만, 소수 1자리(2026-11-07 사용자 지시로 3M·YTD는 뺐다 — API에는 남아 있다)
     const pct = (v, dp) => { const x = Number(v.toFixed(dp)); return { text: (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(dp) + '%', cls: x > 0 ? 'up' : x < 0 ? 'down' : 'flat' }; };
-    const cells = [['one_week', '1W', 1], ['one_month', '1M', 1], ['three_month', '3M', 0], ['ytd', 'YTD', 0]]
+    const cells = [['one_week', '1W', 1], ['one_month', '1M', 1]]
         .filter(([k]) => perf[k] != null)
         .map(([k, label, dp]) => { const c = pct(perf[k], dp); return `<span class="tqp-perf"><span class="tqp-perf-label">${label}</span><span class="tqp-perf-chg ${c.cls}">${c.text}</span></span>`; });
     if (!rsi && !bb && !cells.length) { box.hidden = true; box.innerHTML = ''; return; }
