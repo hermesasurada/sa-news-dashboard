@@ -83,6 +83,33 @@ def _fetch_raw(ticker: str) -> dict[str, Any] | None:
         return None
 
 
+def _quote_stats(raw: dict) -> dict | None:
+    """포트폴리오 /api/chart의 quote_stats(일·주·월 RSI·BB %B, 1주·1개월·3개월 등락률)를 그대로 옮긴다.
+
+    티커칩 전광판 표시용(2026-11-07 사용자 지시, wm·sa·td 공통). 계산은 포트폴리오가 한다 —
+    보유 종목 표와 같은 숫자가 나오게. 값이 없거나 숫자가 아니면 None.
+    """
+    src = raw.get("quote_stats") if isinstance(raw, dict) else None
+    if not isinstance(src, dict):
+        return None
+
+    def num(v):
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if f == f else None   # NaN 제외
+
+    out = {
+        "rsi": {k: num((src.get("rsi") or {}).get(k)) for k in ("day", "week", "month")},
+        "bollinger_pband": {k: num((src.get("bollinger_pband") or {}).get(k)) for k in ("day", "week", "month")},
+        "performance": {k: num((src.get("performance") or {}).get(k)) for k in ("one_week", "one_month", "three_month")},
+    }
+    if not any(v is not None for group in out.values() for v in group.values()):
+        return None
+    return out
+
+
 def get_price_quote(ticker: str) -> dict[str, Any]:
     clean = normalize_ticker(ticker)
     raw = _fetch_raw(clean)
@@ -144,4 +171,5 @@ def get_price_quote(ticker: str) -> dict[str, Any]:
         "market_label": market.get("label") or "",
         "market_status": market.get("status") or "",
         "is_regular": bool(market.get("is_regular")) if market else None,
+        "quote_stats": _quote_stats(raw),
     }

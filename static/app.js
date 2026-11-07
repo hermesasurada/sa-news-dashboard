@@ -395,6 +395,33 @@ function setTickerPopoverLink(el, ticker) {
   }
 }
 
+/* 전광판 지표(2026-11-07 사용자 지시, wm·sa·td 공통): 포트폴리오가 계산한 일·주·월 RSI·BB(%B)를
+   'RSI 58-61-70' 형식(일-주-월, 정수)으로, 최근 1주·1개월·3개월 등락률을 한 줄씩. 값이 없으면 숨긴다. */
+function renderQuoteStats(el, d) {
+    const box = el.querySelector('.tqp-stats');
+    if (!box) return;
+    const s = d && d.quote_stats;
+    // 값마다 색(포트폴리오 관례: 50 위 빨강·아래 파랑, RSI ±20·BB ±50에서 가장 진함), 음수는 '−'(U+2212)로 써서 구분자 '-'와 갈린다
+    const tone = (v, span) => { const t = Math.min(1, Math.abs(v - 50) / span); return `${v >= 50 ? 'up' : 'down'}" style="opacity:${(0.5 + 0.5 * t).toFixed(2)}`; };
+    const tri = (g, span) => (g && ['day', 'week', 'month'].some((k) => g[k] != null))
+        ? ['day', 'week', 'month'].map((k) => {
+            if (g[k] == null) return '<span class="tqp-iv flat">–</span>';
+            const r = Math.round(g[k]);
+            return `<span class="tqp-iv ${tone(r, span)}">${r < 0 ? '−' + Math.abs(r) : r}</span>`;
+        }).join('<span class="tqp-sep">-</span>') : '';
+    const rsi = s ? tri(s.rsi, 20) : '', bb = s ? tri(s.bollinger_pband, 50) : '';
+    const perf = (s && s.performance) || {};
+    // 1주·1개월 소수 1자리, 3개월 정수(포트폴리오 차트 지표 팝업과 같은 자릿수)
+    const pct = (v, dp) => { const x = Number(v.toFixed(dp)); return { text: (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(dp) + '%', cls: x > 0 ? 'up' : x < 0 ? 'down' : 'flat' }; };
+    const cells = [['one_week', '1주', 1], ['one_month', '1개월', 1], ['three_month', '3개월', 0]]
+        .filter(([k]) => perf[k] != null)
+        .map(([k, label, dp]) => { const c = pct(perf[k], dp); return `<span class="tqp-perf"><span class="tqp-perf-label">${label}</span><span class="tqp-perf-chg ${c.cls}">${c.text}</span></span>`; });
+    if (!rsi && !bb && !cells.length) { box.hidden = true; box.innerHTML = ''; return; }
+    const ind = [rsi ? `<span class="tqp-ind">RSI ${rsi}</span>` : '', bb ? `<span class="tqp-ind">BB ${bb}</span>` : ''].join('');
+    box.innerHTML = (ind ? `<div class="tqp-inds">${ind}</div>` : '') + (cells.length ? `<div class="tqp-perfs">${cells.join('')}</div>` : '');
+    box.hidden = false;
+}
+
 function ensureTickerPopover() {
   let el = document.getElementById('ticker-quote-pop');
   if (el) return el;
@@ -412,6 +439,7 @@ function ensureTickerPopover() {
       <span class="tqp-chg flat">…</span>
     </div>
     <div class="tqp-ext" hidden><span class="tqp-ext-label"></span><span class="tqp-ext-chg flat"></span></div>
+    <div class="tqp-stats" hidden></div>
     <div class="tqp-meta"></div>`;
   // 새 탭으로 열리므로 남아 있는 팝오버는 정리한다
   el.querySelector('.tqp-name').addEventListener('click', (e) => {
@@ -500,6 +528,7 @@ function renderTickerPopoverContent(el, companyFallback, quoteTicker, packed) {
     chg.textContent = '';
     chg.className = 'tqp-chg flat';
     meta.textContent = packed.error ? '포트폴리오 서버 연결 실패' : '포트폴리오 시세 미제공';
+    renderQuoteStats(el, null);
     return;
   }
   price.textContent = fmtPrice(d.current_price, d.currency);
@@ -520,6 +549,7 @@ function renderTickerPopoverContent(el, companyFallback, quoteTicker, packed) {
     }
     ext.hidden = false;
   }
+  renderQuoteStats(el, d);
   meta.textContent = '';
 }
 
@@ -536,6 +566,7 @@ async function showTickerQuote(badge) {
   el.querySelector('.tqp-chg').textContent = '';
   el.querySelector('.tqp-chg').className = 'tqp-chg flat';
   el.querySelector('.tqp-ext').hidden = true;
+  renderQuoteStats(el, null);
   el.querySelector('.tqp-meta').textContent = 'portfolio v2';
   positionTickerPopover(el, badge);
   const packed = await fetchPortfolioQuote(quoteTicker);
