@@ -417,7 +417,8 @@ function renderQuoteStats(el, d) {
         .filter(([k]) => perf[k] != null)
         .map(([k, label, dp]) => { const c = pct(perf[k], dp); return `<span class="tqp-perf"><span class="tqp-perf-label">${label}</span><span class="tqp-perf-chg ${c.cls}">${c.text}</span></span>`; });
     if (!rsi && !bb && !cells.length) { box.hidden = true; box.innerHTML = ''; return; }
-    const ind = [rsi ? `<div class="tqp-ind">RSI ${rsi}</div>` : '', bb ? `<div class="tqp-ind">BB ${bb}</div>` : ''].join('');   // RSI·BB 각각 한 줄
+    // RSI·BB 각각 한 줄, 라벨은 오른쪽 정렬·세 값은 두 줄이 위아래로 맞게 한 격자에 둔다(2026-11-07)
+    const ind = [rsi ? `<div class="tqp-ind"><span class="tqp-ind-label">RSI</span>${rsi}</div>` : '', bb ? `<div class="tqp-ind"><span class="tqp-ind-label">BB</span>${bb}</div>` : ''].join('');
     box.innerHTML = (ind ? `<div class="tqp-inds">${ind}</div>` : '') + (cells.length ? `<div class="tqp-perfs">${cells.join('')}</div>` : '');
     box.hidden = false;
 }
