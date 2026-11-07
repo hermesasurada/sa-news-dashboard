@@ -538,16 +538,16 @@ body {
 /* 전광판 지표(RSI·BB·기간 등락, 2026-11-07) */
 .tqp-stats { margin-top: 6px; padding-top: 5px; border-top: 1px solid rgba(148,163,184,.22); display: flex; flex-direction: column; gap: 3px; }
 .tqp-stats[hidden] { display: none; }
-.tqp-inds { display: flex; gap: 10px; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: #cbd5e1; white-space: nowrap; }
-.tqp-perfs { display: grid; grid-template-columns: repeat(3, auto); gap: 8px; justify-content: space-between; }
-.tqp-perf { display: inline-flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+.tqp-inds { display: flex; flex-direction: column; gap: 1px; font-family: var(--mono); font-size: 10.5px; color: #cbd5e1; white-space: nowrap; }
+.tqp-perfs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; row-gap: 1px; }
+.tqp-perf { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; white-space: nowrap; }
 .tqp-perf-label { font-size: 9.5px; color: #8b98a8; }
 .tqp-perf-chg { font-family: var(--mono); font-size: 10.5px; font-weight: 700; }
 .tqp-perf-chg.up { color: #ff6b6b; }
 .tqp-perf-chg.down { color: #4dabf7; }
 .tqp-perf-chg.flat { color: #94a3b8; }
 .tqp-iv.up { color: #ff6b6b; } .tqp-iv.down { color: #4dabf7; } .tqp-iv.flat { color: #94a3b8; }
-.tqp-sep { color: #64748b; margin: 0 1px; }
+.tqp-sep { color: #64748b; margin: 0 2px; font-weight: 700; }
 .tqp-meta {
   margin-top: 3px;
   font-size: 9.5px;

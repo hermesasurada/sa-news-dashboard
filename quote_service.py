@@ -103,7 +103,7 @@ def _quote_stats(raw: dict) -> dict | None:
     out = {
         "rsi": {k: num((src.get("rsi") or {}).get(k)) for k in ("day", "week", "month")},
         "bollinger_pband": {k: num((src.get("bollinger_pband") or {}).get(k)) for k in ("day", "week", "month")},
-        "performance": {k: num((src.get("performance") or {}).get(k)) for k in ("one_week", "one_month", "three_month")},
+        "performance": {k: num((src.get("performance") or {}).get(k)) for k in ("one_week", "one_month", "three_month", "ytd")},
     }
     if not any(v is not None for group in out.values() for v in group.values()):
         return None
