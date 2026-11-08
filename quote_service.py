@@ -72,7 +72,7 @@ def _fetch_raw(ticker: str) -> dict[str, Any] | None:
     # 이 파라미터가 없으면 포트폴리오 기본값(0)이라 정규장 종가만 돌아온다.
     url = (
         f"{settings.PORTFOLIO_API_BASE}/api/chart"
-        f"?ticker={quote(ticker, safe='.-:')}&us_extended=1"
+        f"?ticker={quote(ticker, safe='.-:')}&us_extended=1&lite=1"
     )
     try:
         request = Request(url, headers={"User-Agent": "sa-dashboard/1.0"})
