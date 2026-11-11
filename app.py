@@ -102,6 +102,12 @@ def get_filters():
         data["home_names"] = foreign_tickers.numeric_code_names()
     except Exception:  # noqa: BLE001
         data["home_names"] = {}
+    # 칩 표(OTC·ADR → 자국 상장, 복수 상장 추가 칩)는 증류 기업 등록부에서 만든다(2026-11-11, company_table).
+    try:
+        import company_table
+        data["listings"] = company_table.listings()
+    except Exception:  # noqa: BLE001
+        data["listings"] = {"foreign": {}, "extra": {}}
     return data
 
 

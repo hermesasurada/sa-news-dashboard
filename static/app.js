@@ -68,9 +68,10 @@ async function loadFilters() {
     const data = await fetchJSON('/api/filters');
     TICKER_ALIASES = data.aliases || {};   // db가 단일 소스
     HOME_NAMES = data.home_names || {};
+    applyListings(data.listings);          // 등록부에서 만든 칩 표(company_table)
     try {
       localStorage.setItem(FILTERS_CACHE_KEY,
-        JSON.stringify({ aliases: TICKER_ALIASES, home_names: HOME_NAMES }));
+        JSON.stringify({ aliases: TICKER_ALIASES, home_names: HOME_NAMES, listings: data.listings || {} }));
     } catch (e) {}
   } catch(e) { console.error('필터 로드 실패', e); }
 }
@@ -80,9 +81,10 @@ async function loadFilters() {
 function loadFiltersFromCache() {
   try {
     const cached = JSON.parse(localStorage.getItem(FILTERS_CACHE_KEY) || 'null');
-    if (cached && cached.aliases) {
+    if (cached && cached.aliases && cached.listings) {   // 칩 표(listings)가 없는 옛 캐시는 쓰지 않는다
       TICKER_ALIASES = cached.aliases;
       HOME_NAMES = cached.home_names || {};
+      applyListings(cached.listings);
       return true;
     }
   } catch (e) {}
@@ -150,70 +152,14 @@ const canonTicker = (t) => TICKER_ALIASES[t.toUpperCase()] || t;
 
 // 외국 기업의 미국 티커(대부분 OTC ADR, 일부 NYSE ADR)를 자국 시장 티커로 매핑.
 // 배지 표기와 시세 조회(quote) 모두 이 자국 티커를 사용한다.
-//   byName:true → 기업명 배지 (한국·일본 종목: 삼성전자 / Sony)
+//   byName:true → 기업명 배지 (한국·일본·중화권 종목: 삼성전자 / Sony)
 //   (기본)      → 자국 티커 배지 + 마우스오버 영문 기업명 (그 외 외국 기업)
-const FOREIGN_LISTINGS = {
-  // 🇰🇷 한국
-  SSNLF:{home:'005930.KS', name:'삼성전자', byName:true},
-  HXSCL:{home:'000660.KS', name:'SK하이닉스', byName:true},
-  LGEIY:{home:'066570.KS', name:'LG전자', byName:true},
-  NHNCF:{home:'035420.KS', name:'네이버', byName:true},
-  // 🇪🇺 유럽
-  EADSY:{home:'AIR.PA', name:'Airbus'}, EADSF:{home:'AIR.PA', name:'Airbus'},
-  ADDYY:{home:'ADS.DE', name:'Adidas'},
-  BMWKY:{home:'BMW.DE', name:'BMW'},
-  VWAGY:{home:'VOW3.DE', name:'Volkswagen'},
-  SIEGY:{home:'SIE.DE', name:'Siemens'},
-  // Siemens Energy는 Siemens AG와 별개 회사. 미국 OTC(SMEGF/SMNEY)는 시세가 없어
-  // 프랑크푸르트 ENR.DE로 매핑해야 칩에 가격이 뜬다.
-  SMEGF:{home:'ENR.DE', name:'Siemens Energy'}, SMNEY:{home:'ENR.DE', name:'Siemens Energy'},
-  DLAKF:{home:'LHA.DE', name:'Lufthansa'}, DLAKY:{home:'LHA.DE', name:'Lufthansa'},
-  DHER:{home:'DHER.DE', name:'Delivery Hero'},
-  SAFRF:{home:'SAF.PA', name:'Safran'}, SAFRY:{home:'SAF.PA', name:'Safran'},
-  HESAY:{home:'RMS.PA', name:'Hermès'}, HESAF:{home:'RMS.PA', name:'Hermès'},
-  DUAVF:{home:'AM.PA', name:'Dassault Aviation'},
-  ENI:{home:'ENI.MI', name:'Eni'},
-  NTOIY:{home:'NESTE.HE', name:'Neste'},
-  IBDRY:{home:'IBE.MC', name:'Iberdrola'}, IBDSF:{home:'IBE.MC', name:'Iberdrola'},
-  CAMRF:{home:'CAMX.ST', name:'Camurus'},
-  SAABF:{home:'SAAB-B.ST', name:'Saab'}, SAABY:{home:'SAAB-B.ST', name:'Saab'},
-  RYCEY:{home:'RR.L', name:'Rolls-Royce'}, RYCEF:{home:'RR.L', name:'Rolls-Royce'},
-  BAESY:{home:'BA.L', name:'BAE Systems'},
-  HEINY:{home:'HEIA.AS', name:'Heineken'},
-  RNMBF:{home:'RHM.DE', name:'Rheinmetall'}, RNMBY:{home:'RHM.DE', name:'Rheinmetall'},
-  // 🇯🇵 일본
-  // SONY는 NYSE 정식 상장이지만 자국(도쿄) 표기가 자연스럽고, 포트폴리오도
-  // 6758.T로만 시세를 제공(ADR 'SONY'는 미보유) → 자국 티커로 매핑.
-  SONY:{home:'6758.T', name:'Sony', byName:true}, SNEJF:{home:'6758.T', name:'Sony', byName:true},
-  NTDOY:{home:'7974.T', name:'Nintendo', byName:true}, NTDOF:{home:'7974.T', name:'Nintendo', byName:true},
-  SFTBY:{home:'9984.T', name:'SoftBank', byName:true}, SFTBF:{home:'9984.T', name:'SoftBank', byName:true},
-  NINOY:{home:'7731.T', name:'Nikon', byName:true},
-  HTHIY:{home:'6501.T', name:'Hitachi', byName:true}, HTHIF:{home:'6501.T', name:'Hitachi', byName:true},
-  // 🇨🇳🇹🇼🇭🇰
-  BYDDY:{home:'1211.HK', name:'BYD', byName:true}, BYDDF:{home:'1211.HK', name:'BYD', byName:true},
-  HNHPF:{home:'2317.TW', name:'Foxconn', byName:true},
-  FXCOF:{home:'2354.TW', name:'Foxconn Tech', byName:true},
-  IVBIY:{home:'1801.HK', name:'Innovent', byName:true}, IVBXF:{home:'1801.HK', name:'Innovent', byName:true},
-  LNVGY:{home:'0992.HK', name:'Lenovo', byName:true},
-  // 🌏 기타
-  QABSY:{home:'QAN.AX', name:'Qantas'},
-  SYAAF:{home:'SYR.AX', name:'Syrah Resources'}, SRHYY:{home:'SYR.AX', name:'Syrah Resources'},
-  DBSDY:{home:'D05.SI', name:'DBS Group'},
-  BDRBF:{home:'BBD-B.TO', name:'Bombardier'}, BDRAF:{home:'BBD-B.TO', name:'Bombardier'}, BOMBF:{home:'BBD-B.TO', name:'Bombardier'},
-  KRKNF:{home:'PNG.V', name:'Kraken Robotics'},
-  TAKOF:{home:'FLT.V', name:'Volatus Aerospace'},
-};
-
-// 동일 기업의 복수 상장 — 기본 티커를 '교체'하는 FOREIGN_LISTINGS와 달리,
-// 기본 칩은 그대로 두고 다른 시장 상장 칩을 '추가'로 노출한다.
-// (예: Ferrari — NYSE RACE + 프랑크푸르트 2FE.DE)
-// HXSCL(→000660.KS)·SSNLF(→005930.KS)처럼 FOREIGN_LISTINGS가 이미 자국 상장으로
-// 바꿔주는 티커는 여기에 넣지 않는다(중복 칩).
-const EXTRA_LISTINGS = {
-  RACE: [{ ticker: '2FE.DE', name: 'Ferrari' }],           // NYSE + 프랑크푸르트
-  TSM:  [{ ticker: '2330.TW', name: 'TSMC' }],             // NYSE + 대만
-  SKHY: [{ ticker: '000660.KS', name: 'SK하이닉스', byName: true }],  // 미국 OTC + 한국
-};
+// EXTRA_LISTINGS: 동일 기업의 복수 상장 — 기본 칩은 그대로 두고 다른 시장 상장 칩을 '추가'로 노출한다
+// (Ferrari RACE + 2FE.DE, TSM + 2330.TW, SKHY + 000660.KS).
+// 두 표는 증류 기업 등록부에서 만든다(2026-11-11, company_table.py — 같은 회사 심볼 묶음·칩 이름은 등록부,
+// 어떤 OTC를 바꾸고 어떤 칩을 더할지는 sa 규칙). loadFilters()가 /api/filters의 listings로 채운다.
+let FOREIGN_LISTINGS = {};
+let EXTRA_LISTINGS = {};
 // 숫자 종목코드(2330.TW·688825.SS·005930.KS)는 읽기 어려워 칩에 기업명을 쓴다(2026-10-12 사용자 지시).
 // 이름은 포트폴리오 표시명칭(/api/filters의 home_names) > 매핑 표의 이름 > 기사 회사명(법인 접미사 제거) 순.
 let HOME_NAMES = {};
@@ -232,9 +178,14 @@ function codeLabel(label, quoteTicker, ...names) {
   return n || label;
 }
 // 추가 상장 티커 → 표기 정보 역인덱스 (한국 종목은 기업명 표기 관례를 따름)
-const EXTRA_BY_TICKER = {};
-for (const list of Object.values(EXTRA_LISTINGS)) {
-  for (const ex of list) EXTRA_BY_TICKER[ex.ticker] = ex;
+let EXTRA_BY_TICKER = {};
+function applyListings(listings) {
+  FOREIGN_LISTINGS = (listings && listings.foreign) || {};
+  EXTRA_LISTINGS = (listings && listings.extra) || {};
+  EXTRA_BY_TICKER = {};
+  for (const list of Object.values(EXTRA_LISTINGS)) {
+    for (const ex of list) EXTRA_BY_TICKER[ex.ticker] = ex;
+  }
 }
 
 function extractTickers(a) {
@@ -1218,8 +1169,9 @@ async function init() {
   applyReaderSize();
   // 첫 방문도 필터 목록과 기사 목록을 병렬로 요청한다. 발행 시 티커가 이미
   // 정규화되므로 필터 응답이 카드 첫 렌더를 막을 이유가 없다.
-  loadFiltersFromCache();
-  loadFilters();
+  const fromCache = loadFiltersFromCache();
+  const filtersReady = loadFilters();
+  if (!fromCache) await filtersReady;   // 첫 방문: 칩 표(OTC → 자국 상장) 없이 그리지 않게
   loadPrefs();                     // 로컬에 저장된 검색조건 기본값 적용
   const savedOffset = restoreFromURL(); // URL이 있으면 우선 (공유 링크)
   search(savedOffset);

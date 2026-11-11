@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 from contextlib import closing
 
+import company_table
+
 PORTFOLIO_DB = Path(os.environ.get("SA_PORTFOLIO_DB", str(Path.home() / ".hermes/data/stock_history.db")))
 _catalog_cache = (0.0, [])
 
@@ -63,30 +65,33 @@ def numeric_code_names() -> dict[str, str]:
     return {t: n for t, n in rows if n}
 
 
-# (티커, 정식 영문 기업명, 제목에서 찾을 별칭, 같은 회사를 가리키는 다른 심볼)
-# 티커는 quote_service가 조회할 수 있는 포트폴리오 형식이어야 한다.
-_COMPANIES: list[tuple[str, str, tuple[str, ...], tuple[str, ...]]] = [
-    ("2454.TW", "MediaTek", ("MediaTek",), ("MDTKF", "MDTKY")),
-    ("6981.T", "Murata Manufacturing", ("Murata",), ("MRAAY", "MRAAF")),
-    ("8035.T", "Tokyo Electron", ("Tokyo Electron",), ("TOELY", "TOELF")),
-    ("6857.T", "Advantest", ("Advantest",), ("ATEYY", "ADTTF")),
-    ("6954.T", "Fanuc", ("Fanuc", "FANUC"), ("FANUY", "FANUF")),
-    ("6506.T", "Yaskawa Electric", ("Yaskawa",), ("YASKY", "YASKF")),
-    ("6702.T", "Fujitsu", ("Fujitsu",), ("FJTSY", "FJTSF")),
-    ("2382.TW", "Quanta Computer", ("Quanta Computer",), ("QUCCF",)),
-    ("2308.TW", "Delta Electronics", ("Delta Electronics",), ("DLTLF",)),
-    ("3231.TW", "Wistron", ("Wistron",), ("WICOF", "WICOY")),
+# (티커, 제목에서 찾을 별칭) — 제목 별칭(대소문자 구분)은 sa의 제목 판정 규칙이라 여기 둔다.
+# 정식 영문 기업명과 같은 회사의 다른 심볼(OTC·ADR)은 증류 기업 등록부에서 온다(company_table, 2026-11-11 —
+# 예전엔 이 표에 이름과 심볼 묶음을 직접 적었다). 티커는 quote_service가 조회할 수 있는 포트폴리오 형식이어야 한다.
+_COMPANIES: list[tuple[str, tuple[str, ...]]] = [
+    ("2454.TW", ("MediaTek",)),
+    ("6981.T", ("Murata",)),
+    ("8035.T", ("Tokyo Electron",)),
+    ("6857.T", ("Advantest",)),
+    ("6954.T", ("Fanuc", "FANUC")),
+    ("6506.T", ("Yaskawa",)),
+    ("6702.T", ("Fujitsu",)),
+    ("2382.TW", ("Quanta Computer",)),
+    ("2308.TW", ("Delta Electronics",)),
+    ("3231.TW", ("Wistron",)),
     # 2026-10-12 사용자 지적(sa 9081): 카탈로그 이름이 'CXMT CORPORATION'(전부 대문자)이라 짧은 대문자 약어 제외
     # 규칙에 걸려 별칭이 하나도 없었다. 'CXMT'는 다른 뜻으로 쓰이지 않는 고유 약어라 대소문자 구분해 직접 등록.
-    ("688825.SS", "CXMT", ("CXMT", "ChangXin Memory", "ChangXin"), ()),
+    ("688825.SS", ("CXMT", "ChangXin Memory", "ChangXin")),
 ]
 
-_PATTERNS = [
-    (symbol, name, {s.upper() for s in (symbol, *equivalents)},
-     re.compile(r"(?<![A-Za-z0-9])(?:%s)(?![A-Za-z0-9])"
-                % "|".join(re.escape(a) for a in aliases)))       # 대소문자 구분
-    for symbol, name, aliases, equivalents in _COMPANIES
-]
+
+def _curated_patterns(equivalents: dict) -> list:
+    return [
+        (symbol, company_table.company_name(symbol, symbol), {s.upper() for s in (symbol, *equivalents.get(symbol, ()))},
+         re.compile(r"(?<![A-Za-z0-9])(?:%s)(?![A-Za-z0-9])"
+                    % "|".join(re.escape(a) for a in aliases)))       # 대소문자 구분
+        for symbol, aliases in _COMPANIES
+    ]
 
 
 def missing_from_title(title: str, tickers: list[str]) -> list[tuple[str, str]]:
@@ -95,25 +100,10 @@ def missing_from_title(title: str, tickers: list[str]) -> list[tuple[str, str]]:
     if re.search(r"(?:Yield Shares|Purpose ETF|ETF.*declares|ETF.*dividend)", title or "", re.I):
         return []
     out: list[tuple[str, str]] = []
-    patterns = list(_PATTERNS)
-    curated = {symbol for symbol, *_ in _COMPANIES}
-    # ADR/local equivalents are one issuer, not additional chips.
-    equivalents = {"2330.TW": ("TSM",), "6758.T": ("SONY",),
-                   "005930.KS": ("SSNLF", "SSNNF"), "000660.KS": ("HXSCL", "SKHY", "HXSCF"),
-                   "GOOGL": ("GOOG",), "BRK-B": ("BRK.A", "BRK.B", "BRK-A"),
-                   "AIR.PA": ("EADSY", "EADSF"), "9984.T": ("SFTBY", "SFTBF"),
-                   "285A.T": ("KXIAY",), "2FE.DE": ("RACE",),
-                   "7974.T": ("NTDOY", "NTDOF"), "6501.T": ("HTHIY", "HTHIF"),
-                   "LHA.DE": ("DLAKF", "DLAKY"), "RHM.DE": ("RNMBF", "RNMBY"),
-                   "SIE.DE": ("SIEGY",), "ENR.DE": ("SMEGF", "SMNEY"),
-                   "1211.HK": ("BYDDY", "BYDDF"), "2317.TW": ("HNHPF",),
-                   "7731.T": ("NINOY",), "ADS.DE": ("ADDYY",), "BMW.DE": ("BMWKY",),
-                   "VOW3.DE": ("VWAGY",), "SAF.PA": ("SAFRF", "SAFRY"),
-                   "RMS.PA": ("HESAY", "HESAF"), "AM.PA": ("DUAVF",),
-                   "RR.L": ("RYCEY", "RYCEF"), "BA.L": ("BAESY", "BAESF", "BSP.DE"),
-                   "SAAB-B.ST": ("SAABF", "SAABY"), "D05.SI": ("DBSDY",),
-                   "IFX.DE": ("IFNNY", "IFNNF"), "STM.PA": ("STM",),
-                   "LDO.MI": ("FMNB.DE", "FINMY"), "688825.SS": ("688825",)}
+    # ADR/local equivalents are one issuer, not additional chips. 묶음은 등록부(symbol·other_symbols·other_listings).
+    equivalents = company_table.equivalents()
+    patterns = _curated_patterns(equivalents)
+    curated = {symbol for symbol, _ in _COMPANIES}
     for home, others in equivalents.items():
         if have & {home, *others}:
             have.update({home, *others})

@@ -877,7 +877,7 @@ class ForeignTickerBackfillTests(unittest.TestCase):
 
     def test_backfill_map_symbols_are_portfolio_form(self):
         import foreign_tickers
-        for symbol, _name, aliases, _equiv in foreign_tickers._COMPANIES:
+        for symbol, aliases in foreign_tickers._COMPANIES:      # 이름·다른 심볼은 등록부(company_table)
             self.assertRegex(symbol, r"^[A-Z0-9.]{1,12}$", symbol)
             self.assertTrue(aliases, symbol)
 
