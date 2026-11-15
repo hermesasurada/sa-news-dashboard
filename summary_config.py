@@ -1,7 +1,7 @@
 """요약 모델 설정 — 대시보드 설정(톱니) 팝업이 저장하고 요약 파이프라인이 읽는다.
 
 wm의 요약 모델 설정을 옮겼다(2026-09-26 사용자 지시). 모델 목록은 다른 서비스처럼
-공용 LLM 카탈로그(hermes-llm-log/llm_catalog)의 Claude·GPT(Codex)·Grok 모델이다.
+공용 LLM 카탈로그(hermes-llm-log/llm_catalog)의 Claude·GPT(Codex)·Grok·Gemini(API 키) 모델이다.
 요약 슬롯(칸마다 모델+추론, 1~5칸, 2026-10-12 사용자 지시)을 '라운드로빈'으로 돈다 —
 기사 id로 시작 슬롯을 돌려 나눠 맡고, 실패하면 나머지 모델이 한 번씩 받는다. 기본값은 Grok 4.7 한 칸. 저장은 sa_news.db의 app_settings
 ('summary_config'). 어떤 이유로든 읽지 못하면 기본값으로 요약을 계속한다.
@@ -27,17 +27,18 @@ except Exception:  # noqa: BLE001 — 카탈로그는 부가 정보, 없어도 �
 import db
 
 SETTINGS_KEY = "summary_config"
-PROVIDERS = ("claude", "codex", "grok")
-MODEL_KEYS = {"claude": "claude_model", "codex": "codex_model", "grok": "grok_model"}
+PROVIDERS = ("claude", "codex", "grok", "gemini")   # gemini = API 키(2026-11-16 사용자 지시)
+MODEL_KEYS = {"claude": "claude_model", "codex": "codex_model", "grok": "grok_model", "gemini": "gemini_model"}
 # 요약 슬롯(2026-10-12 사용자 지시, wm·yt와 같은 방식): 칸마다 모델+추론, 1~5칸.
 # 같은 제공사·같은 모델을 여러 칸에 둘 수 있다(그만큼 자주 시작 모델이 된다).
 MIN_SLOTS, MAX_SLOTS = 1, 5
 DEFAULT_SLOTS = [{"model": "grok-4.7", "effort": "default"}]
-_FAMILY_DEFAULTS = {"claude": "claude-opus-5-5", "codex": "gpt-6-sol", "grok": "grok-4.7"}
+_FAMILY_DEFAULTS = {"claude": "claude-opus-5-5", "codex": "gpt-6-sol", "grok": "grok-4.7",
+                    "gemini": "gemini-4-hydrogen"}
 FALLBACK_LEVELS = ("default", "low", "medium", "high")
 # 카탈로그를 못 읽을 때만 쓰는 최소 목록(설정 화면이 비지 않게)
 _FALLBACK_MODELS = {"claude": [("claude-opus-5-5", "Opus 5.5")], "codex": [("gpt-6-sol", "GPT 6 Sol")],
-                    "grok": [("grok-4.7", "Grok 4.7")]}
+                    "grok": [("grok-4.7", "Grok 4.7")], "gemini": [("gemini-4-hydrogen", "Gemini 4 Hydrogen")]}
 
 
 def _ensure(conn: sqlite3.Connection) -> None:
@@ -46,7 +47,7 @@ def _ensure(conn: sqlite3.Connection) -> None:
 
 
 def family(model: str) -> str:
-    """모델 ID → 호출할 CLI 계열(claude/codex/grok). 카탈로그가 알면 카탈로그, 모르면 ID 접두어."""
+    """모델 ID → 호출할 계열(claude/codex/grok CLI, gemini API). 카탈로그가 알면 카탈로그, 모르면 ID 접두어."""
     if llm_catalog:
         try:
             entry = llm_catalog.resolve(model)
@@ -57,6 +58,8 @@ def family(model: str) -> str:
     m = str(model or "").strip().lower()
     if m.startswith("grok"):
         return "grok"
+    if m.startswith("gemini"):
+        return "gemini"
     if m.startswith(("gpt", "codex")):
         return "codex"
     return "claude"

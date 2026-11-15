@@ -82,6 +82,10 @@
     if (model.startsWith('grok')) return 'Grok';
     const gpt = model.match(/^gpt-([\d.]+)(?:-([a-z]+))?$/i);
     if (gpt) return `GPT-${gpt[1]}` + (gpt[2] ? ` ${gpt[2][0].toUpperCase()}${gpt[2].slice(1)}` : '');
+    // gemini-4-hydrogen → 'Gemini 4 Hydrogen', gemini-3.5-flash-lite → 'Gemini 3.5 Flash Lite'(2026-11-16)
+    const gemini = model.match(/^gemini-([\d.]+)((?:-[a-z0-9]+)*)$/i);
+    if (gemini) return `Gemini ${gemini[1]}` + gemini[2].split('-').filter(Boolean)
+      .map((w) => ` ${w[0].toUpperCase()}${w.slice(1)}`).join('');
     return model;
   }
 

@@ -28,7 +28,7 @@ import db  # noqa: E402
 import foreign_tickers
 import ticker_names  # noqa: E402
 import settings  # noqa: E402
-from sa_claude_cli import call_claude, call_codex, call_grok, extract_json  # noqa: E402
+from sa_claude_cli import call_claude, call_codex, call_gemini, call_grok, extract_json  # noqa: E402
 import summary_config  # noqa: E402
 from sa_lock import single_instance  # noqa: E402
 
@@ -261,7 +261,7 @@ def summary_chain(config: dict | None = None, article_id: int | None = None) -> 
     article_id가 없으면 1번 칸부터. 설정 밖 모델로는 가지 않는다.
     """
     cfg = summary_config.normalize(config) if config is not None else summary_config.load()
-    callers = {"claude": call_claude, "codex": call_codex, "grok": call_grok}
+    callers = {"claude": call_claude, "codex": call_codex, "grok": call_grok, "gemini": call_gemini}
     slots = cfg["slots"]
     start = int(article_id) % len(slots) if article_id is not None else 0
     chain, seen = [], set()

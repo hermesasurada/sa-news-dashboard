@@ -60,6 +60,13 @@ try:
 except Exception:
     _cli_minimal = None
 
+# Gemini API 호출기(hermes-llm-log/gemini_api.py, 2026-11-16 사용자 지시 — SA 요약 슬롯에 Gemini 추가).
+# 구독 CLI가 아니라 API 키(~/.hermes/gemini.env)로 부른다. 모듈이 없으면 Gemini 슬롯만 실패하고 다음 슬롯으로 넘어간다.
+try:
+    import gemini_api as _gemini_api
+except Exception:
+    _gemini_api = None
+
 
 def _minimal_args(kind):
     try:
@@ -566,4 +573,35 @@ def call_grok(
         except Exception as e:
             print(f"     Grok CLI 호출 실패: {e}", file=sys.stderr)
             _log_fail(call, f"{type(e).__name__}: {e}")
+            return None, None
+
+
+def call_gemini(
+    prompt: str,
+    timeout: int = settings.SUMMARY_TIMEOUT_SECONDS,
+    *,
+    title: str | None = None,
+    model: str = "gemini-4-hydrogen",
+    reasoning: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Gemini API(키) 호출 → (텍스트, 모델ID). 실패 시 (None, None) — 429(무료 한도) 포함, 다음 슬롯이 받는다.
+
+    reasoning이 default가 아니면 thinkingLevel로 넘긴다. 이력에는 생각 토큰을 포함한 출력 토큰이 남는다.
+    """
+    effort = (reasoning or "default").lower()
+    with _llm_track("gemini", model, purpose="summary", title=title, backend="http",
+                    reasoning=None if effort == "default" else effort) as call:
+        if _gemini_api is None:
+            print("     Gemini 호출 모듈 없음(hermes-llm-log/gemini_api.py)", file=sys.stderr)
+            _log_fail(call, "gemini_api module missing")
+            return None, None
+        try:
+            text, usage = _gemini_api.generate(prompt, model, effort, timeout=timeout)
+            _log_usage(call, usage)
+            return text, model
+        except Exception as e:
+            print(f"     Gemini API 호출 실패: {e}", file=sys.stderr)
+            _log_usage(call, getattr(e, "usage", None) or {})
+            status = "timeout" if isinstance(e, TimeoutError) or "timed out" in str(e) else "error"
+            _log_fail(call, f"{type(e).__name__}: {e}", status=status)
             return None, None
