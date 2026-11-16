@@ -28,6 +28,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import db
+import db_schema
 import gdrive
 import settings
 
@@ -48,14 +49,9 @@ def news_id(url: str | None) -> str | None:
 
 
 def ensure_columns() -> None:
+    """Grok 연동 열이 없으면 만든다 — 정의는 db_schema 한 곳(init_db도 같은 함수를 부른다)."""
     with db.get_conn() as conn:
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(articles)")}
-        for col, ddl in (("grok_requested_at", "TEXT"), ("grok_status", "TEXT"),
-                         ("grok_attempt", "INTEGER"), ("grok_result_mtime", "TEXT"),
-                         # 결과 JSON 원본(작성자·게시 시각·메모 포함) — Grok이 완료 5일 뒤 드라이브에서 지운다(2026-10-12)
-                         ("grok_result_json", "TEXT")):
-            if col not in cols:
-                conn.execute(f"ALTER TABLE articles ADD COLUMN {col} {ddl}")
+        db_schema.add_missing_columns(conn)
 
 
 def _load_state() -> dict:
