@@ -171,7 +171,7 @@ venv/bin/python3 scripts/sa_refresh_login.py
 ```bash
 venv/bin/python3 -m unittest discover -s tests -v
 node tests/test_app_utils.js
-node --check static/app.js
+for f in static/app*.js; do node --check "$f"; done
 curl -fsS http://127.0.0.1:8181/api/health
 ```
 

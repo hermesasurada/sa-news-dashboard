@@ -1,6 +1,8 @@
 """
 SA News Dashboard — FastAPI 앱
 """
+import re
+
 from fastapi import FastAPI, Query, Body, HTTPException
 import lan_guard  # 로컬·Tailscale 외 접속 차단(2026-10-30)
 from fastapi.middleware.gzip import GZipMiddleware
@@ -39,18 +41,26 @@ async def cache_versioned_static_assets(request, call_next):
     return response
 
 
+_ASSET_RE = re.compile(r'/static/([A-Za-z0-9._-]+\.(?:js|css))"')
+
+
+def _stamp_asset(match) -> str:
+    """정적 파일 주소에 mtime 버전을 붙인다(없는 파일은 v=0)."""
+    name = match.group(1)
+    try:
+        v = int((BASE_DIR / "static" / name).stat().st_mtime)
+    except OSError:
+        v = 0
+    return f'/static/{name}?v={v}"'
+
+
 @app.get("/", response_class=HTMLResponse)
 def root():
-    # app.css/app.js에 mtime 기반 ?v= 를 주입 → 파일 변경 시 새로고침만으로 즉시 반영
+    # 정적 파일 주소에 mtime 기반 ?v= 를 주입 → 파일 변경 시 새로고침만으로 즉시 반영
     html = (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
-    # hermes-ui.css는 고정 ?v=7이라 고쳐도 브라우저가 옛 파일을 계속 썼다(2026-09-07)
-    for asset in ("app.css", "hermes-ui.css", "hermes-theme.css", "hermes-theme.js",
-                  "model-selector.css", "model-selector.js", "app-utils.js", "app.js"):
-        try:
-            v = int((BASE_DIR / "static" / asset).stat().st_mtime)
-        except OSError:
-            v = 0
-        html = html.replace(f'/static/{asset}"', f'/static/{asset}?v={v}"')
+    # 이 저장소의 정적 파일(/static/*.js·*.css)은 이름을 나열하지 않고 패턴으로 잡는다 — 캐시가 1년
+    # 고정(immutable)이라 새 파일을 목록에서 빠뜨리면 고쳐도 브라우저가 옛 파일을 계속 쓴다.
+    html = _ASSET_RE.sub(_stamp_asset, html)
     try:   # 공용 글꼴 목록(fonts.js)도 고치면 바로 보이게
         v = int((READER_FONT_DIR / "fonts.js").stat().st_mtime)
     except OSError:

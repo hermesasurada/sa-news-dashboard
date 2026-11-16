@@ -53,7 +53,7 @@ venv/bin/python3 scripts/sa_refresh_login.py
 ```bash
 venv/bin/python3 -m unittest discover -s tests -v
 node tests/test_app_utils.js
-node --check static/app.js
+for f in static/app*.js; do node --check "$f"; done
 ```
 
 테스트는 임시 SQLite DB를 사용하며 운영 DB를 변경하지 않습니다.
