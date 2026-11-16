@@ -22,12 +22,17 @@ Always use plain text output for reliable flag detection (JSON flags bug).
 
 import base64
 import datetime
-import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+from pathlib import Path
+
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)   # sa_url은 repo 루트에 있다
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+from sa_url import strip_utm  # noqa: E402
 
 # himalaya 절대경로 resolve — hermes Desktop 앱이 cron 틱을 잡으면 PATH가
 # launchd 기본값(/usr/bin:/bin:...)이라 /opt/homebrew/bin을 못 봐 FileNotFoundError.
@@ -42,29 +47,6 @@ def decode_b64(s: str) -> str:
             return base64.b64decode(s + '=' * pad).decode('utf-8', errors='ignore')
         except Exception:
             continue
-    return None
-
-
-def strip_utm(url: str) -> str:
-    """article_url에서 utm_content, position 파라미터 제거."""
-    from urllib.parse import unquote
-    decoded = unquote(url)
-    if '?' not in decoded:
-        return decoded
-    base, query = decoded.split('?', 1)
-    params = [p for p in query.split('&') if p and not p.startswith('utm_content') and not p.startswith('position')]
-    return base + '?' + '&'.join(params) if params else base
-
-
-def extract_b64_from_click_url(url: str) -> str:
-    """Extract b64 string from SA email click URL.
-    
-    URL format: https://email-st.seekingalpha.com/click/ID/BASE64/HASH
-    The b64 is the second-to-last path segment.
-    """
-    parts = url.split('/')
-    if len(parts) >= 6:
-        return parts[5]
     return None
 
 

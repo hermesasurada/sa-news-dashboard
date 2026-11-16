@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts import sa_collect
+import collect_filters
 
 
 class PreferredDividendFilterTests(unittest.TestCase):
@@ -16,7 +17,7 @@ class PreferredDividendFilterTests(unittest.TestCase):
         ]
         for ticker, subject in cases:
             self.assertTrue(
-                sa_collect.is_preferred_dividend(subject, ticker),
+                collect_filters.is_preferred_dividend(subject, ticker),
                 msg=f"should filter: {subject}",
             )
 
@@ -30,7 +31,7 @@ class PreferredDividendFilterTests(unittest.TestCase):
         ]
         for ticker, subject in keep:
             self.assertFalse(
-                sa_collect.is_preferred_dividend(subject, ticker),
+                collect_filters.is_preferred_dividend(subject, ticker),
                 msg=f"should keep: {subject}",
             )
 
@@ -50,7 +51,7 @@ class EarningsPreviewFilterTests(unittest.TestCase):
             "Mastercard, Visa earnings to shed light on consumer spending this week",
         ]
         for subject in drop:
-            self.assertTrue(sa_collect.is_earnings_preview(subject), msg=f"should filter: {subject}")
+            self.assertTrue(collect_filters.is_earnings_preview(subject), msg=f"should filter: {subject}")
 
     def test_actual_earnings_results_are_kept(self):
         keep = [
@@ -63,7 +64,7 @@ class EarningsPreviewFilterTests(unittest.TestCase):
             "GOOGL: Earnings scorecard: Communication sector sees 4 of 6 stocks top EPS estimates",
         ]
         for subject in keep:
-            self.assertFalse(sa_collect.is_earnings_preview(subject), msg=f"should keep: {subject}")
+            self.assertFalse(collect_filters.is_earnings_preview(subject), msg=f"should keep: {subject}")
 
 
 class FundHoldingsFilterTests(unittest.TestCase):
@@ -77,7 +78,7 @@ class FundHoldingsFilterTests(unittest.TestCase):
             "ECHO: The Nightview Fund exits Meta, Shopify; buys Las Vegas Sands and MGM in Q2",
         ]
         for subject in drop:
-            self.assertTrue(sa_collect.is_fund_holdings_news(subject), msg=f"should filter: {subject}")
+            self.assertTrue(collect_filters.is_fund_holdings_news(subject), msg=f"should filter: {subject}")
 
     def test_company_and_market_news_are_kept(self):
         keep = [
@@ -89,7 +90,7 @@ class FundHoldingsFilterTests(unittest.TestCase):
             "ANTHRO: Abu Dhabi-based AI investment firm MGX raises $49B for its Fund I",
         ]
         for subject in keep:
-            self.assertFalse(sa_collect.is_fund_holdings_news(subject), msg=f"should keep: {subject}")
+            self.assertFalse(collect_filters.is_fund_holdings_news(subject), msg=f"should keep: {subject}")
 
 
 class CoverageInitiationFilterTests(unittest.TestCase):
@@ -105,7 +106,7 @@ class CoverageInitiationFilterTests(unittest.TestCase):
             "SPCX: SpaceX sinks despite flurry of bullish analyst initiations",
         ]
         for subject in drop:
-            self.assertTrue(sa_collect.is_coverage_initiation(subject), msg=f"should filter: {subject}")
+            self.assertTrue(collect_filters.is_coverage_initiation(subject), msg=f"should filter: {subject}")
 
     def test_other_coverage_and_initiates_are_kept(self):
         keep = [
@@ -123,7 +124,7 @@ class CoverageInitiationFilterTests(unittest.TestCase):
             "STX: Seagate, Western Digital in focus as Wedbush ups price targets",
         ]
         for subject in keep:
-            self.assertFalse(sa_collect.is_coverage_initiation(subject), msg=f"should keep: {subject}")
+            self.assertFalse(collect_filters.is_coverage_initiation(subject), msg=f"should keep: {subject}")
 
 
 class EtfDistributionFilterTests(unittest.TestCase):
@@ -138,7 +139,7 @@ class EtfDistributionFilterTests(unittest.TestCase):
             "QLD: ProShares Ultra QQQ declares quarterly distribution of $0.0607",
         ]
         for subject in drop:
-            self.assertTrue(sa_collect.is_etf_distribution(subject), msg=f"should filter: {subject}")
+            self.assertTrue(collect_filters.is_etf_distribution(subject), msg=f"should filter: {subject}")
 
     def test_company_payouts_and_offerings_are_kept(self):
         keep = [
@@ -156,7 +157,7 @@ class EtfDistributionFilterTests(unittest.TestCase):
             "AAPL: Apple to change iOS app distribution and payments in Brazil",
         ]
         for subject in keep:
-            self.assertFalse(sa_collect.is_etf_distribution(subject), msg=f"should keep: {subject}")
+            self.assertFalse(collect_filters.is_etf_distribution(subject), msg=f"should keep: {subject}")
 
 
 class RoundupFilterTests(unittest.TestCase):
@@ -173,7 +174,7 @@ class RoundupFilterTests(unittest.TestCase):
             "NVDA: Midday Need to Know: SpaceX makes historic debut, Copper rallies & more",
         ]
         for subject in drop:
-            self.assertTrue(sa_collect.is_roundup_news(subject), msg=f"should filter: {subject}")
+            self.assertTrue(collect_filters.is_roundup_news(subject), msg=f"should filter: {subject}")
 
     def test_company_news_is_kept(self):
         keep = [
@@ -184,7 +185,7 @@ class RoundupFilterTests(unittest.TestCase):
             "ABNB: Airbnb CEO Brian Chesky aims to be 'Amazon for services,' adds hotels, car rentals and more",
         ]
         for subject in keep:
-            self.assertFalse(sa_collect.is_roundup_news(subject), msg=f"should keep: {subject}")
+            self.assertFalse(collect_filters.is_roundup_news(subject), msg=f"should keep: {subject}")
 
 
 class ExcludedReasonTests(unittest.TestCase):
@@ -199,7 +200,7 @@ class ExcludedReasonTests(unittest.TestCase):
             ("AAPL", "AAPL: Apple unveils new MacBook Pro lineup", None),
         ]
         for ticker, subject, expected in cases:
-            self.assertEqual(sa_collect.excluded_reason(subject, ticker), expected, msg=subject)
+            self.assertEqual(collect_filters.excluded_reason(subject, ticker), expected, msg=subject)
 
 
 class CollectExitCodeTests(unittest.TestCase):
@@ -261,10 +262,10 @@ class PriceStreakFilterTests(unittest.TestCase):
         ]
         for subject in cases:
             self.assertTrue(
-                sa_collect.is_price_streak_news(subject),
+                collect_filters.is_price_streak_news(subject),
                 msg=f"should filter: {subject}",
             )
-            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "주가연속")
+            self.assertEqual(collect_filters.excluded_reason(subject, "NONE"), "주가연속")
 
     def test_substantive_news_is_kept(self):
         keep = [
@@ -281,7 +282,7 @@ class PriceStreakFilterTests(unittest.TestCase):
         ]
         for subject in keep:
             self.assertFalse(
-                sa_collect.is_price_streak_news(subject),
+                collect_filters.is_price_streak_news(subject),
                 msg=f"should keep: {subject}",
             )
 
@@ -310,7 +311,7 @@ class IndicatorScreenTests(unittest.TestCase):
             "ABBV: Goldman's defensive stocks with quality-growth characteristics",
             "GOOGL: Stocks with rising earnings estimates despite YTD share-price declines",
         ):
-            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "지표스크린", msg=subject)
+            self.assertEqual(collect_filters.excluded_reason(subject, "NONE"), "지표스크린", msg=subject)
 
     def test_single_stock_and_analysis_kept(self):
         for subject in (
@@ -329,7 +330,7 @@ class IndicatorScreenTests(unittest.TestCase):
             "ONON: Stocks that are benefiting from the Hyrox global fitness trend",
             "AMD: Piper Sandler initiates semi stocks with high ratings as market is 'starving for compute'",
         ):
-            self.assertFalse(sa_collect.is_indicator_screen(subject), msg=subject)
+            self.assertFalse(collect_filters.is_indicator_screen(subject), msg=subject)
 
 
 class QuantRatingTests(unittest.TestCase):
@@ -346,7 +347,7 @@ class QuantRatingTests(unittest.TestCase):
             "OKLO: Companhia and Iberdrola lead utilities quant picks ahead of Q3 earnings",
             "GM: General Motors leads consumer discretionary stocks with longest Strong Buy streak",
         ):
-            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "퀀트등급", msg=subject)
+            self.assertEqual(collect_filters.excluded_reason(subject, "NONE"), "퀀트등급", msg=subject)
 
     def test_quantum_and_other_quant_kept(self):
         for subject in (
@@ -358,7 +359,7 @@ class QuantRatingTests(unittest.TestCase):
             "CRWV: CoreWeave inks cloud deal with quantitative trading firm Hudson River",
             "XYZ: Raymond James upgrades Block to Strong Buy on payments momentum",
         ):
-            self.assertFalse(sa_collect.is_quant_rating_news(subject), msg=subject)
+            self.assertFalse(collect_filters.is_quant_rating_news(subject), msg=subject)
 
 
 class AnalystRatingTests(unittest.TestCase):
@@ -377,7 +378,7 @@ class AnalystRatingTests(unittest.TestCase):
             "GOOGL: SA analyst upgrades/downgrades: GOOG, MSFT, NBIS, MU",
             "Eagle Materials upgraded at JPM; Cemex, CRH, Amrize top picks in construction materials",
         ):
-            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "애널리스트", msg=subject)
+            self.assertEqual(collect_filters.excluded_reason(subject, "NONE"), "애널리스트", msg=subject)
 
     def test_company_news_and_other_ratings_kept(self):
         for subject in (
@@ -394,7 +395,7 @@ class AnalystRatingTests(unittest.TestCase):
             "BX: Anthropic may get junk credit rating after its IPO, Blackstone says: report",
             "WMT: Walmart forecasts Q2 EPS of $0.72-$0.74 amid higher fuel costs while reiterating FY sales growth of 3.5%-4.5%",
         ):
-            self.assertIsNone(sa_collect.excluded_reason(subject, "NONE"), msg=subject)
+            self.assertIsNone(collect_filters.excluded_reason(subject, "NONE"), msg=subject)
 
 
 class BrokerPickListTests(unittest.TestCase):
@@ -411,7 +412,7 @@ class BrokerPickListTests(unittest.TestCase):
             "Jefferies updates Franchise Picks list, adding AMZN, APP, MCD and more",
             "WMB: Devon, Williams and Targa lead new top picks at Stifel on higher commodity prices, tighter supply",
         ):
-            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "추천목록", msg=subject)
+            self.assertEqual(collect_filters.excluded_reason(subject, "NONE"), "추천목록", msg=subject)
 
     def test_rating_changes_and_single_picks_kept(self):
         for subject in (
@@ -422,7 +423,7 @@ class BrokerPickListTests(unittest.TestCase):
             "CRM: Salesforce agrees to buy Listen Labs",
             "CTAS: Cintas upgraded to Buy at Oppenheimer",
         ):
-            self.assertFalse(sa_collect.is_broker_pick_list(subject), msg=subject)
+            self.assertFalse(collect_filters.is_broker_pick_list(subject), msg=subject)
 
 
 class MoversListTests(unittest.TestCase):
@@ -432,7 +433,7 @@ class MoversListTests(unittest.TestCase):
             "FICO: Midday Pulse: S&P 500 top intraday losers",
             "GS: S&P 500 gainers: Today\u2019s top performers ranked by Quant",
         ):
-            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "등락목록", msg=subject)
+            self.assertEqual(collect_filters.excluded_reason(subject, "NONE"), "등락목록", msg=subject)
 
     def test_market_wraps_kept(self):
         for subject in (
@@ -441,7 +442,7 @@ class MoversListTests(unittest.TestCase):
             "CEG: Utilities sector slips in Q2 as Vistra leads gainers, Constellation Energy lags",
             "PANW: Wedbush picks winners and losers in the cybersecurity sector",
         ):
-            self.assertFalse(sa_collect.is_movers_list(subject), msg=subject)
+            self.assertFalse(collect_filters.is_movers_list(subject), msg=subject)
 
 
 
@@ -453,7 +454,7 @@ class MonthlyRankingTests(unittest.TestCase):
             "BX: These ten financial stocks posted the biggest one-month losses",
             "XLK: Memory names top September\u2019s top tech performers",
         ):
-            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "월간순위", msg=subject)
+            self.assertEqual(collect_filters.excluded_reason(subject, "NONE"), "월간순위", msg=subject)
 
     def test_sector_reviews_and_news_kept(self):
         for subject in (
@@ -464,7 +465,7 @@ class MonthlyRankingTests(unittest.TestCase):
             "AMZN: S&P 500 ends week lower as AI concerns fuel rotation into defensive sectors",
             "CVX: Top energy gainers, losers as the sector slips in volatile Q2",
         ):
-            self.assertFalse(sa_collect.is_monthly_ranking(subject), msg=subject)
+            self.assertFalse(collect_filters.is_monthly_ranking(subject), msg=subject)
 
 
 class SimplePriceMoveTests(unittest.TestCase):
@@ -481,7 +482,7 @@ class SimplePriceMoveTests(unittest.TestCase):
             "CRWD: Okta (OKTA) rises 11% to set new high",
             "INTC: Intel advances 8%, adding to prior day\u2019s gains",
         ):
-            self.assertEqual(sa_collect.excluded_reason(subject, "NONE"), "주가등락", msg=subject)
+            self.assertEqual(collect_filters.excluded_reason(subject, "NONE"), "주가등락", msg=subject)
 
     def test_moves_with_company_news_kept(self):
         for subject in (
@@ -500,7 +501,7 @@ class SimplePriceMoveTests(unittest.TestCase):
             "SMCI: Top ETF holders of Super Micro watch the stock surge 15%",
             "Intel, AMD lead semiconductor rout as SOXX drops about 10%",
         ):
-            self.assertFalse(sa_collect.is_simple_price_move(subject), msg=subject)
+            self.assertFalse(collect_filters.is_simple_price_move(subject), msg=subject)
 
 if __name__ == "__main__":
     unittest.main()

@@ -27,6 +27,7 @@ from curl_cffi import requests as curl_requests
 
 import sa_login_state
 import settings
+from sa_url import strip_utm
 # playwright는 lazy import (parse_with_playwright_stealth 내부).
 # system python처럼 playwright 미설치 환경에서도 Jina/curl_cffi fallback이 동작하도록 모듈 로드를 막지 않음.
 
@@ -113,17 +114,6 @@ def has_login_cookies(cookies: Iterable[Dict[str, Any]] | None = None) -> bool:
 
 def cookie_header(cookies: Iterable[Dict[str, Any]]) -> str:
     return "; ".join(f"{c['name']}={c['value']}" for c in cookies if c.get("name"))
-
-
-def strip_utm(url: str) -> str:
-    """article_url에서 utm_content, position 파라미터 제거."""
-    from urllib.parse import unquote
-    decoded = unquote(url)
-    if '?' not in decoded:
-        return decoded
-    base, query = decoded.split('?', 1)
-    params = [p for p in query.split('&') if p and not p.startswith('utm_content') and not p.startswith('position')]
-    return base + '?' + '&'.join(params) if params else base
 
 
 def _extract_content(html_content: str) -> str:
@@ -567,7 +557,6 @@ def parse_sa_article(url: str) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    import sys
     url = sys.argv[1] if len(sys.argv) > 1 else "https://seekingalpha.com/news/4594420-mythos-drives-potential-upside-for-cybersecurity-firms-ahead-of-earnings-keybanc"
     print(f"URL: {url}\n" + "-" * 60)
     res = parse_sa_article(url)
