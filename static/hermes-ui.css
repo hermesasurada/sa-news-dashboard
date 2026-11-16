@@ -281,9 +281,8 @@ button, input, select { font-family: inherit; }
     transform: none;
   }
 }
-.app-td .card.unread,
-.app-wm .card:not(.read),
-.app-sa .card.card-unread { border-left: 3px solid var(--ui-accent); }
+/* 안읽음 표시는 제목 앞 작은 점 하나(2026-11-16 사용자 지시: 카드 좌측 색 세로줄은 전형적인
+   'AI 카드' 모양이라 없앤다 — wm·sa·td 같은 스타일). 카드 테두리는 읽음·안읽음이 같다. */
 .app-td .title-row,
 .app-wm .card-title-row,
 .app-sa .card-title-row { padding-left: 0; margin-bottom: 7px; }
@@ -300,12 +299,24 @@ button, input, select { font-family: inherit; }
   font-weight: 650;
 }
 .app-td .unread-dot,
-.app-sa .unread-dot {
+.app-sa .unread-dot,
+.app-wm .card:not(.read) .card-title-row::before {
+  flex: 0 0 6px;
   width: 6px;
   height: 6px;
   margin-top: 7px;
+  border-radius: 50%;
   background: var(--ui-accent);
 }
+/* wm은 점을 마크업 대신 제목행 ::before로 그린다(읽음 토글이 class만 바꾸므로 따라 바뀐다) */
+.app-wm .card-title-row { display: flex; align-items: flex-start; gap: 8px; }
+.app-wm .card:not(.read) .card-title-row::before {
+  content: "";
+  position: static;
+  top: auto;
+  bottom: auto;
+}
+.app-wm .card-title-row .card-title { flex: 1; min-width: 0; }
 .app-wm .card-meta,
 .app-sa .card-meta { margin-bottom: 7px; }
 .app-wm .card-orig,
