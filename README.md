@@ -21,15 +21,17 @@ SA 이메일
 | 경로 | 역할 |
 |---|---|
 | `app.py` | FastAPI 엔드포인트와 정적 파일 제공 |
-| `db.py` | SQLite 스키마, 검색, 상태 전이, 통계 |
+| `db.py` | 기사 조회·검색, 상태 전이, 발행 대기열, 통계 |
+| `db_schema.py` | SQLite 테이블·검색 색인 정의와 열 추가 |
 | `settings.py` | 환경변수 기반 런타임 설정 |
 | `quote_service.py` | portfolio API 시세 응답 정규화 |
 | `scripts/sa_collect.py` | Stage 1: 미읽음 이메일을 pending으로 적재 |
+| `collect_filters.py` | 수집 제외 규칙(제목 판정) |
 | `scripts/sa_summarize_claude.py` | Stage 2: 파싱·요약·발행 |
-| `scripts/sa_claude_cli.py` | Claude/Grok CLI 어댑터 |
+| `scripts/sa_claude_cli.py` | Claude·Codex·Grok CLI와 Gemini API 호출기 |
 | `sa_article_parser.py` | 로그인 세션 우선 SA 본문 파서 |
 | `scripts/sa_refresh_login.py` | headed 브라우저로 `sa_cookies.json` 갱신 |
-| `static/app.js` | 화면 상태와 사용자 동작 |
+| `static/app.js`, `static/app-*.js` | 화면 상태와 사용자 동작(읽는 순서는 `AGENTS.md` 코드 배치) |
 | `static/app-utils.js` | 테스트 가능한 HTML/URL/표시 유틸리티 |
 | `deploy/DEPLOY.md` | Hermes cron 및 launchd 복원 절차 |
 

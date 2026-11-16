@@ -1,53 +1,114 @@
-# Ticker Coverage
+# sa-news 작업 규칙
 
-- Supplement missing title subjects using the local portfolio ticker catalog and curated issuer aliases. Keep ADR/local equivalents deduplicated.
-- Research attribution and explicit comparison references are not automatic subject candidates. Ambiguous short aliases must not be inferred.
-- Keep symbol/name pairs together internally and retain the existing database/API string format for compatibility.
-- Ticker backfills must preserve summaries, read status, publication state and article timestamps, and make a database backup first.
-- **같은 회사 심볼 묶음과 칩 표시 표는 증류 기업 등록부에서 만든다**(2026-11-11 기업 이름 표 통합 7단계, 사용자 지시 — Knowledge Distiller 인계). `company_table.py`가 `~/.hermes/scripts/distill/company_registry.py`를 파일 경로로 불러 회사의 `symbol`·`other_symbols`(OTC·ADR·주식 종류)·`other_listings`를 한 묶음으로 읽는다. 이 묶음이 `foreign_tickers`의 '이미 들어 있음' 판정(옛 `equivalents` 표와 `_COMPANIES` 4번째 칸)과 정식 영문 기업명이고, `/api/filters`의 `listings`로 내려가 `static/app.js`의 `FOREIGN_LISTINGS`·`EXTRA_LISTINGS`가 된다(예전엔 JS 상수). 칩 이름 = 그 상장의 `chip_label`, 없으면 회사 정규 이름. 아시아 상장(.KS·.T·.TW·.HK·.SS·.SZ)은 이름 배지(byName). 시세 조회 상장 = 회사 `symbol`이 해외 상장이면 그것, 미국 심볼이면 첫 해외 상장(Sony SONY → 6758.T). **sa 고유 규칙은 sa에 남는다**: 바꿔 보일 OTC 목록 `company_table.FOREIGN_KEYS`, 칩을 더할 심볼 `EXTRA_KEYS`, 접미사 없는 코드 `BARE_CODES`(688825), 제목 별칭(`foreign_tickers._COMPANIES`, 대소문자 구분), 병합 방향 `db.TICKER_ALIASES`(GOOGL→GOOG, 한국 코드→OTC). **새 OTC·ADR 심볼은 등록부 그 회사의 `other_symbols`에 넣는다** — sa에 표를 다시 만들지 않는다. 등록부를 못 읽으면 `company_table.snapshot.json`(gitignored), 그것도 없으면 빈 표(OTC 심볼 그대로)로 돈다. 첫 방문(캐시 없음)은 칩 표를 받은 뒤 목록을 그린다. 전환 검증: 게시 기사 9,705건의 티커 정규화·제목 보정 차이 0, 칩 표시 차이 11건 — BYD(BYDDY·BYDDF)의 시세 조회 상장이 1211.HK(포트폴리오에 없어 '시세 없음')에서 등록부 심볼 002594.SZ로 바뀐 것뿐(칩 글자 'BYD' 그대로).
+Seeking Alpha 속보 메일을 수집해 한국어로 요약하고 대시보드(8181)에 올리는 서비스다.
+이 문서에는 **지금 지켜야 할 규칙**만 둔다. 도입 계기·소급 건수·백업 이름은 `docs/HISTORY.md`, 운영 절차는 `SKILL.md`·`deploy/DEPLOY.md`를 본다.
 
-## Shared LLM catalog
+## 코드 배치 (2026-11-16 리팩토링)
 
-- Model lists, display names and supported reasoning levels come from `~/projects/hermes-llm-log/llm_catalog.py` and `~/.hermes/data/llm_catalog.json`; manage them through the portal model-management page. Do not add independent UI option lists.
-- Service selections, slot counts, routing and fallback order remain local. Preserve saved selections during catalog outages or model deactivation. New discoveries are candidates until manually enabled.
-- Keep actual historical model IDs unchanged. Catalog readers must not depend on portal availability or trigger inference.
+| 파일 | 맡은 일 |
+|---|---|
+| `scripts/sa_collect.py` | 수집 흐름: 메일 읽기 → pending 적재 → seen 처리 |
+| `collect_filters.py` | 수집 제외 규칙 전부(`is_*`, `excluded_reason`) |
+| `scripts/extract_sa_urls.py` | himalaya 출력에서 기사 주소 추출 |
+| `scripts/sa_summarize_claude.py` | 발행 흐름: 원문 → 요약 → 검증 → DB 발행 |
+| `scripts/sa_claude_cli.py` | Claude·Codex·Grok CLI와 Gemini API 호출기 |
+| `scripts/sa_publish.py` | 원문 받기(`parse`)를 별도 프로세스로 실행 |
+| `sa_article_parser.py`, `sa_login_state.py` | SA 사이트 원문 받기(site 모드) |
+| `grok_bridge.py`, `gdrive.py` | Grok Bot 원문 통로(grok 모드) |
+| `db.py` | 연결, 기사 조회·검색, 읽음·삭제, 발행 대기열 |
+| `db_schema.py` | 테이블·검색 색인 정의와 나중에 더한 열 |
+| `summary_config.py` | 요약 슬롯 설정 |
+| `company_table.py`, `foreign_tickers.py`, `ticker_names.py` | 티커 표·제목 보정·회사명 |
+| `sa_url.py` | 기사 주소 다듬기(`strip_utm`) |
+| `app.py` | FastAPI 엔드포인트 |
+| `static/app*.js` | 화면(아래 순서) |
 
-- **중앙 LLM 카탈로그(`hermes-llm-log/llm_catalog.py`)는 부가 정보다 — 못 불러와도 본업이 멈추면 안 된다**(2026-09-23 사용자 지시로 수정). import는 반드시 `try/except Exception`으로 감싸고 실패하면 `llm_catalog = None`으로 두고 사용처(`_grok_default_model`)가 None·예외를 처리한다. 카탈로그 경로는 `sys.path.append`로 **뒤에** 붙여 이 저장소 모듈을 가리지 않게 한다. 대체 모드의 선택지는 무엇이든 '포함'으로 답하므로 **모델 계열 판단에 선택지 소속(`in …_CHOICES`)을 쓰지 말고** `llm_catalog.resolve()`의 provider → 모델 ID 접두어 순으로 판단한다. 검증은 문법 오류가 있는 `llm_catalog.py`를 PYTHONPATH 앞에 끼워 재현한다(`tests/test_catalog_isolation.py`).
+- **규칙·열·화면 코드를 넣는 자리**: 수집 제외 규칙은 `collect_filters.py`, DB 열 추가는 `db_schema.add_missing_columns`(다른 모듈에서 `ALTER TABLE` 하지 않는다), 화면 코드는 해당 `app-*.js`.
+- **화면 스크립트 순서**: `app-utils.js` → `app.js`(상태·공용) → `app-cards.js`(티커 표·카드) → `app-quote.js`(시세 팝오버) → `app-actions.js`(스와이프·읽음·삭제·토스트) → `app-feed.js`(목록·검색·무한 스크롤) → `app-settings.js`(글꼴·크기·모델) → `app-boot.js`. 전역 범위를 함께 쓰는 일반 스크립트라 읽는 순서가 실행 순서다. **`init()`이 든 `app-boot.js`는 반드시 마지막**이고, 파일을 더하면 `index.html`과 `tests/test_static_layout.py`의 순서 목록에 넣는다.
+- **정적 파일 버전**: `app.root()`가 `/static/*.js`·`*.css` 주소에 mtime 버전을 패턴으로 붙인다. 캐시가 1년 고정(immutable)이므로 버전 없는 주소를 만들지 않는다. 프런트는 새로고침만으로 반영되고, `.py`를 고치면 `launchctl kickstart -k gui/$(id -u)/com.user.sa-dashboard`.
+- **원문 받기는 별도 프로세스로 둔다**(`sa_summarize_claude.parse_article` → `sa_publish.py parse`). 시간 초과 때 브라우저까지 확실히 끊기 위한 장치다.
+- **테스트**: `venv/bin/python -m pytest -q`, `node tests/test_app_utils.js`. 테스트는 이름을 가진 모듈을 직접 부르거나 patch한다(규칙은 `collect_filters`, 흐름은 `sa_collect`). 운영 DB를 건드리지 않는다 — `main()`·`app`을 부르는 테스트는 `db.init_db`를 막거나 `db.DB_PATH`를 임시 DB로 돌린다.
+- 크론 진입점은 `~/.hermes/scripts/sa_{collect,publish,purge}.sh`이고 `deploy/hermes-scripts/`에 사본을 둔다. 둘을 함께 고친다.
 
-- 색상 모드(시스템·라이트·다크, 2026-09-24 사용자 지시): 공용 `static/hermes-theme.js`·`hermes-theme.css`는 sa·td·wm 세 저장소에서 **글자 단위로 같게** 유지한다. 선택값은 localStorage `hermes-theme`, 실제 색은 `<html data-theme="light|dark">`(JS가 시스템 설정까지 풀어 확정)로만 건다. 다크 보정은 `:root[data-theme="dark"]` 선택자로 앱 CSS의 다크 절에 둔다. 스크립트는 `<head>`에서 defer 없이 불러 첫 화면 깜빡임을 막는다.
-- 대시보드 상단은 2줄이다(2026-09-24 사용자 지시): 1줄 = 타이틀 + [설정(⚙️)][색상 모드][휴지통], 2줄 = 검색어 + 검색·정렬방향·초기화·미읽음(눈 아이콘 안에 안읽음 건수). **정렬 기준은 이메일 시간 고정**(2026-10-01 사용자 지시로 정렬조건 버튼 삭제), 통계줄의 '대기 N건'·'안읽음 N건' 배지도 삭제(안읽음은 눈 아이콘으로 이동). 결과 건수 줄('45건 (1~15번째)')도 숨긴다(`#stats`에 hidden — JS 갱신 경로는 그대로). 티커 선택 버튼·모달은 삭제했다(검색어로 티커도 찾는다, API의 ticker 파라미터는 남김). 모바일(≤680px)은 버튼 아이콘만. 요약 본문 글꼴 선택은 별도 버튼·모달 없이 설정 창 안 '요약 본문 글꼴' 절에 있다(2026-09-30 사용자 지시, wm과 같은 구성).
-- 요약 본문 글자 크기(2026-11-05 사용자 지시, xw와 같은 방식): 설정 창 '요약 본문 글자 크기' 절에서 12~17(기본 13, 표기 없음). localStorage `saReaderSize` → body `--reader-scale`(값/13), `.card-details`·`.card-summary`만 바뀌고 제목·칩·화면 틀은 그대로다. 실제 기본 크기는 공용 `hermes-ui.css`의 12.75px(app.css의 14px 규칙은 이 규칙에 진다)이라 `app.css`의 `body.app-sa` 규칙이 12.75px에 비율을 곱한다 — 기본 화면은 그대로이고 버튼 숫자는 근사값이다.
-- 상단(타이틀+검색조건)은 스크롤해도 고정된다(2026-09-24 사용자 지시): 두 줄을 `.hermes-gnb`로 감싸고 스타일·밑줄 처리는 공용 hermes-theme.css/js가 맡는다. 붙어 있을 때 밑줄 아래 10px 여백. 조상에 `overflow-x: hidden`을 두면 sticky가 깨지므로 `clip`을 쓴다. 고정 영역 z-index(40)는 모달보다 낮게 유지.
-- 요약 모델 설정(2026-09-26 사용자 지시, wm 설정 팝업 이식): 헤더 톱니 → 공용 `static/model-selector.{js,css}`(wm·yt와 글자 단위로 같게 유지) **슬롯 모드**(2026-10-12 사용자 지시, 그 전엔 계열 모드): 칸마다 모델+추론, 1~5칸, 슬롯 추가·삭제, 같은 모델 여러 칸 가능(그만큼 시작 비중↑). 저장 형식은 `{"slots": [{model, effort}]}`이고 옛 형식(providers·*_model·reasoning)은 읽을 때 슬롯으로 옮기며, 옛 필드는 슬롯에서 만들어 읽기 호환용으로만 둔다(POST는 slots만 받음). 계열은 `summary_config.family()`(카탈로그 provider → ID 접두어). 저장은 `sa_news.db` `app_settings.summary_config`, 규칙은 `summary_config.py`. 모델 목록은 다른 서비스처럼 **공용 LLM 카탈로그**(Claude·GPT(Codex)·Grok·Gemini, 켜진 모델 + 저장된 기존 모델 보존). **Gemini는 구독 CLI가 아니라 API 키**(2026-11-16 사용자 지시): `call_gemini`가 `hermes-llm-log/gemini_api.py`로 부르고(키 `~/.hermes/gemini.env`, 추론은 thinkingLevel, backend=http), 무료 티어 한도(429)·실패는 다음 슬롯이 받는다. 무료 티어는 입력이 구글 학습에 쓰이므로 SA 공개 기사 요약에만 쓴다. 카드 표기는 'Gemini 4 Hydrogen'. 슬롯은 **라운드로빈**(2026-10-12 사용자 지시, 그 전엔 순차 폴백): 기사 id로 시작 슬롯을 돌려(`id % 칸 수`) 요약을 나눠 맡고, 시작 슬롯이 실패하면 나머지 슬롯이 순서대로 받되 같은 모델은 한 번만 부른다(wm과 같은 방식, '사용 안 함' 건너뜀, 기본은 Grok 4.7 한 칸). 파이프라인은 `sa_summarize_claude.summary_chain(article_id=…)`이 설정 안의 모델만 호출하고 그 밖 모델로는 가지 않는다. **성공은 응답 문자열이 아니라 JSON·출력 검증·필수 필드까지 통과한 것**이고, 어느 단계든 실패하면 다음 순번으로 넘긴다(`_checked_summary`, Astra 검토 2026-09-26). 카탈로그 장애 중에도 저장된 모델은 선택 목록에 남긴다. 설정 팝업의 자동 저장은 한 줄로 세워 보내고, 더 새 변경이 줄 서 있으면 앞 응답으로 화면을 덮지 않으며, 실패하면 서버가 마지막으로 확인한 상태로 되돌린다(wm과 같은 방식). 호출: Claude `--model`/`--effort`, Codex `exec -m`·`model_reasoning_effort`(`default`면 플래그 없음), Grok `-m`/`--reasoning-effort`. 옛 `settings.SUMMARY_PRIMARY`는 삭제.
-- **CLI 최소 구성**(2026-09-30 사용자 지시, wm·yt·sa·td 공통): 텍스트 전용 Claude·Codex CLI 호출에는 `hermes-llm-log/cli_minimal.py`의 인자를 붙여 CLI 자체 시스템 프롬프트·도구 정의를 걷어낸다(해당 호출에만 적용, CLI 전역 설정은 그대로). 입력 토큰 Claude -81%·Codex -50%, 블라인드 품질 동등. 모듈이 없거나 실패하면 빈 인자라 예전 구성으로 돈다. 비상 스위치 `HERMES_CLI_MINIMAL=0`. 이미지 판독처럼 도구가 필요한 호출에는 붙이지 않는다.
-- 수집 제외 '지표스크린'(2026-10-08 사용자 지시, 9348): SA 퀀트 화면을 옮긴 종목 나열 기사(모멘텀 등급 상·하위, 공매도 상·하위, 과매수·과매도 종목, 퀀트 등급 상위, `stocks under $N`)는 `scripts/sa_collect.is_indicator_screen`으로 수집하지 않는다. 단일 종목의 공매도·과매도 언급과 질문형 분석은 남긴다(복수형 stocks·순위 표현이 있을 때만 목록으로 판정). 도입 시점 기존 기사 7,871건 중 67건이 해당. 2026-10-09 퀀트 요인 등급 목록(EPS 수정·성장·밸류에이션·수익성·배당 등급, 기사 8951)도 추가 — 복수 종목 표현(stocks·peers·among·lead)이 함께 있을 때만, 누적 82건. 2026-10-23 제목에 등급 낱말 없는 같은 목록('○○, ○○ lead list of undervalued healthcare stocks', 기사 9942 — 본문은 밸류에이션 등급 7종목)도 추가: `lead … (list of|undervalued|overvalued|top-rated|cheapest) … stocks`일 때만 — 실적·섹터 뉴스에 퀀트 순위가 곁들여진 기사('Top-rated travel stocks gain spotlight amid … rally' 1673, Ford 실적 4420)는 남는다. 전체 9,841건 중 새로 걸리는 건 9942와 이미 삭제된 9236뿐이었고, 9942는 휴지통으로 옮겼다. 2026-10-28 제목이 '(N개)(형용사)(섹터) stocks with/that …'로 시작하는 목록(기사 10176 'Undervalued industrial stocks with strong year-over-year revenue growth')도 추가 — 사용자가 전에 지운 8316·8409·9345·9584와 같은 꼴. 앞머리가 목록 이름일 때만이라 기사 문장 속 'stocks with'(7193 Piper Sandler)와 테마 기사 'Stocks that are benefiting …'(7022)는 남는다. 새로 걸린 게시 기사는 6636 하나여서 휴지통으로 옮겼다.
-- 수집 제외 '추천목록'(2026-10-28 사용자 지시, 10156 'Oppenheimer flags 16 Buys …'): 증권사·기관이 Buy 목록·best ideas·conviction·top picks 명단을 내거나 갱신한 기사는 `scripts/sa_collect.is_broker_pick_list`로 수집하지 않는다. 등급 상·하향·커버리지 개시와 함께 나온 top picks와 단일 종목 'top pick'(단수)은 남긴다. 도입 때 전체 10,170여 건 중 10건이 걸렸고(2건은 사용자가 이미 지운 8534·9633), 게시 중이던 8건(203·2620·2636·3090·7198·8539·10156·10173)은 휴지통으로 옮겼다.
-- 수집 제외 '등락목록'(2026-10-28 사용자 지시, 10170·10171): 'Midday Pulse: S&P 500 top intraday gainers/losers'와 퀀트 순위판 'S&P 500 gainers: Today's top performers ranked by Quant'처럼 종목명·등락률만 나열하는 자동 생성 목록은 `scripts/sa_collect.is_movers_list`로 수집하지 않는다(사용자가 그 전에도 9219·9462 등 11건을 직접 지웠다). 섹터·주간 시황 기사의 'leads gainers'·'week's financials wrap'은 남긴다 — 제목 앞머리가 목록 이름(Midday Pulse, `S&P 500 gainers:`)일 때만 판정. 도입 때 21건이 걸렸고 게시 중이던 10건은 휴지통으로 옮겼다.
-- 수집 제외 '월간순위'(2026-10-31 사용자 지시, 10656 'Consulting, defense stocks feature among October's top industrials gainers'): SA 월간 정기물인 섹터별 한 달 등락률 상위 종목 순위('{월}'s top … gainers/losers', '… stock gainers in {월}', 'stocks posted the biggest one-month gains/losses')는 `scripts/sa_collect.is_monthly_ranking`으로 수집하지 않는다. 월 이름·한 달 등락이 순위 기준일 때만 판정하므로 분기 섹터 리뷰('sector slips in Q2 as … leads gainers', 'Top energy gainers, losers … Q2')·주간 시황('Nasdaq weekly decliners')·월간 지수 기사('Nasdaq tanks 5% in October')는 남는다. 도입 때 전체 10,531건 중 3건(8503은 이미 삭제)이 걸렸고 게시 중이던 10656·10676은 휴지통으로 옮겼다.
-- 수집 제외 '주가등락'(2026-10-31 사용자 지시, 10696~10702 기술주 급락일 종목별 기사): 회사 고유 재료 없이 등락폭만 전하는 기사('Dell slumps 12% as tech sector gets hammered', 'Tech drop sends Datadog lower by 12%', 'CoreWeave surges 8%, bouncing back from recent weakness', '… rallies 12% to set new high')는 `scripts/sa_collect.is_simple_price_move`로 수집하지 않는다. 판정은 화이트리스트 방식: 등락 문구(동사+N%) 앞은 회사명(대문자 낱말 1~6개)과 일반 낱말, 뒤는 `_PM_GENERIC`(업종·시장 분위기, 최근 흐름, 신고가·신저가 낱말)뿐이어야 한다. 재료 낱말이 하나라도 있으면 남긴다 — 실적·가이던스('Intel plunges 29% on weak Q4 guidance'), 등급('on Barclays downgrade'), 자금조달 우려('amid financing concerns'), 행사·제품, 질문형 분석('What's next'). 지수·원자재·업종 시황도 앞부분 검사에서 빠진다. 블랙리스트(재료 낱말 금지) 방식은 'Cybercab event'·'BofA note' 같은 고유 재료를 계속 놓쳐서 버렸다. 일반 낱말을 늘릴 때는 전체 기사에 다시 돌려 새로 걸리는 제목을 눈으로 확인할 것. 도입 때 전체 10,531건 중 91건이 걸렸고(2건은 이미 '주가연속'으로 삭제), 게시 중이던 89건은 휴지통으로 옮겼다.
-- 수집 제외 '퀀트등급'(2026-11-03 사용자 지시, 10758 "Intel's Quant Rating plunges to 3.26 …"): SA 퀀트 등급·순위가 주제인 기사는 `scripts/sa_collect.is_quant_rating_news`로 수집하지 않는다 — 단일 종목 Quant Rating 상·하향(6534 Nvidia), 뉴스에 곁들인 퀀트 순위('… top Quant list' 10380, 'rank on quant' 9008, 'Quant Holds' 2933), 'longest Strong Buy streak' 목록(1269)까지. 지표스크린은 복수 종목 목록만 잡아서 이것들이 빠졌다. SA 퀀트 용어(Quant rating·rankings·metrics·list·picks·snapshot·Holds, quant-rated, rank on quant)가 제목에 있을 때만 판정하므로 quantum·Quanta·Quantinuum·'Quant giant Jane Street'·'Quant's QNT token'·증권사 Strong Buy 상향은 남는다. 도입 때 게시 중이던 12건을 휴지통으로 옮겼다(백업 `~/.hermes/backups/sa_news.quant-rating-backup-20261103020935.db`).
-- 수집 제외 '애널리스트'(2026-11-03 사용자 지시, 10818 'Lumentum upgraded as market reaction to Marvell deal appears overdone'): 증권사 등급 상·하향·목표가 변경·등급 유지(reiterate·keeps)·'SA analyst upgrades/downgrades' 같은 단순 애널리스트 리포트 기사는 `scripts/sa_collect.is_analyst_rating_news`로 수집하지 않는다 — 예전엔 '견해 변화'라며 남겼던 것을 사용자가 뒤집었다(커버리지 개시는 그대로 '커버리지개시'). 판정: 제목을 ';'로 나눠 절마다 등급 문구를 찾고, **등급 문구 앞이나 등급 없는 다른 절에 회사 고유 재료(실적·Q1~Q4·가이던스·계약·deal·인수·임상·FDA·출시 등 `_AR_MATERIAL_RE`)가 있으면 남긴다**('Apple slides on Q3 results, guidance; GF Securities downgrades', 'Moderna surges on trial win …; William Blair upgrades'). 등급 문구 **뒤의** 이유('on Marvell deal', 'after earnings miss')는 리포트 근거라 제외 대상이다. 'upgrade/downgrade' 낱말·'Buy rating'·'keeps/cuts … rating'은 증권사·애널리스트 이름(`_AR_BROKER_RE`)이 함께 있을 때만 인정해 상품 업그레이드(Ghost Bat drone, Acrobat AI upgrade, F-15 upgrade contract)는 남고, 신용·ESG 등급(Fitch·Moody's·MSCI·credit)도 남는다. 새 증권사 이름이 안 걸리면 `_AR_BROKER_RE`에 더한다. 지수·자산배분 전략(Wells Fargo S&P 500 목표가, Goldman 글로벌 주식 비중확대)도 걸린다. 등급 없이 애널리스트 견해만 전하는 기사('Amazon's cloud to deliver strong Q2—TD Cowen', 'BofA highlights market breadth')는 이번 범위가 아니다. 도입 때 게시 중이던 9,346건 중 299건을 휴지통으로 옮겼다(백업 `~/.hermes/backups/sa_news.analyst-rating-backup-20261103075833.db`).
-- 수집 제외 규칙 소급 정리(2026-10-28 사용자 승인): 규칙 도입 전에 들어와 게시 중이던 옛 기사 중 `excluded_reason`에 걸리는 134건(지표스크린 42·주가연속 19·라운드업 19·커버리지개시 19·실적프리뷰 17·ETF배당 8·펀드공시 8·우선주배당 2)을 휴지통으로 옮겼다. 규칙을 새로 넣거나 넓힐 때는 게시 중인 기사에 미리 돌려 보고, 걸리는 기사는 휴지통으로 옮기는 것까지 한 번에 한다.
-- **제목 앞 티커는 기본으로 티커칩에 넣는다**(2026-10-08 사용자 지시, 9360 'FDX: … upgrades XPO'). SA 알림 제목 앞 티커는 팔로우해서 기사가 온 종목이라, 요약 모델이 기사 대상만 뽑아도(XPO) 뒤에 붙인다(`sa_summarize_claude.merge_title_prefix` — 모델 티커 순서 유지, 클래스 별칭 GOOGL/GOOG는 하나로, 회사명은 `ticker_names`로 같은 자리에). ETF(QLD·SOXX)·비상장 표기(ANTHRO·OPENAI)도 그대로 넣는다. 도입 시 게시 기사 956건 소급(백업 `sa_news.prefix-backup-20261008100437.db`).
-- **카드의 `ID:` 번호는 DB 기사 ID(`articles.id`)다**(2026-10-08 사용자 지적). 그 전에는 메일 ID(`email_id`, 예: 9364 = 기사 8885)를 '기사 ID'로 보였으므로, 2026-10-08 이전에 사용자가 말한 sa 번호는 메일 ID로 찾는다. 메일 ID는 번호 툴팁에 남는다.
-- 안읽음만 보기에서 읽음 처리(눈 버튼·스와이프)로 카드가 사라지면 '읽음 처리했습니다 · 되돌리기' 토스트를 6초 띄운다(2026-10-09 사용자 지시, wm과 같은 방식). 되돌리기는 `PATCH /api/articles/{id}/read {is_read:false}` 후 목록 새로고침. 삭제 되돌리기와 같은 `showToast` 경로.
-- **안읽음 표시 = 제목 앞 작은 점**(2026-11-16 사용자 지시 'wm·sa·td 카드 좌측의 전형적인 AI 스러운 카드디자인 고쳐줘, 모두 같은 스타일로'): 안읽음 카드의 좌측 3px 색 세로줄(`border-left`)을 없애고 제목 앞 6px 강조색 점 하나로 통일했다(공용 `hermes-ui.css` — 세 벌 모두 같은 규칙). 카드 테두리는 읽음·안읽음이 같다. 좌측 세로줄·캡슐 바·inset 줄 강조를 다시 넣지 말 것.
-- SA 원문은 **영문으로 고정**한다(2026-10-10): 계정 언어가 `ko`면 SA가 한국어 AI 번역판을 주는데, 그 페이지에서는 로그인해도 본문 앞부분만 뽑혔다(8/26부터 원문이 평균 ~500자 미리보기로 떨어진 것과 같은 현상, 사용자 브라우저에서는 영문 전문이 보임). `load_sa_cookies`가 `user_locale`을 `en`으로 바꾸고, Playwright는 `locale="en-US"`, SA API 호출도 `Accept-Language: en-US`. 확인 요청을 연달아 보내면 SA 봇 차단(PerimeterX 'Press & Hold', 403)이 걸린다 — 우회하지 말고 풀릴 때까지 기다리거나 사용자가 `scripts/sa_refresh_login.py`로 직접 통과한다.
-- SA 봇 차단 대응(기사 간격 60~90초·확인 화면 감지 시 쿨다운·기사당 요청 1회, `sa_block_guard`)은 2026-10-10 같은 날 사용자 지시("기존 방식으로 되돌려")로 **되돌렸다** — 기사 간격 25초, 차단을 감지해 멈추는 장치 없음. 쿨다운을 넣은 뒤 1시간마다 다시 시도할 때마다 곧바로 다시 막혀 새 기사가 계속 대기했다. 영문 원문 고정(`user_locale=en`)은 별개 수정이라 유지한다.
-- **SA 로그인 수집은 기본 끔**(2026-10-11 사용자 결정): 로그인 쿠키를 붙인 자동 수집이 거듭 봇으로 판정돼(PerimeterX) 유료 계정 정지 위험이 있다. `settings.USE_LOGIN_SESSION` 기본값 `SA_USE_LOGIN=0` → 계정 쿠키를 쓰지 않고 비로그인 경로(API 미리보기·Playwright·curl)로만 받으며 품질 기준은 미리보기용(`DEGRADED_MIN_CHARS` 200자, 잠금 허용). 이 모드에서는 degraded가 아니어도 비로그인 경로를 연다(`parse_sa_article`). 요약은 미리보기(~500자) 수준이다. 로그인 경로 테스트는 `USE_LOGIN_SESSION=True`로 명시한다.
-- **원문은 Grok Bot이 가져온다**(2026-10-11 사용자 결정, `settings.SOURCE_MODE='grok'` 기본) — sa는 SA 사이트에 접속하지 않는다(미리보기 요청도 없음). 통로는 ses1430@gmail.com 구글 드라이브의 `SA Grok` 폴더(`gdrive.py`, 설치형 OAuth `drive.file`+`drive.readonly`, 토큰 `~/.hermes/gdrive_token.json`, 폴더 id는 `.grok_bridge_state.json`). 흐름(`grok_bridge.py`, sa-publish 배치 시작 때 `run_grok_batch`가 호출): ① pending 기사 중 미요청분의 news_id·url을 `requests/req_<시각>.json`으로 올림(SA 기사 링크가 없으면 즉시 failed) ② Grok Bot이 `results/sa_<news_id>.json`을 올림 — **저작권·약관 때문에 Grok은 전문을 복제하지 않는다 — `body` 필드는 유지하되 Grok이 기사 내용을 최대한 자세히(수치·이름·일정·발언 주체 포함, 짧은 인용 한두 문장까지) 자기 문장으로 옮겨 담는다(사용자 결정)** ③ sa가 결과를 확인해 title·subtitle·body(보조로 summary·key_facts·quotes도 받음)를 원문 자리(source_text, method `grok`/`grok_partial`)에 저장하고, 기존 요약 파이프라인(저장 본문 재사용)이 헤드라인·요약·티커를 만든다. 판정: full → 요약, partial은 3회차일 때만 요약, failed 3회차·요청 후 `GROK_TIMEOUT_HOURS`(48) 무응답 → failed. Grok은 교체 시 새 파일을 올리고 옛 파일을 휴지통에 보내므로 같은 이름이 둘이면 최신 modifiedTime을 쓴다. 요청 파일은 7일 뒤 sa가 지운다. 수동 `--id` 재처리도 grok 모드에서는 저장 원문만 쓴다. 예전 직접 수집은 `SA_SOURCE_MODE=site`.
-- Grok 연동 도입 시 소급(2026-10-11 사용자 지시): 10/07~10/10 기사 30건(Grok Bot이 시험으로 정리한 문서 기준)을 새 연동과 같은 방식으로 다시 요약했다 — Grok 내용(원제 + 핵심 불릿, 작업 메모 줄 제외)을 원문 자리(source_text, method `grok`)에 넣고 `sa_summarize_claude.py --id`로 헤드라인·요약·티커를 새로 만들었고 안읽음으로 두었다. 그 전에 잠시 Grok 불릿을 요약에 직접 덮어쓴 상태(`summary_model='grok-bot'`)가 있었으나 모두 이 방식으로 대체됐다. 규칙: Grok이 일부만 읽은 기사(테슬라 #9032, T-Mobile #9050)는 Grok 내용 뒤에 기존 기사 앞부분을 `[기사 앞부분]`으로 붙여 `grok_partial`로 요약하고(수치가 앞부분에만 있었다), Grok 내용이 원문 최소 길이(200자)에 못 미치는 짧은 기사(TRex Bio #9054)도 기존 저장 텍스트를 붙인다. 백업: `sa_news.grok-overwrite-backup-*.db`(덮어쓰기 전), `sa_news.grok-resum-backup-*.db`(다시 요약 전). Grok 문서에만 있고 sa에 없는 기사(애널리스트 콜 주간 정리 — 수집 단계에서 제외)와 사용자가 삭제한 기사(#9059)는 건드리지 않았다.
-- Grok 결과 원본 보관(2026-10-12): 사용자가 Grok Bot에 '완료된 요청 파일은 지우고, 완료 결과는 5일 지나면 지운다'를 넣었다. 그래서 sa는 결과를 읽을 때 JSON 원본 전체를 `articles.grok_result_json`에 남긴다(작성자·게시 시각·Grok 메모·가져온 시각 포함, 상태와 무관). 원본이 비어 있는 처리 완료 기사는 동기화마다 드라이브에서 받아 채운다(`backfill_result_json`, 도입 시 19건). sa는 요청·결과가 드라이브에서 사라져도 DB(`grok_requested_at`·`grok_status`)로 판단하므로 영향이 없다. 결과는 30분마다 확인하니 5일 안에 반드시 읽힌다.
-- 카드 번호 클릭 복사는 서비스 약칭을 앞에 붙인다(2026-10-12 사용자 지시): `sa 1234` 형식 — 다른 세션·대화에 붙여 넣을 때 어느 서비스 번호인지 바로 알 수 있게. 화면 표시(#번호)는 그대로.
-- CXMT(창신메모리, 상하이 상장 688825.SS)는 `foreign_tickers._COMPANIES`에 직접 등록(2026-10-12 사용자 지적, sa 9081): 포트폴리오 카탈로그 이름이 'CXMT CORPORATION'(전부 대문자)이라 짧은 대문자 약어 제외 규칙에 걸려 별칭이 없었다. 별칭 'CXMT'·'ChangXin Memory'·'ChangXin'(대소문자 구분). 칩 표기는 숫자 코드 대신 'CXMT', 시세 조회는 688825.SS. 제목에 CXMT가 있던 게시 기사 9건 소급(백업 `sa_news.cxmt-backup-*.db`, #6603은 이미 '688825'로 있어 제외). 같은 점검에서 카탈로그가 커지며 생긴 다른 후보 75건(Ford-class→F 같은 오탐 포함)은 적용하지 않았다.
-- **숫자 종목코드 칩은 기업명으로 표기**(2026-10-12 사용자 지시, 2330.TW→TSMC, 688825.SS→CXMT): `/api/filters`가 포트폴리오 `tickers`의 숫자 시작 코드→표시명(`foreign_tickers.numeric_code_names`, crypto 제외)을 `home_names`로 주고, `app.js` `codeLabel`이 숫자 코드 라벨만 그 이름으로 바꾼다(없으면 기사 회사명에서 Inc./Co., Ltd. 등 접미어를 뗀 이름, 22자 넘으면 말줄임). 영문 티커(NVDA 등)는 그대로. 시세 조회·검색은 계속 코드로.
-- 티커 후보 75건 점검(2026-10-12 사용자 지시): 오탐 25건은 `missing_from_title` 가드로 막았다 — Leonardo DRS→Leonardo(FMNB.DE도), `X-class/-like` 복합어(Ford-class, Reddit-like), `former`·`aboard` 앞말, ClearBridge 'OO Strategy'(MSTR은 앞에 대문자 단어가 오면 제외), Mitsubishi Heavy/UFJ 등 계열사(8058.T는 미쓰비시상사), Eaton Fiber/Vance, Reliance Industries(RS는 Reliance, Inc.), Merck KGaA가 있으면 MRK 제외, 다른 Brookfield 상장사(BAM 등)가 있으면 BN 제외, 'for Airbus aircraft', BlackRock 발언·펀드 언급(BLK는 은행처럼 실적·주식 등 동사가 뒤따를 때만). 동일 발행사 묶음에 BAE(BA.L·BAESF·BSP.DE), Leonardo(LDO.MI·FMNB.DE), CXMT(688825.SS·688825) 추가. 나머지 50건 중 49건 소급(백업 `sa_news.ticker-backup-20261012200607.db`), #4396(Bloom의 파트너가 Brookfield Asset Management라 BN은 부정확)은 `--exclude`로 제외. `scripts/backfill_ticker_subjects.py --exclude id,…`는 사람이 검토해 뺀 건을 적용에서 제외한다.
+## 수집 제외 규칙
 
-- 카드의 요약 모델 표기는 **제공사명 없이 모델명만**(2026-10-12 사용자 지시): `claude-sonnet-5-5` → 'Sonnet 5.5', `claude-opus-4-8` → 'Opus 4.8', `grok-4.7` → 'Grok 4.7', `gpt-6.1-sol` → 'GPT-6.1 Sol'(`app-utils.js` `formatSummaryModel`). 날짜 꼬리(-20250929)는 뗀다.
-- **Grok 결과의 `final` 필드**(2026-10-13, Grok Bot 제안): 결과 파일에 `final`(true/false)이 있으면 sa는 그것만 보고 판단한다 — true면 Grok이 더 시도하지 않으므로 partial은 읽은 만큼으로 요약(`grok_partial`), failed는 실패 처리, false면 기다린다(`grok_bridge._is_final`). `reason`(premium_only·truncated·retries_exhausted 등)은 실패 사유에 함께 남긴다. `final`이 없는 예전 형식은 `attempt>=3` 규칙 그대로. 계기: 프리미엄 전용 기사 3건(UNH #9161·INTC #9096·AXTI #9094)을 Grok은 재시도 없이 partial로 끝냈는데 파일엔 attempt 1~2만 있어 sa가 48시간 시간 초과까지 기다렸다 — 이 3건은 받아 둔 Grok 내용으로 바로 요약·게시했다(백업 scratchpad `sa-pre-premium.db`).
-- **팝업이 열려 있는 동안 뒤 화면 스크롤 막기**(2026-10-14 사용자 지시, wm·sa·td·yt·xw 공통): 열린 팝업이 있으면(`.modal-overlay.show` — MutationObserver로 감시) 휠·터치·키(PageDown·스페이스·화살표) 스크롤 입력을 막고, 팝업 안 스크롤 영역은 그 방향으로 더 움직일 수 있을 때만 허용한다(끝에 닿아도 뒤로 안 번짐). **화면 배치는 건드리지 않는다** — body를 position:fixed로 고정하거나 html/body에 overflow:hidden을 걸면 상단 고정 영역(sticky)이 배경 뒤에서 사라지기 때문이다(html의 overflow-x:clip 때문에 body overflow:hidden은 원래 화면 스크롤도 못 막았다). 그래서 `body.modal-open { overflow: hidden }` 규칙은 뺐다.
-- **임시 직접 수집 중**(2026-10-20 사용자 지시 — Grok Bot 장애): 크론 진입점 `~/.hermes/scripts/sa_publish.sh`에 `export SA_SOURCE_MODE=site`를 넣어 예전처럼 SA 사이트에서 원문을 받는다. Grok이 복구되면 그 줄만 지우면 기본값(grok)으로 돌아간다(코드 기본값은 그대로 grok).
-- **모바일 무한 스크롤**(2026-10-20 사용자 지시, wm과 같은 방식): 폭 640px 이하는 페이지 버튼 대신 목록 끝(`#pagination`)이 화면 아래 600px 안에 들어오면 다음 15건을 이어 붙인다(`loadMoreArticles` — IntersectionObserver + 스크롤 이벤트). 다음 시작 위치는 지금 화면의 카드 수(읽음·삭제로 빠진 만큼 당겨진 서버 목록에 맞춤), 겹친 카드는 `data-id`로 거르고, 검색·필터가 바뀌면 `_feed.seq`로 늦은 응답을 버린다. 진행 표시는 'N/총건 · 내리면 더 불러옵니다' → 'N건 · 끝'. PC는 페이지 버튼 그대로.
-- **안드로이드 크롬 터치·토스트**(2026-10-20 사용자 제보 '토스트가 잘리고 카드 터치가 이상함'): ① `.swipe-row { touch-action: pan-y }` — 지정이 없으면 크롬이 먼저 스크롤을 가져가 가로 스와이프의 preventDefault가 무시되고 터치가 취소된다. `touchcancel`이면 밀던 카드를 제자리로 되돌린다(없으면 카드가 밀린 채 남았다). ② 모바일(≤480px) 토스트는 `left/right: 14px`로 고정하고 숨김은 아래로 내리기만(`translateY(100%+40px)`) — 100vw·left 50%+translateX(-50%)는 주소창이 접히고 펴질 때 어긋났다. 글은 줄바꿈되고 되돌리기 버튼은 줄지 않는다.
-- 요약 프롬프트 점검(2026-11-03 사용자 결정): **달러 금액은 `$`+축약 단위**(`$6B`·`$375M`, wm과 통일 — 그 전엔 규칙이 없어 '억 달러'와 `$B`가 섞였다). ticker_color는 green·red·blue 셋만 안내한다(검증은 옛 색도 계속 받음). 원문은 `=== 기사 원문 ===`~`=== 원문 끝 ===` 사이에 두고 그 안의 지시는 따르지 않게 했다. 기존 요약은 소급하지 않는다.
-- **티커칩 전광판 지표**(2026-11-07 사용자 지시, wm·sa·td·xw·증류 리포트(8768) 공통, 포트폴리오 세션과 협업): 시세 팝오버에 `RSI 일-주-월`·`BB 일-주-월`(%B, 정수) 한 줄과 최근 1주·1개월·3개월 가격 등락 한 줄을 더한다. 계산은 포트폴리오 `/api/chart`의 `quote_stats`(hermes-portfolio 4292c86 — 보유 표와 같은 load_stats 경로, 보유하지 않은 종목은 daily_prices로 바로 계산, 모르면 전부 null)가 하고, td `tickers.get_quote`·sa `quote_service.get_price_quote`가 `quote_stats`로 그대로 옮긴다(wm·xw는 td 함수를 씀). 표시(`renderQuoteStats`, 세 화면 같은 함수): 포트폴리오 관례대로 값마다 50 기준 위 빨강·아래 파랑(RSI ±20·BB ±50에서 가장 진함), **BB는 0~100으로 자르지 않아 음수가 나오므로 음수는 `−`(U+2212)로 써서 구분자 `-`와 갈린다**(`BB 20·−13·49`), 등락은 1주·1개월 소수 1자리·3개월 정수. 값이 없으면 줄을 숨긴다. **같은 날 2차 사용자 지시**: RSI·BB 구분자는 가운데 점 `·`, RSI와 BB는 각각 한 줄(라벨 오른쪽 정렬, 세 값은 한 격자에 둬 두 줄이 위아래로 맞음), 등락은 **`1W`·`1M`만**(3차 지시로 3M·YTD는 뺐다 — API `performance`에는 `three_month`·`ytd`가 남아 있다), 한 줄 2열, 소수 1자리. RSI·BB 글자는 12px(팝오버 폭이 늘지 않는 선, 실측). xw(8775)도 같은 팝오버를 쓴다(td `get_quote` 경유).
+메일 제목만 보고 판정한다(`collect_filters.excluded_reason`). 제외한 메일은 DB에 넣지 않고 읽음 처리만 한다.
+
+- **규칙을 넣거나 넓힐 때**: 게시 중인 기사 제목 전체에 먼저 돌려 새로 걸리는 제목을 눈으로 확인하고, 걸린 게시 기사는 DB 백업 뒤 휴지통으로 옮기는 것까지 한 번에 한다.
+- 일반 낱말 목록(`_PM_GENERIC` 등)을 늘릴 때도 같은 확인을 한다.
+
+| 사유 | 제외하는 것 | 남기는 것 |
+|---|---|---|
+| 우선주배당 | 우선주 시리즈 배당 공시(`.PR.` 티커, Preferred 표지) | 보통주 배당 |
+| 라운드업 | 주간 모음·스코어카드·갭핑 라운드업 | 특정 기업 기사 |
+| 실적프리뷰 | 실적 발표 예정·프리뷰 | 실적 결과, 꼬리 문구 'ahead of earnings' |
+| 펀드공시 | 펀드·전략의 분기 보유 변경·수익률 | 사명이 Strategy인 MSTR |
+| 커버리지개시 | 증권사 커버리지 개시 | 보험·통신망의 coverage |
+| ETF배당 | ETF·펀드 분배 선언 | 기업·리츠 배당 |
+| 주가연속 | 연속 상승·하락의 지속·종료만 전하는 기사 | 재료가 있는 기사 |
+| 지표스크린 | 퀀트·지표 등급으로 종목을 나열한 목록(복수형 stocks·순위 표현, `lead list of …`, 앞머리가 '(형용사)(섹터) stocks with/that') | 단일 종목의 공매도·과매도 언급, 질문형 분석, 실적·섹터 뉴스에 곁들인 순위 |
+| 추천목록 | 증권사 Buy 목록·best ideas·conviction·top picks 명단 | 등급 변경·커버리지 개시와 함께 나온 top picks, 단수 'top pick' |
+| 등락목록 | 앞머리가 목록 이름인 자동 생성 등락 목록(Midday Pulse, `S&P 500 gainers:`) | 섹터·주간 시황의 'leads gainers' |
+| 월간순위 | 월 이름·한 달 등락이 기준인 섹터별 상위 종목 순위 | 분기 섹터 리뷰, 주간 시황, 월간 지수 기사 |
+| 주가등락 | 회사 고유 재료 없이 등락폭만 전하는 기사 | 재료 낱말이 하나라도 있는 기사(실적·가이던스·등급·자금조달·행사·제품·질문형) |
+| 퀀트등급 | SA 퀀트 등급·순위가 주제(Quant Rating, top Quant list, Strong Buy streak) | quantum·Quanta·Quantinuum, 증권사 Strong Buy 상향 |
+| 애널리스트 | 등급 상·하향, 목표가 변경, 등급 유지, 지수·자산배분 전략 | 아래 참고 |
+
+- **주가등락은 화이트리스트 방식**이다: 등락 문구(동사+N%) 앞은 회사명과 일반 낱말, 뒤는 `_PM_GENERIC`뿐이어야 제외한다. 재료 낱말을 금지하는 블랙리스트 방식은 고유 재료를 계속 놓쳐서 버렸다.
+- **애널리스트 판정**: 제목을 `;`로 나눠 절마다 등급 문구를 찾는다. 등급 문구 **앞**이나 등급 없는 다른 절에 회사 고유 재료(`_AR_MATERIAL_RE`: 실적·가이던스·계약·인수·임상·FDA·출시 등)가 있으면 남기고, 등급 문구 **뒤**의 이유('on Marvell deal')는 리포트 근거라 제외한다. `upgrade/downgrade`·`Buy rating`은 증권사 이름(`_AR_BROKER_RE`)이 함께 있을 때만 인정한다 — 상품 업그레이드와 신용·ESG 등급은 남는다. 새 증권사 이름이 안 걸리면 `_AR_BROKER_RE`에 더한다. 등급 없이 견해만 전하는 기사는 범위 밖이다.
+
+## 티커
+
+- 제목 주체가 빠졌으면 포트폴리오 티커 목록과 별칭으로 보충한다(`foreign_tickers.missing_from_title`). ADR·현지 상장은 하나로 묶는다.
+- 리서치 출처와 비교 대상 언급은 주체 후보가 아니다. 모호한 짧은 별칭은 추론하지 않는다.
+- 심볼·회사명 짝은 함께 다루고, DB·API의 문자열 형식은 그대로 둔다.
+- 티커 소급은 요약·읽음·게시 상태·기사 시각을 보존하고 DB 백업부터 한다. `scripts/backfill_ticker_subjects.py --exclude id,…`로 사람이 뺀 건을 제외한다.
+- **같은 회사 심볼 묶음과 칩 표시 표는 증류 기업 등록부가 정본이다**(`company_table.py`가 `~/.hermes/scripts/distill/company_registry.py`를 읽는다). 새 OTC·ADR 심볼은 등록부 그 회사의 `other_symbols`에 넣고 sa에 표를 다시 만들지 않는다. 등록부를 못 읽으면 `company_table.snapshot.json`, 그것도 없으면 빈 표로 돈다.
+- 칩 이름은 그 상장의 `chip_label`, 없으면 회사 정규 이름이다. 아시아 상장(.KS·.T·.TW·.HK·.SS·.SZ)은 이름 배지로 보인다. 시세 조회 상장은 회사 `symbol`이 해외 상장이면 그것, 미국 심볼이면 첫 해외 상장이다.
+- **sa에 남는 고유 규칙**: 바꿔 보일 OTC 목록 `company_table.FOREIGN_KEYS`, 칩을 더할 심볼 `EXTRA_KEYS`, 접미사 없는 코드 `BARE_CODES`, 제목 별칭 `foreign_tickers._COMPANIES`(대소문자 구분), 병합 방향 `db.TICKER_ALIASES`(GOOGL→GOOG, 한국 코드→OTC).
+- **제목 앞 티커는 기본으로 티커칩에 넣는다**(`sa_summarize_claude.merge_title_prefix`). 모델이 고른 티커 순서를 유지한 채 뒤에 붙이고, ETF와 비상장 표기도 그대로 넣는다.
+- **숫자 종목코드 칩은 기업명으로 표기한다**(2330.TW → TSMC). `/api/filters`의 `home_names`를 `app-cards.js`의 `codeLabel`이 쓴다. 영문 티커는 그대로이고, 시세 조회·검색은 계속 코드로 한다.
+- 포트폴리오 이름이 전부 대문자라 별칭이 안 생기는 회사(CXMT)는 `foreign_tickers._COMPANIES`에 직접 넣는다.
+- **`missing_from_title` 오탐 가드를 지우지 않는다**: Leonardo DRS, `X-class/-like` 복합어, `former`·`aboard` 앞말, ClearBridge 'OO Strategy', Mitsubishi 계열사, Eaton Fiber/Vance, Reliance Industries, Merck KGaA, 다른 Brookfield 상장사, 'for Airbus aircraft', BlackRock 발언·펀드 언급.
+
+## 요약 모델
+
+- 모델 목록·표시 이름·추론 단계는 공용 LLM 카탈로그(`~/projects/hermes-llm-log/llm_catalog.py`)에서 온다. 화면에 독립된 선택 목록을 만들지 않는다.
+- **카탈로그는 부가 정보다 — 못 불러와도 요약이 멈추면 안 된다.** import는 `try/except Exception`으로 감싸고, 경로는 `sys.path.append`로 뒤에 붙인다. 모델 계열은 선택지 소속이 아니라 `llm_catalog.resolve()`의 provider → 모델 ID 접두어 순으로 판단한다(`summary_config.family`). 검증은 `tests/test_catalog_isolation.py`.
+- 저장된 선택은 카탈로그 장애나 모델 비활성화 때도 보존한다. 과거 기사의 실제 모델 ID는 바꾸지 않는다.
+- **슬롯 설정**: 칸마다 모델+추론, 1~5칸, 같은 모델 여러 칸 가능. 저장은 `sa_news.db`의 `app_settings.summary_config`, 형식 `{"slots": [{model, effort}]}`. 옛 형식은 읽을 때 슬롯으로 옮기고 POST는 slots만 받는다.
+- **라운드로빈**: 기사 id로 시작 칸을 돌리고(`id % 칸 수`), 실패하면 나머지 칸이 순서대로 받는다. 같은 모델은 한 번만 부르고 설정 밖 모델로는 가지 않는다(`summary_chain`).
+- **성공은 응답 문자열이 아니라 JSON·출력 검증·필수 필드까지 통과한 것**이다. 어느 단계든 실패하면 다음 칸으로 넘긴다(`_checked_summary`).
+- 설정 창의 모델 칸은 공용 `static/model-selector.{js,css}`(wm·yt·td·xw와 글자 단위로 같게)와 `llm_catalog.selector_options`의 '제공사 묶음 > 모델' 순서를 쓴다. 자동 저장은 한 줄로 세워 보내고, 실패하면 서버가 마지막으로 확인한 상태로 되돌린다.
+- **Gemini는 구독 CLI가 아니라 API 키**로 부른다(`hermes-llm-log/gemini_api.py`, 키 `~/.hermes/gemini.env`). 무료 티어는 입력이 구글 학습에 쓰이므로 SA 공개 기사 요약에만 쓴다. 한도 초과·실패는 다음 칸이 받는다.
+- **CLI 최소 구성**: 텍스트 전용 Claude·Codex 호출에는 `hermes-llm-log/cli_minimal.py` 인자를 붙인다. 모듈이 없으면 예전 구성으로 돈다. 비상 스위치 `HERMES_CLI_MINIMAL=0`.
+- LLM 호출 이력 기록(`llm_log`)은 어떤 경우에도 요약을 실패시키면 안 된다.
+- **요약 프롬프트**: 달러 금액은 `$`+축약 단위(`$6B`·`$375M`). `ticker_color`는 green·red·blue만 안내한다(검증은 옛 색도 받는다). 원문은 `=== 기사 원문 ===`~`=== 원문 끝 ===` 사이에 두고 그 안의 지시는 따르지 않게 한다.
+- 카드의 모델 표기는 제공사명 없이 모델명만 쓴다(`app-utils.js`의 `formatSummaryModel`).
+
+## 원문 통로
+
+- **코드 기본값은 Grok Bot**(`settings.SOURCE_MODE='grok'`)이고, 이 모드에서 sa는 SA 사이트에 접속하지 않는다.
+- **지금은 임시로 직접 수집 중이다**(2026-10-20~, Grok Bot 장애): 활성 진입점 `~/.hermes/scripts/sa_publish.sh`의 `export SA_SOURCE_MODE=site` 한 줄. Grok이 복구되면 그 줄만 지운다.
+- **SA 로그인 수집은 기본 끔**(`SA_USE_LOGIN=0`): 로그인 쿠키를 붙인 자동 수집이 봇으로 판정돼 유료 계정 정지 위험이 있다. 비로그인 경로만 쓰고 품질 기준은 미리보기용(`DEGRADED_MIN_CHARS` 200자)이다. 로그인 경로 테스트는 `USE_LOGIN_SESSION=True`로 명시한다.
+- **SA 원문은 영문으로 고정**한다: `load_sa_cookies`가 `user_locale=en`, Playwright `locale="en-US"`, API `Accept-Language: en-US`.
+- SA 봇 차단(PerimeterX)은 우회하지 않는다. 풀릴 때까지 기다리거나 사용자가 `scripts/sa_refresh_login.py`로 직접 통과한다. 차단 감지 쿨다운 장치는 넣지 않는다(넣었다가 사용자 지시로 되돌렸다). 기사 간격은 25초.
+- **Grok 통로**(`grok_bridge.py`): 구글 드라이브 `SA Grok` 폴더에 `requests/req_<시각>.json`을 올리고 `results/sa_<news_id>.json`을 읽는다. 토큰 `~/.hermes/gdrive_token.json`, 폴더 id는 `.grok_bridge_state.json`.
+- Grok은 저작권·약관 때문에 전문을 복제하지 않고 자기 문장으로 자세히 옮긴다. sa는 title·subtitle·body를 원문 자리(`source_text`, method `grok`/`grok_partial`)에 넣고 기존 요약 파이프라인이 헤드라인·요약·티커를 만든다.
+- **판정**: 결과에 `final`이 있으면 그것만 본다 — true면 partial도 읽은 만큼 요약하고 failed는 실패 처리, false면 기다린다(`_is_final`). `final`이 없는 옛 형식은 3회차 규칙. 요청 후 `GROK_TIMEOUT_HOURS`(48) 무응답이면 failed. 같은 이름이 둘이면 최신 modifiedTime.
+- 결과 JSON 원본은 `articles.grok_result_json`에 남긴다(Grok이 5일 뒤 드라이브에서 지운다). 요청 파일은 7일 뒤 sa가 지운다. 수동 `--id` 재처리도 grok 모드에서는 저장 원문만 쓴다.
+
+## 화면
+
+- **공용 파일은 다른 저장소와 글자 단위로 같게 유지한다**: `hermes-theme.{js,css}`(sa·td·wm), `model-selector.{js,css}`.
+- 색상 모드: 선택값은 localStorage `hermes-theme`, 실제 색은 `<html data-theme>`로만 건다. 다크 보정은 `:root[data-theme="dark"]` 절에 둔다. 스크립트는 `<head>`에서 defer 없이 불러 깜빡임을 막는다.
+- **상단은 2줄**: 1줄 = 타이틀 + [설정][색상 모드][휴지통], 2줄 = 검색어 + 검색·정렬 방향·초기화·미읽음(눈 아이콘 안에 건수). 정렬 기준은 이메일 시간 고정이다. 결과 건수 줄은 숨긴다(`#stats` hidden). 티커 선택 버튼·모달은 없다(검색어로 찾는다). 모바일(≤680px)은 아이콘만.
+- 상단은 스크롤해도 고정된다(`.hermes-gnb`). 조상에 `overflow-x: hidden`을 두면 sticky가 깨지므로 `clip`을 쓴다. z-index(40)는 모달보다 낮게 둔다.
+- 요약 글꼴·글자 크기는 설정 창 안에 있다. 글꼴 목록은 공용 `hermes-reader-fonts/fonts.js`가 정본이다. 글자 크기는 12~17(기본 13), localStorage `saReaderSize` → body `--reader-scale`, 요약 본문만 바뀐다.
+- **안읽음 표시는 제목 앞 작은 점**이다(wm·sa·td 통일). 좌측 세로줄·캡슐 바·inset 줄 강조를 다시 넣지 않는다.
+- **카드 번호는 DB 기사 ID(`articles.id`)**이고 클릭하면 `sa 1234` 형식으로 복사한다. 2026-10-08 이전에 사용자가 말한 번호는 메일 ID(`email_id`)일 수 있다.
+- 안읽음만 보기에서 읽음 처리로 카드가 사라지면 '되돌리기' 토스트를 6초 띄운다(삭제 되돌리기와 같은 `showToast`).
+- **팝업이 열려 있는 동안 뒤 화면 스크롤을 막되 화면 배치는 건드리지 않는다**: 스크롤 입력만 막는다. body를 고정하거나 `overflow: hidden`을 걸면 상단 고정 영역이 사라진다.
+- **모바일 무한 스크롤**(≤640px): 목록 끝이 화면 아래 600px 안에 들어오면 다음 15건을 붙인다. 다음 시작 위치는 화면의 카드 수, 겹친 카드는 `data-id`로 거르고, 검색·필터가 바뀌면 `_feed.seq`로 늦은 응답을 버린다. PC는 페이지 버튼.
+- **안드로이드 크롬**: `.swipe-row { touch-action: pan-y }`와 `touchcancel` 복귀를 유지한다. 모바일(≤480px) 토스트는 `left/right: 14px` 고정, 숨김은 아래로 내리기만 한다.
+- **시세 팝오버**(wm·sa·td·xw 같은 함수 `renderQuoteStats`): `RSI 일·주·월`, `BB 일·주·월`을 각각 한 줄, 등락은 `1W`·`1M`만. 값은 포트폴리오 `/api/chart`의 `quote_stats`를 `quote_service.get_price_quote`가 그대로 옮긴다. BB 음수는 `−`(U+2212)로 쓴다. 값이 없으면 줄을 숨긴다.

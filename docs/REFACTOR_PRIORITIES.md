@@ -50,23 +50,27 @@
 
 ## P2 — 구조 개선
 
-1. 티커 규칙 단일화
-   - `FOREIGN_LISTINGS`, `EXTRA_LISTINGS`, 별칭을 `instrument_catalog.py`로 모으고 `/api/filters`로 배포합니다.
-   - 현재 규모에서는 `article_instruments` 정규화보다 이 작업이 비용 대비 효과가 큽니다.
+1. 티커 규칙 단일화 — **완료(2026-11-11)**
+   - 같은 회사 심볼 묶음·칩 표시 표는 증류 기업 등록부에서 만들고(`company_table.py`) `/api/filters`로 내려 준다.
 
-2. `db.py` 분해
-   - `schema`, `article_repository`, `publish_queue`, `statistics`로 나눕니다.
-   - 외부 스크립트가 `db.py`를 직접 import하므로 기존 함수는 facade로 한 릴리스 유지합니다.
+2. `db.py` 분해 — **구조 정의만 분리(2026-11-16)**
+   - 테이블·검색 색인 정의와 열 추가는 `db_schema.py`. 조회·발행 대기열은 `db.py`에 둔다 — 지금 규모(600줄)에서 더 나누면 얻는 것보다 import 경로 변경 비용이 크다.
 
-3. 프런트 이벤트 모듈화
-   - 현재 HTML inline handler 때문에 강한 Content-Security-Policy 적용이 어렵습니다.
-   - 이벤트 위임 방식으로 전환하고 검색·카드·시세·스와이프 모듈을 분리합니다.
+3. 프런트 모듈화 — **파일 분할 완료(2026-11-16)**
+   - `app.js`를 `app-*.js` 7개로 나눴다(전역 범위를 함께 쓰는 일반 스크립트).
+   - HTML inline handler를 이벤트 위임으로 바꾸는 일은 보류: 강한 Content-Security-Policy를 적용할 계획이 생기면 한다.
 
-4. 레거시 컬럼 정리
+4. 레거시 컬럼 정리 — 완료
    - `summary_core`, `tag`, `tag_color`, `email_body` 및 메일 본문 추출 경로는 제거됨.
 
-5. Chart.js 로컬 고정
-   - 통계 화면이 jsDelivr 장애와 외부 네트워크에 의존하지 않도록 검증된 파일을 정적 자산으로 고정합니다.
+5. Chart.js 로컬 고정 — 해당 없음
+   - Chart.js를 쓰던 통계 화면이 없어져 외부 스크립트 의존이 남아 있지 않다.
+
+6. 수집 제외 규칙 분리 — **완료(2026-11-16)**
+   - `scripts/sa_collect.py`의 규칙 14종을 `collect_filters.py`로 옮겼다.
+
+7. LLM 호출기 이름·자리 — 보류
+   - `scripts/sa_claude_cli.py`는 이름과 달리 네 제공사를 모두 부른다. 동작 문제는 없어 LLM 통합 게이트웨이를 만들 때 함께 정리한다.
 
 ## P3 — 개발 경험
 
