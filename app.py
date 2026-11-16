@@ -125,7 +125,7 @@ def _summary_config_payload() -> dict:
     cfg = summary_config.load()
     return {
         "config": cfg,
-        "model_options": summary_config.model_options(cfg),
+        "model_options": summary_config.selector_options(summary_config.model_options(cfg)),   # 화면용 공용 순서
         "reasoning_options": summary_config.reasoning_options(),
     }
 

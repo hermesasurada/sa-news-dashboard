@@ -92,6 +92,22 @@ def model_options(config: dict | None = None) -> list[dict]:
     return out
 
 
+_PROVIDER_LABELS = {"claude": "Anthropic", "codex": "OpenAI", "grok": "xAI", "gemini": "Google", "local": "로컬 LLM"}
+
+
+def selector_options(options: list[dict]) -> list[dict]:
+    """화면으로 보내는 모델 목록 — 공용 순서(제공사 묶음 > 등급·버전)와 provider_label(2026-11-16 사용자 지시).
+
+    화면용으로만 쓴다(검증·실행에는 model_options 그대로). 카탈로그가 없거나 실패하면 받은 순서
+    그대로 제공사 이름만 붙인다.
+    """
+    try:
+        return llm_catalog.selector_options(options)
+    except Exception:  # noqa: BLE001 — llm_catalog가 None이거나 옛 버전이어도 설정 창은 열린다
+        labels = getattr(llm_catalog, "PROVIDERS", None) or _PROVIDER_LABELS
+        return [dict(o, provider_label=labels.get(o.get("provider"), o.get("provider") or "기타")) for o in options]
+
+
 def reasoning_options() -> list[dict]:
     if llm_catalog:
         try:
