@@ -204,6 +204,12 @@ class ExcludedReasonTests(unittest.TestCase):
 
 
 class CollectExitCodeTests(unittest.TestCase):
+    def setUp(self):
+        # main()은 db.init_db()부터 부른다 — 막지 않으면 테스트가 운영 DB 구조 초기화를 돌린다.
+        patcher = patch.object(sa_collect.db, "init_db")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_extract_failure_returns_infrastructure_exit(self):
         with (
             patch.object(sa_collect, "run_extract", return_value=None),
