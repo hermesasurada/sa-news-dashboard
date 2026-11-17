@@ -22,12 +22,14 @@ Seeking Alpha 속보 메일을 수집해 한국어로 요약하고 대시보드(
 | `company_table.py`, `foreign_tickers.py`, `ticker_names.py` | 티커 표·제목 보정·회사명 |
 | `sa_url.py` | 기사 주소 다듬기(`strip_utm`) |
 | `app.py` | FastAPI 엔드포인트 |
+| `tools/` | 일회성 도구: 옛 HTML 대시보드 들여오기(`migrate.py`), 메일 시각 KST 소급(`backfill_email_time_kst.py`) |
 | `static/app*.js` | 화면(아래 순서) |
 
 - **규칙·열·화면 코드를 넣는 자리**: 수집 제외 규칙은 `collect_filters.py`, DB 열 추가는 `db_schema.add_missing_columns`(다른 모듈에서 `ALTER TABLE` 하지 않는다), 화면 코드는 해당 `app-*.js`.
 - **화면 스크립트 순서**: `app-utils.js` → `app.js`(상태·공용) → `app-cards.js`(티커 표·카드) → `app-quote.js`(시세 팝오버) → `app-actions.js`(스와이프·읽음·삭제·토스트) → `app-feed.js`(목록·검색·무한 스크롤) → `app-settings.js`(글꼴·크기·모델) → `app-boot.js`. 전역 범위를 함께 쓰는 일반 스크립트라 읽는 순서가 실행 순서다. **`init()`이 든 `app-boot.js`는 반드시 마지막**이고, 파일을 더하면 `index.html`과 `tests/test_static_layout.py`의 순서 목록에 넣는다.
 - **정적 파일 버전**: `app.root()`가 `/static/*.js`·`*.css` 주소에 mtime 버전을 패턴으로 붙인다. 캐시가 1년 고정(immutable)이므로 버전 없는 주소를 만들지 않는다. 프런트는 새로고침만으로 반영되고, `.py`를 고치면 `launchctl kickstart -k gui/$(id -u)/com.user.sa-dashboard`.
 - **원문 받기는 별도 프로세스로 둔다**(`sa_summarize_claude.parse_article` → `sa_publish.py parse`). 시간 초과 때 브라우저까지 확실히 끊기 위한 장치다.
+- 옛 설계·디버깅 메모(2026-05~08)는 `docs/archive/`에 있다 — 현재 구조와 다른 내용이 섞여 있어 규칙의 근거로 쓰지 않는다. **진입 파일·`tools/` 스크립트를 `--help`로 확인하지 않는다**(`backfill_email_time_kst.py` 등은 인자를 무시하고 실제로 돈다).
 - **테스트**: `venv/bin/python -m pytest -q`, `node tests/test_app_utils.js`. 테스트는 이름을 가진 모듈을 직접 부르거나 patch한다(규칙은 `collect_filters`, 흐름은 `sa_collect`). 운영 DB를 건드리지 않는다 — `main()`·`app`을 부르는 테스트는 `db.init_db`를 막거나 `db.DB_PATH`를 임시 DB로 돌린다.
 - 크론 진입점은 `~/.hermes/scripts/sa_{collect,publish,purge}.sh`이고 `deploy/hermes-scripts/`에 사본을 둔다. 둘을 함께 고친다.
 

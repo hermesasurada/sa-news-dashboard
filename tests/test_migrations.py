@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 import db
-from migrations import migrate as legacy_migrate
+from tools import migrate as legacy_migrate  # 2026-11-17 migrations/ → tools/
 
 
 class LegacyMigrationTests(unittest.TestCase):
