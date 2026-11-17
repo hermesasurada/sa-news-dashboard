@@ -188,6 +188,9 @@ function toggleViewMode() {
   _viewMode = _viewMode === 'list' ? 'card' : 'list';
   try { localStorage.setItem(VIEW_MODE_KEY, _viewMode); } catch (e) {}
   applyViewMode();
+  // 페이지 크기(카드 15·리스트 25)가 바뀌므로 지금 보던 첫 기사가 든 페이지로 다시 받는다
+  const size = pageSize();
+  search(currentOffset - currentOffset % size, false);
 }
 // 리스트 줄 펼치기 — 버튼·링크·티커 칩·기사 ID는 제 동작만 하고, 글자를 끌어 고르는 중이면 펼치지 않는다.
 document.getElementById('cards').addEventListener('click', (e) => {

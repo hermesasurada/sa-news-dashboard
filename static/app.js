@@ -1,7 +1,14 @@
 /* SA 대시보드 — 화면 상태·공용 도구·필터·정렬·검색조건(가장 먼저 읽힌다).
    전역 범위를 함께 쓰는 일반 스크립트다. index.html이 app.js → app-cards → app-quote → app-actions →
    app-feed → app-settings → app-boot 순서로 읽는다. */
-const PAGE_SIZE = 15;
+// 한 페이지 건수 — 카드 15(3열×5줄), PC 리스트 25(2026-11-18 사용자 지시). 폭 기준은 리스트 CSS(≥681px)와 같다.
+// _viewMode는 app-cards.js가 정한다(부를 때는 이미 읽혀 있다).
+const PAGE_SIZE_CARD = 15;
+const PAGE_SIZE_LIST = 25;
+function pageSize() {
+  return (typeof _viewMode !== 'undefined' && _viewMode === 'list'
+          && window.matchMedia('(min-width: 681px)').matches) ? PAGE_SIZE_LIST : PAGE_SIZE_CARD;
+}
 const DELETE_UNDO_DURATION_MS = 6000;
 const READ_UNDO_DURATION_MS = 6000;
 let currentOffset = 0;
@@ -143,7 +150,7 @@ function getParams(offset) {
   if (document.getElementById('unread-filter').classList.contains('active'))
     p.set('unread_only', 'true');
   if (trashView) p.set('deleted', 'true');
-  p.set('limit', PAGE_SIZE);
+  p.set('limit', pageSize());
   p.set('offset', offset);
   return p;
 }

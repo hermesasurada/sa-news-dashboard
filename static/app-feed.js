@@ -65,19 +65,20 @@ function renderPagination(total, offset) {
           ? `${offset + shown}건 · 끝` : `${offset + shown}/${total}건 · ${_feed.loading ? '불러오는 중…' : '내리면 더 불러옵니다'}`}</span>`;
     return;
   }
-  const totalPages = Math.ceil(total / PAGE_SIZE);
-  const currentPage = Math.floor(offset / PAGE_SIZE);
+  const size = pageSize();
+  const totalPages = Math.ceil(total / size);
+  const currentPage = Math.floor(offset / size);
   if (totalPages <= 1) { pag.innerHTML = ''; return; }
 
-  let html = `<button onclick="search(${(currentPage-1)*PAGE_SIZE}, false)" ${currentPage===0?'disabled':''}>◀ 이전</button>`;
+  let html = `<button onclick="search(${(currentPage-1)*size}, false)" ${currentPage===0?'disabled':''}>◀ 이전</button>`;
   // 한 번에 최대 10개씩 블록 단위로 노출 (1~10, 11~20 …)
   const BLOCK = 10;
   const start = Math.floor(currentPage / BLOCK) * BLOCK;
   const end = Math.min(totalPages - 1, start + BLOCK - 1);
   for (let i = start; i <= end; i++) {
-    html += `<button class="${i===currentPage?'active':''}" onclick="search(${i*PAGE_SIZE}, false)">${i+1}</button>`;
+    html += `<button class="${i===currentPage?'active':''}" onclick="search(${i*size}, false)">${i+1}</button>`;
   }
-  html += `<button onclick="search(${(currentPage+1)*PAGE_SIZE}, false)" ${currentPage===totalPages-1?'disabled':''}>다음 ▶</button>`;
+  html += `<button onclick="search(${(currentPage+1)*size}, false)" ${currentPage===totalPages-1?'disabled':''}>다음 ▶</button>`;
   html += `<span class="page-info">${total}건 / ${totalPages}페이지</span>`;
   pag.innerHTML = html;
 }
@@ -96,7 +97,8 @@ function restoreFromURL() {
   // URL이 정렬을 지정하면 로컬 기본값보다 우선 (공유 링크)
   if (sp.has('order'))   currentOrder = sp.get('order') === 'asc' ? 'asc' : 'desc';
   applySortUI();
-  return parseInt(sp.get('offset') || '0');
+  const offset = parseInt(sp.get('offset') || '0') || 0;
+  return offset - offset % pageSize();   // 보기 방식마다 페이지 크기가 달라 페이지 경계에 맞춘다
 }
 
 /* ── #7: 새 기사 알림 polling ── */
@@ -168,7 +170,7 @@ function renderCurrentListMeta() {
 async function refillGrid() {
   const cardsEl = document.getElementById('cards');
   const shown = cardsEl.querySelectorAll('.card').length;
-  if (shown >= PAGE_SIZE) return;   // 이미 가득 참
+  if (shown >= pageSize()) return;   // 이미 가득 참
   const params = getParams(currentOffset + shown);
   params.set('limit', 1);
   params.set('include_total', 'false');

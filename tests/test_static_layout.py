@@ -42,6 +42,12 @@ class StaticLayoutTests(unittest.TestCase):
         css = (STATIC / "app.css").read_text(encoding="utf-8")
         self.assertIn("@media (min-width: 681px) {\n  .app-sa .container.view-list", css)
         self.assertIn("@media (max-width: 680px) { body.app-sa .search-bar #view-toggle { display: none; } }", css)
+        # 페이지 크기는 카드 15·리스트 25 — 고정 상수가 다시 들어오면 리스트도 15건이 된다
+        app = (STATIC / "app.js").read_text(encoding="utf-8")
+        self.assertIn("const PAGE_SIZE_LIST = 25;", app)
+        self.assertIn("p.set('limit', pageSize());", app)
+        for name in ORDER:
+            self.assertNotRegex((STATIC / name).read_text(encoding="utf-8"), r"\bPAGE_SIZE\b")
 
     def test_every_local_asset_gets_a_version(self):
         # 캐시가 1년 고정이라 버전 없는 주소가 하나라도 남으면 고쳐도 옛 파일이 보인다.
