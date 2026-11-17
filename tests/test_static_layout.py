@@ -49,6 +49,14 @@ class StaticLayoutTests(unittest.TestCase):
         for name in ORDER:
             self.assertNotRegex((STATIC / name).read_text(encoding="utf-8"), r"\bPAGE_SIZE\b")
 
+    def test_term_tips_are_wired_and_same_as_td(self):
+        # 용어 툴팁(2026-11-18)은 td와 글자 단위로 같은 공용 파일 — 한쪽만 고치면 두 화면이 갈라진다.
+        self.assertLess(self.html.index('/static/term-tips.js'), self.html.index("HermesTermTips.mount("))
+        td = Path.home() / "projects" / "telegram-digest" / "static"
+        for name in ("term-tips.js", "term-tips.css"):
+            if (td / name).is_file():
+                self.assertEqual((STATIC / name).read_bytes(), (td / name).read_bytes(), msg=name)
+
     def test_every_local_asset_gets_a_version(self):
         # 캐시가 1년 고정이라 버전 없는 주소가 하나라도 남으면 고쳐도 옛 파일이 보인다.
         # app을 불러오면 db.init_db()가 돈다 — 운영 DB 대신 임시 DB를 가리키게 한 뒤 불러온다.

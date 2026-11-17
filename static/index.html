@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="/static/hermes-ui.css">
 <link rel="stylesheet" href="/static/hermes-theme.css">
 <link rel="stylesheet" href="/static/model-selector.css">
+<link rel="stylesheet" href="/static/term-tips.css">
 <script src="/static/hermes-theme.js"></script>
 <!-- 본문 글꼴 목록은 공용 fonts.js가 정본(2026-11-01). google.css는 그 글꼴을 고르거나 선택 목록을 열 때만 붙인다
      (@import·상시 링크는 렌더를 막아 기본 글꼴 사용자도 ~950ms 늦어졌다). -->
@@ -104,6 +105,9 @@
 <script src="/static/app-feed.js"></script>
 <script src="/static/app-settings.js"></script>
 <script src="/static/app-boot.js"></script>
+<!-- 용어 툴팁(2026-11-18) — td와 글자 단위로 같은 공용 파일 -->
+<script src="/static/term-tips.js"></script>
+<script>HermesTermTips.mount({container: '#cards', card: '.card[data-id]', text: '.card-details'});</script>
 <script>HermesTheme.mount(document.querySelector('.header-actions'), {className: 'btn-sort', before: document.getElementById('trash-view')});</script>
 </body>
 </html>

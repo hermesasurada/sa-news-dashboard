@@ -209,3 +209,45 @@ def restore_article_endpoint(article_id: int):
     if not success:
         raise HTTPException(status_code=404, detail="Article not found or not deleted")
     return {"status": "restored", "id": article_id}
+
+
+# ── 용어 툴팁(2026-11-18 사용자 지시) ─────────────────────────────────────
+# 카드 요약 속 용어에 점선 밑줄 + 뜻풀이 창(인명 소개 방식). 뜻풀이는 공용 용어집
+# (hermes-llm-log/term_glossary — yt·wm 요약 각주에서 모은다). td와 같은 DB·같은 화면 파일(term-tips.js).
+def _term_glossary():
+    import sys as _sys
+    lib = str(Path.home() / "projects/hermes-llm-log")
+    if lib not in _sys.path:
+        _sys.path.append(lib)
+    import term_glossary
+    return term_glossary
+
+
+@app.get("/api/terms")
+def get_terms(ids: str = Query("")):
+    """ids=1,2,3 → {article_id: [{key, term, full_name, korean, definition, forms, sources}]}. 실패하면 빈 응답."""
+    wanted = [int(x) for x in ids.split(",") if x.strip().isdigit()][:200]
+    if not wanted:
+        return {}
+    try:
+        with db.get_conn() as conn:
+            rows = conn.execute(
+                f"SELECT id, summary_details FROM articles WHERE id IN ({','.join('?' * len(wanted))})", wanted
+            ).fetchall()
+        texts = {str(r["id"]): "\n".join(db.decode_summary_details(r["summary_details"])) for r in rows}
+        return _term_glossary().terms_for_texts(texts)
+    except Exception:
+        return {}
+
+
+@app.post("/api/terms/excluded")
+def set_term_excluded(payload: dict = Body(...)):
+    """용어 툴팁에서 빼기/되돌리기 {key, excluded}. 공용 용어집이라 td에도 같이 빠진다."""
+    key = str(payload.get("key") or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="key required")
+    try:
+        ok = _term_glossary().set_excluded(key, bool(payload.get("excluded", True)))
+    except Exception:
+        ok = False
+    return {"ok": ok}
