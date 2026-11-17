@@ -12,7 +12,7 @@
   const HANGUL = /[가-힣]/;
   const WORD = /[A-Za-z0-9]/;
   const JOSA = "은는이가을를의에와과도로으만까부처보랑나엔서께며라란인적";   // 서버(term_glossary)와 같은 규칙
-  const SRC = {yt: "yt", wm: "wm"};
+  const SRC = {yt: "yt 각주", wm: "wm 각주", sa: "sa 추출", td: "td 추출"};   // 추출 = LLM이 sa·td 글에서 뽑은 풀이
 
   function okBoundary(text, start, end, form) {
     const prev = text[start - 1] || " ", next = text[end] || " ";
@@ -44,10 +44,11 @@
       tip.classList.toggle("above", !below);
       tip.style.setProperty("--arrow-x", Math.min(Math.max(14, r.left + r.width / 2 - left), wd - 14) + "px");
     }
-    async function setExcluded(key, excluded) {
-      try {
+    async function setExcluded(item, excluded) {
+      try {   // 화면에 보인 뜻(풀네임·풀이)을 그대로 보낸다 — 글 단위 풀이와 용어집 대표 풀이가 다를 수 있다
+        const body = {key: item.key, excluded, full_name: item.full_name || null, definition: item.definition || ""};
         const r = await fetch(o.excludeEndpoint, {method: "POST", headers: o.headers({"Content-Type": "application/json"}),
-                                                  body: JSON.stringify({key, excluded})});
+                                                  body: JSON.stringify(body)});
         return !!(await r.json()).ok;
       } catch (e) { return false; }
     }
@@ -70,19 +71,19 @@
         window.addEventListener("resize", hide);
       }
       const sub = [item.full_name, item.korean && item.korean !== item.term ? item.korean : ""].filter(Boolean);
-      const src = (item.sources || []).map((s) => SRC[s] || s).join("·");
+      const src = (item.sources || []).map((s) => SRC[s] || s).join(" · ");
       tip.innerHTML = `<div class="tt-name">${esc(item.term)}${sub.length ? ` <span class="tt-sub">${esc(sub.join(" · "))}</span>` : ""}</div>`
         + `<div class="tt-def">${esc(item.definition)}</div>`
-        + `<div class="tt-foot">${src ? `<span class="tt-src">${esc(src)} 각주</span>` : ""}`
+        + `<div class="tt-foot">${src ? `<span class="tt-src">${esc(src)}</span>` : ""}`
         + `<button type="button" class="tt-ex" title="이 뜻을 용어 툴팁에서 뺍니다(sa·td 공통)">✕ 용어 툴팁 제외</button></div>`;
       tip.querySelector(".tt-ex").onclick = async (e) => {
         e.stopPropagation();
-        if (!(await setExcluded(item.key, true))) return;
+        if (!(await setExcluded(item, true))) return;
         unwrapKey(item.key);
         tip.querySelector(".tt-foot").innerHTML = `<span class="tt-done">제외했습니다</span><button type="button" class="tt-undo">되돌리기</button>`;
         tip.querySelector(".tt-undo").onclick = async (ev) => {
           ev.stopPropagation();
-          if (!(await setExcluded(item.key, false))) return;
+          if (!(await setExcluded(item, false))) return;
           hide();
           refreshAll();
         };

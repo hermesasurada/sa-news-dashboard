@@ -235,7 +235,7 @@ def get_terms(ids: str = Query("")):
                 f"SELECT id, summary_details FROM articles WHERE id IN ({','.join('?' * len(wanted))})", wanted
             ).fetchall()
         texts = {str(r["id"]): "\n".join(db.decode_summary_details(r["summary_details"])) for r in rows}
-        return _term_glossary().terms_for_texts(texts)
+        return _term_glossary().terms_for_texts(texts, source="sa")
     except Exception:
         return {}
 
@@ -247,7 +247,9 @@ def set_term_excluded(payload: dict = Body(...)):
     if not key:
         raise HTTPException(status_code=400, detail="key required")
     try:
-        ok = _term_glossary().set_excluded(key, bool(payload.get("excluded", True)))
+        tg = _term_glossary()
+        sense = tg.sense_of(payload.get("full_name"), payload["definition"]) if payload.get("definition") else None
+        ok = tg.set_excluded(key, bool(payload.get("excluded", True)), sense=sense)
     except Exception:
         ok = False
     return {"ok": ok}
