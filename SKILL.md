@@ -31,7 +31,7 @@ Stage 2 Publish
 | 수집 제외 규칙 | `collect_filters.py` | 제목만 보고 저가치 기사 제외 |
 | URL 추출 | `scripts/extract_sa_urls.py` | himalaya 출력과 SA click URL 해석 |
 | 발행기 | `scripts/sa_summarize_claude.py` | 파싱·요약·검증·DB 발행 |
-| LLM 어댑터 | `scripts/sa_claude_cli.py` | Claude·Codex·Grok CLI와 Gemini API 호출 |
+| LLM 어댑터 | `sa_llm.py` | Claude·Codex·Grok CLI와 Gemini API 호출 |
 | 파서 | `sa_article_parser.py` | 로그인 쿠키 전문 → 비로그인 프리뷰 폴백 |
 | DB | `db.py`, `db_schema.py` | 기사 상태 전이·검색 / 테이블·FTS5 정의 |
 | 대시보드 | `app.py`, `static/` | FastAPI API와 카드/통계 UI |

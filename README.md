@@ -28,7 +28,7 @@ SA 이메일
 | `scripts/sa_collect.py` | Stage 1: 미읽음 이메일을 pending으로 적재 |
 | `collect_filters.py` | 수집 제외 규칙(제목 판정) |
 | `scripts/sa_summarize_claude.py` | Stage 2: 파싱·요약·발행 |
-| `scripts/sa_claude_cli.py` | Claude·Codex·Grok CLI와 Gemini API 호출기 |
+| `sa_llm.py` | Claude·Codex·Grok CLI와 Gemini API 호출기(실행·시간 초과·실패 기록은 `_guarded`·`_rc_failed` 공통) |
 | `sa_article_parser.py` | 로그인 세션 우선 SA 본문 파서 |
 | `scripts/sa_refresh_login.py` | headed 브라우저로 `sa_cookies.json` 갱신 |
 | `static/app.js`, `static/app-*.js` | 화면 상태와 사용자 동작(읽는 순서는 `AGENTS.md` 코드 배치) |

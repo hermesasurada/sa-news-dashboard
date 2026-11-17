@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SA news — Claude CLI 공용 유틸.
+"""SA news — 요약 LLM 호출기(Claude·GPT(Codex)·Grok·Gemini). 2026-11-17 scripts/sa_claude_cli.py에서 이름·자리를 옮김.
 
 sa_summarize_claude.py 가 사용:
   - resolve_claude_bin(): 버전 pin 없이 최신 Claude CLI 바이너리 동적 탐지
@@ -40,8 +40,9 @@ import tempfile
 import time
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+REPO_ROOT = Path(__file__).resolve().parent   # 2026-11-17 scripts/sa_claude_cli.py에서 저장소 루트로 옮김
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 import settings
 
 # LLM 호출 이력(hermes-llm-log, ~/.hermes/data/llm_calls.db) — 모듈이 없어도 요약 본업은 돈다.
@@ -236,6 +237,34 @@ def _parse_claude_stream(output: str) -> tuple[str | None, str | None]:
     return text, model_id
 
 
+def _guarded(call, label: str, timeout: int, run, fail=(None, None)):
+    """CLI 호출 한 번(run)을 감싼다 — 시간 초과·예외는 stderr와 이력에 남기고 fail을 돌려준다.
+
+    Claude·GPT(Codex)·Grok 호출기가 같은 문구로 같은 처리를 하던 부분(2026-11-17 공통화). run 안에서 난
+    예외(응답 해석 포함)도 '호출 실패'로 남는다 — 예전과 같다."""
+    try:
+        return run()
+    except subprocess.TimeoutExpired:
+        # subprocess.run()은 timeout 시 자식 프로세스를 종료한 뒤 예외를 발생시킨다.
+        print(f"     {label} CLI 타임아웃", file=sys.stderr)
+        _log_fail(call, f"timeout after {timeout}s", status="timeout")
+        return fail
+    except Exception as e:
+        print(f"     {label} CLI 호출 실패: {e}", file=sys.stderr)
+        _log_fail(call, f"{type(e).__name__}: {e}")
+        return fail
+
+
+def _rc_failed(call, label: str, proc) -> bool:
+    """종료 코드가 0이 아니면 stderr·이력에 남기고 True."""
+    if proc.returncode == 0:
+        return False
+    err = (proc.stderr or "")[:300]
+    print(f"     {label} CLI 오류 (rc={proc.returncode}): {err}", file=sys.stderr)
+    _log_fail(call, f"rc={proc.returncode}: {err[:200]}")
+    return True
+
+
 def call_claude(
     prompt: str,
     timeout: int = settings.SUMMARY_TIMEOUT_SECONDS,
@@ -258,7 +287,7 @@ def call_claude(
         "claude", chosen, purpose="summary", title=title, backend="cli",
         reasoning=None if effort == "default" else effort, meta={"alias": chosen},
     ) as call:
-        try:
+        def run():
             cmd = [CLAUDE_BIN, "--output-format", "stream-json", "--verbose", "--model", chosen]
             if effort != "default":
                 cmd += ["--effort", effort]
@@ -271,30 +300,16 @@ def call_claude(
                 timeout=timeout,
                 cwd=tempfile.gettempdir(),
             )
-            if proc.returncode != 0:
-                err = (proc.stderr or "")[:300]
-                print(f"     Claude CLI 오류 (rc={proc.returncode}): {err}", file=sys.stderr)
-                _log_fail(call, f"rc={proc.returncode}: {err[:200]}")
+            if _rc_failed(call, "Claude", proc):
                 return None, None
             text, model_id, usage = _parse_claude_stream_ex(proc.stdout)
             _log_usage(call, usage, model_id or chosen)
             if not text:
                 _log_fail(call, "empty output")
             return text, model_id
-
-        except subprocess.TimeoutExpired:
-            # subprocess.run()은 timeout 시 자식 프로세스를 종료한 뒤 예외를 발생시킨다.
-            # 아직 대입되지 않은 proc를 참조하면 UnboundLocalError로 배치가 중단된다.
-            print("     Claude CLI 타임아웃", file=sys.stderr)
-            _log_fail(call, f"timeout after {timeout}s", status="timeout")
-            return None, None
-        except Exception as e:
-            print(f"     Claude CLI 호출 실패: {e}", file=sys.stderr)
-            _log_fail(call, f"{type(e).__name__}: {e}")
-            return None, None
+        return _guarded(call, "Claude", timeout, run)
 
 
-# ── GPT(Codex CLI) — 설정 팝업에서 GPT를 순번에 넣으면 쓴다(2026-09-26, wm_llm.call_codex 이식) ──
 def resolve_codex_bin() -> str:
     env_bin = os.environ.get("CODEX_BIN")
     if env_bin and Path(env_bin).expanduser().is_file():
@@ -340,7 +355,8 @@ def call_codex(
                     reasoning=None if effort == "default" else effort) as call:
         fd, out_path = tempfile.mkstemp(prefix="sa_codex_", suffix=".txt")
         os.close(fd)
-        try:
+
+        def run():
             cmd = [CODEX_BIN, "exec", "--ephemeral", "--skip-git-repo-check", "--color", "never",
                    "-s", "read-only", "-m", model]
             if effort != "default":          # "default"는 codex가 받는 값이 아니다 — 플래그를 뺀다
@@ -366,14 +382,8 @@ def call_codex(
                 _log_fail(call, f"rc={proc.returncode}: {err[:200]}" if proc.returncode else "empty output")
                 return None, None
             return text, model
-        except subprocess.TimeoutExpired:
-            print("     Codex CLI 타임아웃", file=sys.stderr)
-            _log_fail(call, f"timeout after {timeout}s", status="timeout")
-            return None, None
-        except Exception as e:
-            print(f"     Codex CLI 호출 실패: {e}", file=sys.stderr)
-            _log_fail(call, f"{type(e).__name__}: {e}")
-            return None, None
+        try:
+            return _guarded(call, "Codex", timeout, run)
         finally:
             try:
                 os.remove(out_path)
@@ -407,7 +417,7 @@ _GROK_DEFAULT_MODEL = None
 # 탐지 결과를 파일로 보존 — cron이 배치마다 새 프로세스를 띄워 메모리 캐시가
 # 매번 비고, 탐지가 간헐 실패하면 버전 없는 'grok'이 DB에 기록되기 때문.
 # (ticker_names.py와 동일한 원자적 쓰기 + TTL 패턴)
-GROK_MODEL_CACHE = Path(__file__).resolve().parent.parent / "grok_model.json"
+GROK_MODEL_CACHE = REPO_ROOT / "grok_model.json"
 GROK_MODEL_CACHE_MAX_AGE_DAYS = 1
 GROK_MODEL_UNKNOWN = "grok"
 
@@ -542,7 +552,7 @@ def call_grok(
     effort = (reasoning or "default").lower()
     with _llm_track("grok", model, purpose="summary", title=title, backend="cli",
                     reasoning=None if effort == "default" else effort) as call:
-        try:
+        def run():
             cmd = [GROK_BIN, "-p", prompt, "--output-format", "json"]
             if chosen:
                 cmd += ["-m", chosen]
@@ -556,24 +566,14 @@ def call_grok(
                 timeout=timeout,
                 cwd=tempfile.gettempdir(),  # 프로젝트 파일 스캔 방지 (순수 텍스트 생성)
             )
-            if proc.returncode != 0:
-                err = (proc.stderr or "")[:300]
-                print(f"     Grok CLI 오류 (rc={proc.returncode}): {err}", file=sys.stderr)
-                _log_fail(call, f"rc={proc.returncode}: {err[:200]}")
+            if _rc_failed(call, "Grok", proc):
                 return None, None
             text, usage = _parse_grok_json(proc.stdout)
             _log_usage(call, usage)   # modelUsage 키(실제 모델)로 model 정정 + 토큰
             if not text:
                 _log_fail(call, "empty output")
             return text, (model if text else None)
-        except subprocess.TimeoutExpired:
-            print("     Grok CLI 타임아웃", file=sys.stderr)
-            _log_fail(call, f"timeout after {timeout}s", status="timeout")
-            return None, None
-        except Exception as e:
-            print(f"     Grok CLI 호출 실패: {e}", file=sys.stderr)
-            _log_fail(call, f"{type(e).__name__}: {e}")
-            return None, None
+        return _guarded(call, "Grok", timeout, run)
 
 
 def call_gemini(

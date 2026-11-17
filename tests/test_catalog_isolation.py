@@ -11,8 +11,8 @@ REPO = Path(__file__).resolve().parent.parent
 
 PROBE = r"""
 import json, sys
-sys.path.insert(0, "scripts")
-import sa_claude_cli as s
+sys.path.insert(0, ".")
+import sa_llm as s
 s._read_grok_model_cache = lambda: ("grok-4.7", True)   # 네트워크·CLI 없이 캐시 경로만 확인
 print(json.dumps({"catalog_none": s.llm_catalog is None, "grok": s._grok_default_model()}))
 """

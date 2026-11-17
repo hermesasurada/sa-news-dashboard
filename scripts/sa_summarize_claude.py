@@ -28,7 +28,7 @@ import db  # noqa: E402
 import foreign_tickers
 import ticker_names  # noqa: E402
 import settings  # noqa: E402
-from sa_claude_cli import call_claude, call_codex, call_gemini, call_grok, extract_json  # noqa: E402
+from sa_llm import call_claude, call_codex, call_gemini, call_grok, extract_json  # noqa: E402
 import summary_config  # noqa: E402
 from sa_lock import single_instance  # noqa: E402
 

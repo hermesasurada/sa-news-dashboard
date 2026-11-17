@@ -11,7 +11,7 @@ Seeking Alpha 속보 메일을 수집해 한국어로 요약하고 대시보드(
 | `collect_filters.py` | 수집 제외 규칙 전부(`is_*`, `excluded_reason`) |
 | `scripts/extract_sa_urls.py` | himalaya 출력에서 기사 주소 추출 |
 | `scripts/sa_summarize_claude.py` | 발행 흐름: 원문 → 요약 → 검증 → DB 발행 |
-| `scripts/sa_claude_cli.py` | Claude·Codex·Grok CLI와 Gemini API 호출기 |
+| `sa_llm.py` | Claude·Codex·Grok CLI와 Gemini API 호출기(실행·시간 초과·실패 기록은 `_guarded`·`_rc_failed` 공통) |
 | `scripts/sa_publish.py` | 원문 받기(`parse`)를 별도 프로세스로 실행 |
 | `sa_article_parser.py`, `sa_login_state.py` | SA 사이트 원문 받기(site 모드) |
 | `grok_bridge.py`, `gdrive.py` | Grok Bot 원문 통로(grok 모드) |

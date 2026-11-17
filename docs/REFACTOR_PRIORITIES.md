@@ -69,8 +69,8 @@
 6. 수집 제외 규칙 분리 — **완료(2026-11-16)**
    - `scripts/sa_collect.py`의 규칙 14종을 `collect_filters.py`로 옮겼다.
 
-7. LLM 호출기 이름·자리 — 보류
-   - `scripts/sa_claude_cli.py`는 이름과 달리 네 제공사를 모두 부른다. 동작 문제는 없어 LLM 통합 게이트웨이를 만들 때 함께 정리한다.
+7. LLM 호출기 이름·자리 — **완료(2026-11-17)**
+   - `scripts/sa_claude_cli.py` → 루트 `sa_llm.py`. Claude·Codex·Grok 호출기의 시간 초과·예외·종료 코드 처리를 `_guarded`·`_rc_failed`로 묶었다.
 
 ## P3 — 개발 경험
 
