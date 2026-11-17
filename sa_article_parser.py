@@ -50,7 +50,11 @@ Object.defineProperty(navigator, 'permissions', {
 });
 """
 
-IMPERSONATES = ["chrome124", "safari17_2", "edge99"]
+# curl_cffi TLS 지문 — 버전을 고정하지 않고 설치된 curl_cffi의 최신 별칭을 쓴다(2026-11-18).
+# 옛 지문은 막히거나(wm: Akamai가 chrome131을 2026-11-17부터 403) 라이브러리에서 빠진다(safari17_2는
+# curl_cffi 0.15에서 '지원 안 함'으로 매번 오류였다). User-Agent는 지문과 맞게 curl_cffi가 채운다.
+CFFI_IMPERSONATE = os.environ.get("SA_CFFI_IMPERSONATE", "chrome")
+IMPERSONATES = [CFFI_IMPERSONATE, "safari", "firefox"]
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 
@@ -203,7 +207,7 @@ def parse_with_sa_api(
     if not m:
         return None
     nid = m.group(1)
-    headers = {"User-Agent": UA, "Accept": "application/json", "Accept-Language": "en-US,en;q=0.9"}
+    headers = {"Accept": "application/json", "Accept-Language": "en-US,en;q=0.9"}
     if cookies:
         headers["Cookie"] = cookie_header(cookies)
         headers["Referer"] = f"https://seekingalpha.com/news/{nid}"
@@ -211,7 +215,7 @@ def parse_with_sa_api(
         resp = curl_requests.get(
             f"https://seekingalpha.com/api/v3/news/{nid}?include=primaryTickers",
             headers=headers,
-            impersonate="chrome124", timeout=25,
+            impersonate=CFFI_IMPERSONATE, timeout=25,
         )
         if resp.status_code != 200:
             return None
@@ -405,7 +409,7 @@ def _og_lead(url: str) -> str:
     어떤 본문 파서가 이기든 핵심 종목이 담긴 리드를 보장하기 위함 (#1).
     실패해도 빈 문자열 → 호출측 무해."""
     try:
-        r = curl_requests.get(url, headers={"User-Agent": UA}, impersonate="chrome124", timeout=20)
+        r = curl_requests.get(url, impersonate=CFFI_IMPERSONATE, timeout=20)
         if r.status_code != 200:
             return ""
         html_text = r.text

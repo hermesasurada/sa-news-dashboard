@@ -93,6 +93,7 @@ Seeking Alpha 속보 메일을 수집해 한국어로 요약하고 대시보드(
 
 - **코드 기본값은 Grok Bot**(`settings.SOURCE_MODE='grok'`)이고, 이 모드에서 sa는 SA 사이트에 접속하지 않는다.
 - **지금은 임시로 직접 수집 중이다**(2026-10-20~, Grok Bot 장애): 활성 진입점 `~/.hermes/scripts/sa_publish.sh`의 `export SA_SOURCE_MODE=site` 한 줄. Grok이 복구되면 그 줄만 지운다.
+- **curl_cffi 지문은 버전을 고정하지 않는다**(2026-11-18): `sa_article_parser.CFFI_IMPERSONATE`(기본 `chrome`, env `SA_CFFI_IMPERSONATE`) — 설치된 curl_cffi의 최신 별칭. 순번은 `chrome → safari → firefox`, User-Agent는 지문과 맞게 curl_cffi가 채운다. 옛 고정값 `safari17_2`는 curl_cffi 0.15에서 지원이 빠져 매번 오류였고, wm은 Akamai가 `chrome131`을 막아 IR 49곳이 동시에 0건이 됐다(2026-11-17).
 - **SA 로그인 수집은 기본 끔**(`SA_USE_LOGIN=0`): 로그인 쿠키를 붙인 자동 수집이 봇으로 판정돼 유료 계정 정지 위험이 있다. 비로그인 경로만 쓰고 품질 기준은 미리보기용(`DEGRADED_MIN_CHARS` 200자)이다. 로그인 경로 테스트는 `USE_LOGIN_SESSION=True`로 명시한다.
 - **SA 원문은 영문으로 고정**한다: `load_sa_cookies`가 `user_locale=en`, Playwright `locale="en-US"`, API `Accept-Language: en-US`.
 - SA 봇 차단(PerimeterX)은 우회하지 않는다. 풀릴 때까지 기다리거나 사용자가 `scripts/sa_refresh_login.py`로 직접 통과한다. 차단 감지 쿨다운 장치는 넣지 않는다(넣었다가 사용자 지시로 되돌렸다). 기사 간격은 25초.
