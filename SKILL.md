@@ -30,7 +30,8 @@ Stage 2 Publish
 | 수집기 | `scripts/sa_collect.py` | 이메일 envelope/URL을 pending 행으로 적재 |
 | 수집 제외 규칙 | `collect_filters.py` | 제목만 보고 저가치 기사 제외 |
 | URL 추출 | `scripts/extract_sa_urls.py` | himalaya 출력과 SA click URL 해석 |
-| 발행기 | `scripts/sa_summarize_claude.py` | 파싱·요약·검증·DB 발행 |
+| 발행기 | `scripts/sa_summarize_claude.py` | 파싱·요약·DB 발행 |
+| 요약 계약 | `summary_contract.py` | 지시문·응답 검증·제목 앞 티커 병합 |
 | LLM 어댑터 | `sa_llm.py` | Claude·Codex·Grok CLI와 Gemini API 호출 |
 | 파서 | `sa_article_parser.py` | 로그인 쿠키 전문 → 비로그인 프리뷰 폴백 |
 | DB | `db.py`, `db_schema.py` | 기사 상태 전이·검색 / 테이블·FTS5 정의 |

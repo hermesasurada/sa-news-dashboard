@@ -11,6 +11,7 @@ Seeking Alpha 속보 메일을 수집해 한국어로 요약하고 대시보드(
 | `collect_filters.py` | 수집 제외 규칙 전부(`is_*`, `excluded_reason`) |
 | `scripts/extract_sa_urls.py` | himalaya 출력에서 기사 주소 추출 |
 | `scripts/sa_summarize_claude.py` | 발행 흐름: 원문 → 요약 → 검증 → DB 발행 |
+| `summary_contract.py` | 요약 계약: 지시문(`_PROMPT_TMPL`)·응답 검증(`validate`)·제목 앞 티커 병합·`_checked_summary` |
 | `sa_llm.py` | Claude·Codex·Grok CLI와 Gemini API 호출기(실행·시간 초과·실패 기록은 `_guarded`·`_rc_failed` 공통) |
 | `scripts/sa_publish.py` | 원문 받기(`parse`)를 별도 프로세스로 실행 |
 | `sa_article_parser.py`, `sa_login_state.py` | SA 사이트 원문 받기(site 모드) |
@@ -66,7 +67,7 @@ Seeking Alpha 속보 메일을 수집해 한국어로 요약하고 대시보드(
 - **같은 회사 심볼 묶음과 칩 표시 표는 증류 기업 등록부가 정본이다**(`company_table.py`가 `~/.hermes/scripts/distill/company_registry.py`를 읽는다). 새 OTC·ADR 심볼은 등록부 그 회사의 `other_symbols`에 넣고 sa에 표를 다시 만들지 않는다. 등록부를 못 읽으면 `company_table.snapshot.json`, 그것도 없으면 빈 표로 돈다.
 - 칩 이름은 그 상장의 `chip_label`, 없으면 회사 정규 이름이다. 아시아 상장(.KS·.T·.TW·.HK·.SS·.SZ)은 이름 배지로 보인다. 시세 조회 상장은 회사 `symbol`이 해외 상장이면 그것, 미국 심볼이면 첫 해외 상장이다.
 - **sa에 남는 고유 규칙**: 바꿔 보일 OTC 목록 `company_table.FOREIGN_KEYS`, 칩을 더할 심볼 `EXTRA_KEYS`, 접미사 없는 코드 `BARE_CODES`, 제목 별칭 `foreign_tickers._COMPANIES`(대소문자 구분), 병합 방향 `db.TICKER_ALIASES`(GOOGL→GOOG, 한국 코드→OTC).
-- **제목 앞 티커는 기본으로 티커칩에 넣는다**(`sa_summarize_claude.merge_title_prefix`). 모델이 고른 티커 순서를 유지한 채 뒤에 붙이고, ETF와 비상장 표기도 그대로 넣는다.
+- **제목 앞 티커는 기본으로 티커칩에 넣는다**(`summary_contract.merge_title_prefix`). 모델이 고른 티커 순서를 유지한 채 뒤에 붙이고, ETF와 비상장 표기도 그대로 넣는다.
 - **숫자 종목코드 칩은 기업명으로 표기한다**(2330.TW → TSMC). `/api/filters`의 `home_names`를 `app-cards.js`의 `codeLabel`이 쓴다. 영문 티커는 그대로이고, 시세 조회·검색은 계속 코드로 한다.
 - 포트폴리오 이름이 전부 대문자라 별칭이 안 생기는 회사(CXMT)는 `foreign_tickers._COMPANIES`에 직접 넣는다.
 - **`missing_from_title` 오탐 가드를 지우지 않는다**: Leonardo DRS, `X-class/-like` 복합어, `former`·`aboard` 앞말, ClearBridge 'OO Strategy', Mitsubishi 계열사, Eaton Fiber/Vance, Reliance Industries, Merck KGaA, 다른 Brookfield 상장사, 'for Airbus aircraft', BlackRock 발언·펀드 언급.
