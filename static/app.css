@@ -891,6 +891,46 @@ body.app-sa :is(.card-summary, .card-details) { font-size: calc(12.75px * var(--
   .header-actions .btn-trash-view { width: 34px; min-width: 34px; padding: 0; justify-content: center; }
 }
 
+/* ── 리스트 보기(2026-11-18 사용자 지시, PC 전용 — wm과 같은 방식) ──
+   카드와 같은 DOM을 한 줄로 편다: 제목 | 티커 | ID·시각 + 버튼. 줄마다 별도 그리드라 제목 외의 열은
+   폭을 고정해 줄끼리 열이 어긋나지 않게 한다. 요약은 줄을 누르면 그 자리에서 펼친다(.expanded).
+   뒤에 읽히는 hermes-ui.css의 .app-sa 규칙보다 한 단계 높여(.view-list) 덮는다.
+   모바일(≤680px, hermes-ui 모바일 구간)은 이 규칙 밖이라 항상 카드다. */
+@media (max-width: 680px) { body.app-sa .search-bar #view-toggle { display: none; } }
+@media (min-width: 681px) {
+  .app-sa .container.view-list { grid-template-columns: minmax(0, 1fr); gap: 0;
+    border: 1px solid var(--ui-border); border-radius: var(--ui-radius); overflow: hidden; background: var(--ui-surface); }
+  .app-sa .view-list .swipe-row { border-radius: 0; }
+  .app-sa .view-list .swipe-row:not(:last-child) { border-bottom: 1px solid var(--ui-border); }
+  .app-sa .view-list .card { display: grid; grid-template-columns: minmax(0, 1fr) 190px 262px; column-gap: 14px;
+    align-items: center; height: auto; min-height: 40px; padding: 3px 11px 3px 13px; border: 0;
+    border-radius: 0; box-shadow: none; cursor: pointer; }
+  .app-sa .view-list .card:hover { box-shadow: none; background: var(--ui-surface-2); }
+  /* 안읽음 점 — 읽은 줄은 같은 자리를 비워 제목 시작을 맞춘다 */
+  .app-sa .view-list .card-title-row { grid-column: 1; grid-row: 1; align-items: center; margin: 0; min-width: 0; }
+  .app-sa .view-list .unread-dot { margin-top: 0; }
+  .app-sa .view-list .card:not(.card-unread) .card-title-row::before { content: ""; position: static; flex: 0 0 6px;
+    width: 6px; height: 6px; background: none; }
+  .app-sa .view-list .card-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app-sa .view-list :is(.card-orig-title, .card-divider, .card-details, .footer-method) { display: none; }
+  /* 오른쪽 정렬하되 넘치면 왼쪽부터(safe) — 넘친 칩이 왼쪽으로 잘리면 대표 종목(첫 칩)이 사라진다 */
+  .app-sa .view-list .card-tickers { grid-column: 2; grid-row: 1; flex-wrap: nowrap; justify-content: flex-end;
+    justify-content: safe flex-end; overflow: hidden; margin: 0; padding: 0; }
+  .app-sa .view-list .card-footer { grid-column: 3; grid-row: 1; margin: 0; padding: 0; border: 0; gap: 8px; }
+  .app-sa .view-list .footer-actions { gap: 5px; }
+  /* 펼친 줄: 제목 전체·원제목, 요약은 다음 줄에 제목 시작에 맞춰 */
+  .app-sa .view-list .card.expanded { padding-top: 8px; padding-bottom: 12px; background: var(--ui-surface-2); }
+  .app-sa .view-list .card.expanded .card-title { white-space: normal; }
+  .app-sa .view-list .card.expanded .card-orig-title { display: block; margin-top: 2px; }
+  .app-sa .view-list .card.expanded .card-details { display: block; grid-column: 1 / -1; grid-row: 2; padding: 8px 0 0 14px; }
+  .app-sa .view-list .card.expanded .card-details ul { margin: 0; }
+}
+@media (min-width: 681px) and (max-width: 900px) {
+  .app-sa .view-list .card { grid-template-columns: minmax(0, 1fr) 262px; }
+  .app-sa .view-list .card-tickers { display: none; }
+  .app-sa .view-list .card-footer { grid-column: 2; }
+}
+
 /* ── 모바일 GPU 합성 시 모서리 깨짐 회피 ──
    진한 배경 + border-radius + box-shadow 조합에서 일부 모바일 브라우저가
    합성 단계에 모서리 안티앨리어싱을 삼각형으로 잘라먹어, 그 자리에 뒤

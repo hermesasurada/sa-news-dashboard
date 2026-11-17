@@ -51,6 +51,7 @@
 
 /* ── Init ── */
 async function init() {
+  applyViewMode();                 // 카드/리스트 — 첫 그리기 전에 걸어 깜빡임을 막는다
   applyReaderFont();               // 저장된 글꼴을 로드 시점에 반영
   applyReaderSize();
   // 첫 방문도 필터 목록과 기사 목록을 병렬로 요청한다. 발행 시 티커가 이미

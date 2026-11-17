@@ -167,3 +167,34 @@ function renderCard(a) {
 </div>
 </div>`;
 }
+
+/* ── 보기 방식(카드 ↔ 리스트) — PC 전용(2026-11-18 사용자 지시, wm과 같은 방식) ──
+   같은 카드 DOM을 CSS(.view-list, ≥681px)로 한 줄로 펴므로 읽음·삭제·티커 시세가 그대로 동작한다.
+   sa는 요약 팝업이 없어서 리스트에서는 줄을 누르면 그 자리에서 요약이 펼쳐진다(.expanded).
+   모바일(≤680px)은 버튼이 없고 CSS도 적용되지 않아 저장값과 무관하게 카드다. 이 브라우저에 기억한다. */
+const VIEW_MODE_KEY = 'saViewMode';
+const VIEW_MODE_ICON = {
+  card: '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>',
+  list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+};
+let _viewMode = 'card';
+try { if (localStorage.getItem(VIEW_MODE_KEY) === 'list') _viewMode = 'list'; } catch (e) {}
+function applyViewMode() {
+  document.getElementById('cards').classList.toggle('view-list', _viewMode === 'list');
+  const btn = document.getElementById('view-toggle');
+  if (btn) btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${VIEW_MODE_ICON[_viewMode]}</svg><span class="btn-txt">${_viewMode === 'list' ? '리스트' : '카드'}</span>`;
+}
+function toggleViewMode() {
+  _viewMode = _viewMode === 'list' ? 'card' : 'list';
+  try { localStorage.setItem(VIEW_MODE_KEY, _viewMode); } catch (e) {}
+  applyViewMode();
+}
+// 리스트 줄 펼치기 — 버튼·링크·티커 칩·기사 ID는 제 동작만 하고, 글자를 끌어 고르는 중이면 펼치지 않는다.
+document.getElementById('cards').addEventListener('click', (e) => {
+  const list = e.currentTarget;
+  if (!list.classList.contains('view-list') || !window.matchMedia('(min-width: 681px)').matches) return;
+  if (e.target.closest('button, a, input, .ticker-badge')) return;
+  if (window.getSelection && String(window.getSelection())) return;
+  const card = e.target.closest('.card');
+  if (card) card.classList.toggle('expanded');
+});

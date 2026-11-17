@@ -30,6 +30,19 @@ class StaticLayoutTests(unittest.TestCase):
             self.assertNotRegex((STATIC / name).read_text(encoding="utf-8"), r"(?m)^init\(\);")
         self.assertRegex((STATIC / "app-boot.js").read_text(encoding="utf-8"), r"(?m)^init\(\);\s*\Z")
 
+    def test_view_toggle_is_wired_and_pc_only(self):
+        # 카드 ↔ 리스트(2026-11-18): 버튼·함수·첫 그리기 전 적용·PC 전용 CSS가 함께 있어야 한다.
+        self.assertIn('id="view-toggle"', self.html)
+        self.assertIn('onclick="toggleViewMode()"', self.html)
+        cards = (STATIC / "app-cards.js").read_text(encoding="utf-8")
+        self.assertRegex(cards, r"function toggleViewMode\(")
+        self.assertIn("'saViewMode'", cards)
+        boot = (STATIC / "app-boot.js").read_text(encoding="utf-8")
+        self.assertLess(boot.index("applyViewMode();"), boot.index("search(savedOffset);"))
+        css = (STATIC / "app.css").read_text(encoding="utf-8")
+        self.assertIn("@media (min-width: 681px) {\n  .app-sa .container.view-list", css)
+        self.assertIn("@media (max-width: 680px) { body.app-sa .search-bar #view-toggle { display: none; } }", css)
+
     def test_every_local_asset_gets_a_version(self):
         # 캐시가 1년 고정이라 버전 없는 주소가 하나라도 남으면 고쳐도 옛 파일이 보인다.
         # app을 불러오면 db.init_db()가 돈다 — 운영 DB 대신 임시 DB를 가리키게 한 뒤 불러온다.
