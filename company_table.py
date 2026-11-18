@@ -38,7 +38,7 @@ FOREIGN_KEYS = (
     "SSNLF", "HXSCL", "LGEIY", "NHNCF",                                            # 한국
     "EADSY", "EADSF", "ADDYY", "BMWKY", "VWAGY", "SIEGY", "SMEGF", "SMNEY", "DLAKF", "DLAKY", "DHER",
     "SAFRF", "SAFRY", "HESAY", "HESAF", "DUAVF", "ENI", "NTOIY", "IBDRY", "IBDSF", "CAMRF", "SAABF", "SAABY",
-    "RYCEY", "RYCEF", "BAESY", "HEINY", "RNMBF", "RNMBY",                          # 유럽
+    "RYCEY", "RYCEF", "BAESY", "HEINY", "RNMBF", "RNMBY", "RHHBY", "RHHBF",        # 유럽(로슈 → RO.SW, 2026-11-18)
     "SONY", "SNEJF", "NTDOY", "NTDOF", "SFTBY", "SFTBF", "NINOY", "HTHIY", "HTHIF",   # 일본(SONY ADR은 포트폴리오에 없다)
     "BYDDY", "BYDDF", "HNHPF", "FXCOF", "IVBIY", "IVBXF", "LNVGY",                 # 중국·대만·홍콩
     "QABSY", "SYAAF", "SRHYY", "DBSDY", "BDRBF", "BDRAF", "BOMBF", "KRKNF", "TAKOF",  # 기타
