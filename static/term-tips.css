@@ -1,8 +1,10 @@
-/* 용어 툴팁 — sa·td 공용(글자 단위로 같은 파일, 2026-11-18). 창 모양은 td 인명 소개 창과 같고,
-   밑줄은 인명(회색 점선)과 구분되게 파란 점선이다. */
-.term-tip { cursor: help; text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 3px;
-  text-decoration-color: color-mix(in srgb, #3b82f6 70%, transparent); }
-.term-tip:hover { text-decoration-style: solid; }
+/* 용어 툴팁 — sa·td 공용(글자 단위로 같은 파일, 2026-11-18). 창 모양은 td 인명 소개 창과 같다.
+   표시는 각주처럼 용어 뒤 파란 윗첨자 *(2026-11-18 사용자 지시) — 밑줄은 인명(회색 점선)만 쓴다.
+   윗첨자는 vertical-align 대신 relative 이동이라 줄 간격이 벌어지지 않는다. */
+.term-tip { cursor: help; }
+.term-tip::after { content: "*"; position: relative; top: -.45em; margin-left: 1px; font-size: .75em; font-weight: 700;
+  line-height: 0; color: #3b82f6; }
+.term-tip:hover::after { color: #60a5fa; }
 #term-tip-pop { position: fixed; left: 0; top: 0; opacity: 0; pointer-events: none; transform: translateY(4px);
   transition: opacity .14s, transform .14s; z-index: 10050; width: max-content; max-width: min(280px, calc(100vw - 24px));
   word-break: keep-all; overflow-wrap: break-word; background: #1f2329; color: #e8eaed; border: 1px solid #343a42;
