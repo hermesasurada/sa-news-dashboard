@@ -108,6 +108,8 @@ function renderCard(a) {
   const originalTitle = hasOrig ? `<div class="card-orig-title">${escapeHTML(a.original_title)}</div>` : '';
 
   const tickers = extractTickers(a);
+  // 같은 회사의 여러 상장이 한 기사에 함께 붙으면(RHHBY·RHHBF·RO.SW → 모두 RO.SW) 칩은 시세 종목 기준 한 번만
+  const shownQuotes = new Set();
   const tickerBadges = tickers.map((t, i) => {
     const color = i === 0 ? (a.ticker_color || 'blue') : 'gray';
     const fl = FOREIGN_LISTINGS[t.ticker];
@@ -121,6 +123,8 @@ function renderCard(a) {
       companyName = t.name || t.ticker;
       quoteTicker = t.ticker;
     }
+    if (shownQuotes.has(quoteTicker)) return '';
+    shownQuotes.add(quoteTicker);
     const attrs = [
       `data-ticker="${escapeAttr(t.ticker)}"`,
       `data-quote-ticker="${escapeAttr(quoteTicker)}"`,
