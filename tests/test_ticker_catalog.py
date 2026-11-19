@@ -60,6 +60,22 @@ class CxmtTests(unittest.TestCase):
         self.assertEqual(foreign_tickers.missing_from_title("CXMT plans plant", ["688825.SS"]), [])
 
 
+class BrandTests(unittest.TestCase):
+    """등록부 brands — 제목에 자회사·브랜드가 나오면 모회사 티커(2026-11-20 sa 12163)."""
+
+    def test_brand_adds_parent(self):
+        with patch.object(ft, "portfolio_companies", return_value=[]), \
+             patch.object(ft.company_table, "brands", return_value={"Boston Dynamics": "005380.KS", "Waymo": "GOOGL"}), \
+             patch.object(ft.company_table, "equivalents", return_value={"GOOGL": ("GOOG",), "GOOG": ("GOOGL",)}), \
+             patch.object(ft.company_table, "company_name", side_effect=lambda s, d="": {"005380.KS": "현대차", "GOOGL": "Alphabet"}.get(s, d)):
+            self.assertEqual(ft.missing_from_title("AMZN: Boston Dynamics taps former Amazon executive as CEO", ["AMZN"]),
+                             [("005380.KS", "현대차")])
+            self.assertEqual(ft.missing_from_title("Waymo to end exclusive Uber tie-up", ["UBER"]), [("GOOGL", "Alphabet")])
+            self.assertEqual(ft.missing_from_title("Waymo expands to Austin", ["GOOG"]), [])          # 이미 같은 회사
+            self.assertEqual(ft.missing_from_title("boston dynamics-style robots", []), [])         # 대소문자 구분
+            self.assertEqual(ft.missing_from_title("Uber hires from Waymo", ["UBER"]), [])           # 기존 앞말 가드
+
+
 class FalsePositiveGuardTests(unittest.TestCase):
     """후보 75건 점검(2026-10-12)에서 확인된 오탐 — 칩을 붙이지 않는다."""
 

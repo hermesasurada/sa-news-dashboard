@@ -21,7 +21,10 @@ REG = {"companies": {
     "Ferrari": {"symbol": "RACE", "other_symbols": ["2FE.DE"]},
     "TSMC": {"symbol": "TSM", "other_listings": [{"symbol": "2330.TW", "chip_label": "TSMC"}]},
     "MediaTek": {"symbol": "2454.TW", "chip_label": "MediaTek", "other_symbols": ["MDTKF", "MDTKY"]},
-    "Apple": {"symbol": "AAPL"}}}
+    "Apple": {"symbol": "AAPL"},
+    "현대차": {"symbol": "005380.KS", "brands": ["Boston Dynamics", "Shared"]},
+    "Alphabet": {"symbol": "GOOGL", "other_symbols": ["GOOG"], "brands": ["Waymo", "YouTube", "Shared"]}},
+    "word_lists": {"no_chip": ["YouTube"]}}
 
 
 def load_table(module, snapshot):
@@ -61,6 +64,13 @@ class CompanyTableTests(unittest.TestCase):
         self.assertEqual(eq["688825.SS"], ("688825",))                                               # 접미사 없는 코드는 sa 규칙
         self.assertNotIn("AAPL", eq)
         self.assertEqual(t.company_name("6758.T"), "Sony")
+
+    def test_brands_map_to_parent_symbol(self):
+        b = load_table(self.module, self.snap).brands()
+        self.assertEqual(b["Boston Dynamics"], "005380.KS")
+        self.assertEqual(b["Waymo"], "GOOGL")
+        self.assertNotIn("YouTube", b)          # 칩 금지어(no_chip)는 빼기 — chip_table과 같은 기준
+        self.assertNotIn("Shared", b)           # 두 회사가 같이 쓰는 이름은 어느 쪽으로도 안 보낸다
 
     def test_snapshot_is_used_when_the_registry_cannot_be_read(self):
         load_table(self.module, self.snap).listings()

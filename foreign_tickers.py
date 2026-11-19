@@ -85,6 +85,16 @@ _COMPANIES: list[tuple[str, tuple[str, ...]]] = [
 ]
 
 
+def _brand_patterns(equivalents: dict) -> list:
+    """등록부 brands(자회사·브랜드 → 모회사, 2026-11-20 사용자 지시 sa 12163 'Boston Dynamics → 현대차').
+    제목에 브랜드 이름이 나오면 모회사 티커를 보탠다 — 회사 별칭과 같은 제목 한정·대소문자 구분·오탐 가드를 그대로 받는다."""
+    return [
+        (symbol, company_table.company_name(symbol, symbol), {s.upper() for s in (symbol, *equivalents.get(symbol, ()))},
+         re.compile(r"(?<![A-Za-z0-9])%s(?![A-Za-z0-9])" % re.escape(brand)))
+        for brand, symbol in sorted(company_table.brands().items())
+    ]
+
+
 def _curated_patterns(equivalents: dict) -> list:
     return [
         (symbol, company_table.company_name(symbol, symbol), {s.upper() for s in (symbol, *equivalents.get(symbol, ()))},
@@ -112,6 +122,7 @@ def missing_from_title(title: str, tickers: list[str]) -> list[tuple[str, str]]:
             continue
         patterns.append((symbol, name, {symbol, *equivalents.get(symbol, ())},
                          re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(re.escape(a) for a in aliases) + r")(?![A-Za-z0-9])")))
+    patterns.extend(_brand_patterns(equivalents))     # 회사 이름이 먼저 — 같은 회사면 아래 '이미 들어 있음'에서 걸러진다
     for symbol, name, known, pattern in patterns:
         if have & known:
             continue                       # 이 회사는 이미 어떤 형태로든 들어 있다

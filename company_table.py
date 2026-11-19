@@ -6,6 +6,8 @@
   - 회사의 `symbol` + `other_symbols`(OTC·ADR·주식 종류) + `other_listings`가 한 묶음(같은 회사)
   - 칩 이름 = 그 상장의 `chip_label`, 없으면 회사 정규 이름. 아시아 상장(.KS·.T·.TW·.HK·.SS·.SZ)은 이름으로 표시(byName)
   - 시세 조회 상장(home) = 회사 `symbol`이 해외 상장이면 그것, 미국 심볼이면 묶음의 첫 해외 상장(Sony SONY → 6758.T)
+  - 자회사·브랜드(`brands`) → 모회사 `symbol`(Boston Dynamics → 005380.KS) — 제목 주체 보정이 쓴다(2026-11-20).
+    `word_lists`의 no_chip·ambiguous·title_exclude에 든 이름과, 두 회사가 같이 쓰는 이름은 뺀다(chip_table과 같은 기준).
 
 sa 고유 규칙은 여기 남긴다(등록부에 두지 않는다):
   - FOREIGN_KEYS: 칩에서 본국 상장으로 '바꿔' 보일 미국 OTC·ADR 심볼(SSNLF → 삼성전자 005930.KS)
@@ -71,8 +73,11 @@ def _is_foreign_listing(symbol: str) -> bool:
 
 def build(reg: dict) -> dict:
     """등록부 → {"groups": [[회사, [심볼 …]]], "names": {심볼: 칩 이름}, "companies": {심볼: 정규 이름},
-    "home": {심볼: 시세 조회 상장}}."""
+    "home": {심볼: 시세 조회 상장}, "brands": {자회사·브랜드 이름: 모회사 심볼}}."""
     groups, names, companies, home = [], {}, {}, {}
+    lists = reg.get("word_lists") or {}
+    blocked = {str(w).casefold() for k in ("no_chip", "ambiguous", "title_exclude") for w in lists.get(k) or []}
+    brand_owner: dict[str, set] = {}
     for company, e in (reg.get("companies") or {}).items():
         if not isinstance(e, dict) or not e.get("symbol"):
             continue
@@ -84,6 +89,9 @@ def build(reg: dict) -> dict:
             companies.setdefault(m, company)
         for x in listings:
             names[x["symbol"]] = x.get("chip_label") or name
+        for b in e.get("brands") or []:
+            if isinstance(b, str) and b.strip() and b.strip().casefold() not in blocked:
+                brand_owner.setdefault(b.strip(), set()).add(e["symbol"])
         if len(members) < 2:
             continue
         foreign = [m for m in members if _is_foreign_listing(m)]
@@ -91,7 +99,8 @@ def build(reg: dict) -> dict:
         for m in members:
             home[m] = main
         groups.append([company, members])
-    return {"groups": groups, "names": names, "companies": companies, "home": home}
+    brands = {b: next(iter(owners)) for b, owners in brand_owner.items() if len(owners) == 1}
+    return {"groups": groups, "names": names, "companies": companies, "home": home, "brands": brands}
 
 
 def _read_snapshot():
@@ -162,6 +171,11 @@ def equivalents() -> dict[str, tuple[str, ...]]:
     for code, others in BARE_CODES.items():
         out[code] = tuple(dict.fromkeys((*out.get(code, ()), *others)))
     return out
+
+
+def brands() -> dict[str, str]:
+    """{자회사·브랜드 이름: 모회사 심볼} — 제목 주체 보정용. 옛 사본(brands 없음)이면 빈 표."""
+    return dict(_table().get("brands") or {})
 
 
 def company_name(symbol: str, default: str = "") -> str:
