@@ -105,7 +105,7 @@ Seeking Alpha 속보 메일을 수집해 한국어로 요약하고 대시보드(
 
 ## 화면
 
-- **공용 파일은 다른 저장소와 글자 단위로 같게 유지한다**: `hermes-theme.{js,css}`(sa·td·wm), `model-selector.{js,css}`.
+- **공용 파일은 다른 저장소와 글자 단위로 같게 유지한다**: `hermes-theme.{js,css}`(sa·td·wm; xw는 둘 다, 지식증류 8768은 js만 — 2026-11-20), `model-selector.{js,css}`.
 - 색상 모드: 선택값은 localStorage `hermes-theme`, 실제 색은 `<html data-theme>`로만 건다. 다크 보정은 `:root[data-theme="dark"]` 절에 둔다. 스크립트는 `<head>`에서 defer 없이 불러 깜빡임을 막는다.
 - **상단은 2줄**: 1줄 = 타이틀 + [설정][색상 모드][휴지통], 2줄 = 검색어 + 검색·정렬 방향·초기화·미읽음(눈 아이콘 안에 건수). 정렬 기준은 이메일 시간 고정이다. 결과 건수 줄은 숨긴다(`#stats` hidden). 티커 선택 버튼·모달은 없다(검색어로 찾는다). 모바일(≤680px)은 아이콘만.
 - 상단은 스크롤해도 고정된다(`.hermes-gnb`). 조상에 `overflow-x: hidden`을 두면 sticky가 깨지므로 `clip`을 쓴다. z-index(40)는 모달보다 낮게 둔다.
