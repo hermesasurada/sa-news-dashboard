@@ -142,8 +142,18 @@ async function fetchPortfolioQuote(quoteTicker) {
   }
 }
 
+// 종목명 오른쪽에 원래 티커(3711.TW 등 — 칩 심볼이 아니라 시세 응답의 ticker)를 작고 옅게(2026-11-21 사용자 지시, 포트폴리오 세션 전달). 이름이 티커와 같으면 한 번만
+function setQuoteName(el, name, ticker) {
+  const a = el.querySelector('.tqp-name');
+  a.textContent = name || ticker || '';
+  if (ticker && String(ticker).toUpperCase() !== String(name || '').toUpperCase()) {
+    const s = document.createElement('span');
+    s.className = 'tqp-ticker';
+    s.textContent = ticker;
+    a.appendChild(s);
+  }
+}
 function renderTickerPopoverContent(el, companyFallback, quoteTicker, packed) {
-  const name = el.querySelector('.tqp-name');
   const price = el.querySelector('.tqp-price');
   const chg = el.querySelector('.tqp-chg');
   const ext = el.querySelector('.tqp-ext');
@@ -155,7 +165,7 @@ function renderTickerPopoverContent(el, companyFallback, quoteTicker, packed) {
   const d = (!packed.error && packed.data) ? packed.data : null;
   // 종목명: 서버(포트폴리오/NASDAQ) > 로컬 캐시 > 기사 회사명 > 티커
   const bestName = (d && d.name) || nameCache[quoteTicker] || companyFallback || quoteTicker;
-  name.textContent = bestName;
+  setQuoteName(el, bestName, d && d.ticker);
   if (d && d.name) rememberName(quoteTicker, d.name);
 
   setTickerPopoverLink(el, (d && d.current_price != null) ? (d.ticker || quoteTicker) : '');

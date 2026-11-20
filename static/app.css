@@ -499,6 +499,8 @@ body {
   opacity: 0.75;
 }
 .tqp-name[href]:hover { color: #fff; }
+/* 종목명 옆 원래 티커(2026-11-21) — 이름보다 1px 작고 옅게, 밑줄 없이(inline-block이라 링크 밑줄이 안 번진다) */
+.tqp-ticker { display: inline-block; margin-left: 5px; font-size: 10px; font-weight: 500; color: rgba(232,237,243,.55); text-decoration: none; }
 .tqp-body {
   display: flex;
   align-items: baseline;
