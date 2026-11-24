@@ -29,8 +29,8 @@ from sa_llm import call_claude, call_codex, call_gemini, call_grok  # noqa: E402
 import summary_config  # noqa: E402
 from sa_lock import single_instance  # noqa: E402
 from summary_contract import (
-    _HAN_RE, _KANA_RE, _MARKDOWN_LINK_RE, _PROMPT_TMPL, _TICKER_RE, _TITLE_PREFIX_RE, _VALID_COLORS,
-    _checked_summary, _plain_text, merge_title_prefix, title_prefix_tickers, validate,
+    _HAN_RE, _KANA_RE, _MARKDOWN_LINK_RE, _PROMPT_TMPL, _TICKER_RE, _VALID_COLORS,
+    _checked_summary, _plain_text, validate,
 )
 
 EXIT_OK = 0

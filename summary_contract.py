@@ -1,5 +1,5 @@
 """요약 계약 — 요약 지시문(_PROMPT_TMPL), 모델 응답 검증(validate: 필드·색·한자/가나·마크다운 링크),
-제목 앞 티커 병합(merge_title_prefix), 응답 → 검증된 요약(_checked_summary).
+응답 → 검증된 요약(_checked_summary). 제목 앞 티커(SA 태그)는 지시문대로 모델이 판단한다(2026-11-24, 강제 병합 삭제).
 
 지시문·검증을 고치면 모든 요약 모델의 결과가 바뀐다. 실행 흐름(원문 받기·모델 순서·DB 반영)은
 scripts/sa_summarize_claude.py(2026-11-17 거기서 분리).
@@ -7,9 +7,7 @@ scripts/sa_summarize_claude.py(2026-11-17 거기서 분리).
 from __future__ import annotations
 
 import re
-import db
 import foreign_tickers
-import ticker_names
 from sa_llm import extract_json
 
 
@@ -42,6 +40,9 @@ _PROMPT_TMPL = """\
      (예: 'VinSpace가 SpaceX와 발사 계약' → SPCX 포함. 단순 배경 언급이면 기존대로 제외)
      xAI는 SpaceX에 합병됐다. 'xAI'·'SpaceXAI'로만 적혀 있어도 같은 상장사이므로 SPCX로 잡는다.
      (Grok·Grok 4.7 등 모델명은 제품이라 티커가 아니다. company_name은 SpaceX로 적는다)
+  ⚠️ 원문 제목 앞 'ANT:'·'AMZN, QLD:'처럼 붙은 티커는 사용자가 팔로우한 종목에 SA가 단 **태그일 뿐**이다.
+     기사와 실질 관련이 있을 때만 넣는다 — 시황·거시·다른 회사 기사에 붙은 태그 종목은 빼고, 업종 기사에서
+     그 종목이 실제로 영향을 받는 당사자(은행주 기사의 BAC 등)면 넣는다.
   기사에 해당 기업이 없으면 빈 문자열 "".
 - company_name: ticker 순서·개수와 **정확히 동일하게** 정식 영문 기업명을 · 로 연결 (예: "Nvidia·AMD").
   ticker를 N개 넣었으면 company_name도 N개. 한국어 번역·음차 절대 금지. 티커 기호(AAPL 등) 포함 금지.
@@ -84,37 +85,6 @@ def _plain_text(value) -> str:
     return text.replace("**", "").replace("__", "").replace("*", "").replace("_", " ")
 
 
-# SA 알림 메일 제목 앞 티커('FDX: Citi ... upgrades XPO')는 사용자가 팔로우해서 그 기사가 온 종목이다.
-# 모델은 기사 대상(XPO)만 뽑기도 해서, 제목 앞 티커는 기본으로 칩에 넣는다(2026-10-08 사용자 지시, 9360).
-_TITLE_PREFIX_RE = re.compile(r"^([A-Z0-9][A-Z0-9.,\s]{0,40}[A-Z0-9])\s*:\s")
-
-
-def title_prefix_tickers(title: str) -> list[str]:
-    m = _TITLE_PREFIX_RE.match(title or "")
-    if not m:
-        return []
-    out = []
-    for t in m.group(1).split(","):
-        t = db.TICKER_ALIASES.get(t.strip().upper(), t.strip().upper())
-        if _TICKER_RE.fullmatch(t) and t not in out:
-            out.append(t)
-    return out
-
-
-def merge_title_prefix(ticker_text: str, company_text: str, title: str) -> tuple[str, str]:
-    """모델 티커 뒤에 빠진 제목 앞 티커를 붙인다(주 종목 순서 유지). 회사명은 같은 자리에 채운다."""
-    tks = [t.strip() for t in str(ticker_text or "").split(",") if t.strip()]
-    cos = [c.strip() for c in str(company_text or "").split("·")] if company_text else []
-    cos += [""] * (len(tks) - len(cos))
-    have = {db.TICKER_ALIASES.get(t.upper(), t.upper()) for t in tks}
-    for t in title_prefix_tickers(title):
-        if t not in have:
-            tks.append(t); cos.append(""); have.add(t)
-    if not tks:
-        return ticker_text, company_text
-    return ", ".join(tks), ticker_names.fill_company(", ".join(tks), "·".join(cos[:len(tks)]))
-
-
 def validate(d: dict, original_title: str = "") -> dict:
     """Normalize model output and reject forbidden writing-system leakage.
 
@@ -131,8 +101,6 @@ def validate(d: dict, original_title: str = "") -> dict:
     if original_title:
         ticker_text, d["company_name"] = foreign_tickers.supplement_pairs(
             original_title, ", ".join(valid_tickers), d["company_name"])
-        valid_tickers = [t.strip() for t in ticker_text.split(",") if t.strip()]
-        ticker_text, d["company_name"] = merge_title_prefix(", ".join(valid_tickers), d["company_name"], original_title)
         valid_tickers = [t.strip() for t in ticker_text.split(",") if t.strip()]
     # 암호화폐 칩은 원제와 모델 헤드라인을 함께 본다(foreign_tickers._CRYPTO, 2026-11-24)
     ticker_text, d["company_name"] = foreign_tickers.supplement_crypto(
