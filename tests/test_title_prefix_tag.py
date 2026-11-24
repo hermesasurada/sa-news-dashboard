@@ -17,4 +17,4 @@ def test_model_pick_kept_as_is():
 
 
 def test_prompt_explains_prefix_tag():
-    assert "SA가 단 **태그일 뿐**" in summary_contract._PROMPT_TMPL
+    assert "후보에 있다는 이유만으로 넣지 말고" in summary_contract._PROMPT_TMPL
