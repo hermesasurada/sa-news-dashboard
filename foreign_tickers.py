@@ -166,6 +166,39 @@ def missing_from_title(title: str, tickers: list[str]) -> list[tuple[str, str]]:
     return out
 
 
+# 암호화폐 칩(2026-11-24 사용자 지시, sa 12490 'CFTC, Bitcoin·Ether 등 암호화폐 준비금 인정'): 비트코인·이더리움이
+# 제목에 나오면 BTC·ETH 칩을 보탠다. 심볼은 포트폴리오 종목(category crypto)이라 시세 팝오버(전광판)가 그대로 열린다.
+# 회사가 아니라서 위 회사 별칭 표(portfolio_companies는 crypto 제외)와 따로 둔다. 원제가 'COIN: … crypto …'처럼
+# 코인 이름을 안 쓰는 일이 많아 **모델 헤드라인도 본다**(본문은 보지 않는다). 영문은 대소문자 구분 — 소문자
+# 'ether'(화합물)·'Ethernet'은 걸리지 않는다. 한글은 '비트코인'·'이더리움'만 — 맨 '이더'는 '트레이더'·'레이더'에 걸린다
+# (31일 소급 시험에서 sa 12068·10814 오탐). 칩이 'NONE'(주체 없음 표시)뿐이면 그 자리를 BTC·ETH로 바꾼다.
+_CRYPTO: list[tuple[str, str, re.Pattern]] = [
+    ("BTC", "Bitcoin", re.compile(r"(?<![A-Za-z0-9])(?:Bitcoin|bitcoin|BTC)(?![A-Za-z0-9])|비트코인")),
+    ("ETH", "Ethereum", re.compile(r"(?<![A-Za-z0-9])(?:Ethereum|ethereum|Ether|ETH)(?![A-Za-z0-9])|이더리움")),
+]
+
+
+def crypto_from_titles(titles, tickers: list[str]) -> list[tuple[str, str]]:
+    """제목들(원제·헤드라인)에 나왔는데 칩에 없는 (BTC|ETH, 이름)."""
+    have = {t.strip().upper() for t in tickers if t.strip()}
+    text = "\n".join(t for t in titles if t)
+    return [(symbol, name) for symbol, name, pattern in _CRYPTO if symbol not in have and pattern.search(text)]
+
+
+def supplement_crypto(titles, ticker_text: str, company_text: str) -> tuple[str, str]:
+    """supplement_pairs와 같은 짝 규칙으로 BTC·ETH를 뒤에 붙인다."""
+    symbols = [t.strip() for t in (ticker_text or "").split(",") if t.strip()]
+    added = crypto_from_titles(titles, symbols)
+    names = [n.strip() for n in (company_text or "").split("·")]
+    if added and [t.upper() for t in symbols] == ["NONE"]:
+        symbols, names = [], []
+    if not added or len([n for n in names if n]) > len(symbols):
+        return ticker_text, company_text
+    pairs = [(symbol, names[i] if i < len(names) and names[i] else symbol) for i, symbol in enumerate(symbols)]
+    pairs.extend(added)
+    return ", ".join(p[0] for p in pairs), "·".join(p[1] for p in pairs)
+
+
 def supplement_pairs(title: str, ticker_text: str, company_text: str) -> tuple[str, str]:
     """Keep symbol/name pairs together, including legacy mismatched name counts."""
     symbols = [t.strip() for t in (ticker_text or "").split(",") if t.strip()]

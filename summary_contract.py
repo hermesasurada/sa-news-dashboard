@@ -134,6 +134,10 @@ def validate(d: dict, original_title: str = "") -> dict:
         valid_tickers = [t.strip() for t in ticker_text.split(",") if t.strip()]
         ticker_text, d["company_name"] = merge_title_prefix(", ".join(valid_tickers), d["company_name"], original_title)
         valid_tickers = [t.strip() for t in ticker_text.split(",") if t.strip()]
+    # 암호화폐 칩은 원제와 모델 헤드라인을 함께 본다(foreign_tickers._CRYPTO, 2026-11-24)
+    ticker_text, d["company_name"] = foreign_tickers.supplement_crypto(
+        (original_title, _plain_text(d.get("headline"))), ", ".join(valid_tickers), d["company_name"])
+    valid_tickers = [t.strip() for t in ticker_text.split(",") if t.strip()]
     d["ticker"] = ", ".join(valid_tickers)
     d["headline"] = _plain_text(d.get("headline"))
     details = d.get("summary_details") or []
