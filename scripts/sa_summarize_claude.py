@@ -201,9 +201,10 @@ def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess 
     print(f" 완료 ({summary_model})")
 
     # DB 반영은 process_article()이 단 한 번만 담당한다.
-    new_ticker = data.get("ticker") or ""
+    # 모델이 티커를 비우면 비운 그대로 저장한다 — None으로 넘기면 1단계에 저장된 메일 제목 앞 티커(SA 태그)가
+    # 남아 '태그일 뿐이면 넣지 않는다'는 지시문 규칙이 무력해진다(2026-11-24, sa 12497).
     return AttemptSuccess(
-        ticker=new_ticker if new_ticker else None,
+        ticker=data.get("ticker") or "",
         company_name=data["company_name"],
         headline=data["headline"],
         summary_details=data["summary_details"],
