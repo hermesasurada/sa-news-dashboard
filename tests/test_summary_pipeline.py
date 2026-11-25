@@ -1114,6 +1114,7 @@ class HybridGrokTests(GrokDriveCase):
     def test_hybrid_batch_updates_then_fetches_rest(self):
         cut = self._published("111", self.JINA_CUT)
         fresh = self._pending("222")
+        db.mark_article_read(cut, True)
         with db.get_conn() as conn:
             conn.execute("UPDATE articles SET grok_requested_at=?, grok_status='requested' WHERE id=?",
                          (self.gb._now(), cut))
@@ -1130,4 +1131,6 @@ class HybridGrokTests(GrokDriveCase):
         ):
             sa_summarize_claude.run_batch(10)
         self.assertEqual(calls, [(cut, True), (fresh, False)])          # Grok 갱신은 저장 원문, 새 기사는 Jina
+        with db.get_conn() as conn:                                     # 갱신된 기사는 다시 안읽음
+            self.assertEqual(conn.execute("SELECT is_read FROM articles WHERE id=?", (cut,)).fetchone()[0], 0)
         self.assertEqual([i["news_id"] for i in self.uploads[0][1]["items"]], ["222"])   # 새 기사도 Grok에 요청

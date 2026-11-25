@@ -294,6 +294,7 @@ def run_hybrid_batch(batch_size: int) -> BatchResult:
     for row in grok_rows[:batch_size]:
         print("  (Grok 원문으로 갱신)")
         if process_article(row, reuse_source=True):
+            db.mark_article_read(row["id"], False)   # 내용이 바뀌었으니 다시 안읽음으로(2026-11-26 사용자 지시)
             ok += 1
         else:
             fail += 1
