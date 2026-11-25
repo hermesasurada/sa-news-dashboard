@@ -139,6 +139,16 @@ function queueBadges(qData) {
     el.textContent = n;
     el.hidden = trashView || n <= 0;
   }
+  // Grok Bot 모드일 때만 서버가 queue.grok을 준다 — 요청을 올리고 원문을 기다리는 건수(2026-11-25 사용자 지시)
+  const gw = document.getElementById('grok-wait');
+  if (gw) {
+    const g = qData && qData.grok;
+    gw.hidden = trashView || !g;
+    if (g) {
+      const oldest = g.waiting > 0 && g.oldest ? ` · 가장 오래된 요청 ${String(g.oldest).slice(5, 16).replace('T', ' ')}` : '';
+      gw.textContent = `Grok 원문 대기 ${g.waiting}건${oldest}`;
+    }
+  }
   return '';
 }
 function statsLine(total, offset, shown, badges) {

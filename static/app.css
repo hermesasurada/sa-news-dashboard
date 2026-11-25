@@ -288,6 +288,13 @@ body {
 
 /* ── Stats ── */
 .stats[hidden] { display: none; }
+.grok-wait[hidden] { display: none; }
+.grok-wait {
+  max-width: 1400px;
+  margin: 2px auto 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
 .stats {
   max-width: 1400px;
   margin: 12px auto 18px;

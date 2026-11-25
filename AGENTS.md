@@ -94,7 +94,7 @@ Seeking Alpha 속보 메일을 수집해 한국어로 요약하고 대시보드(
 ## 원문 통로
 
 - **코드 기본값은 Grok Bot**(`settings.SOURCE_MODE='grok'`)이고, 이 모드에서 sa는 SA 사이트에 접속하지 않는다.
-- 2026-10-20~11-25 Grok Bot 장애로 진입점 `~/.hermes/scripts/sa_publish.sh`에 `export SA_SOURCE_MODE=site`를 넣어 직접 수집했다. 11-25 시험 3건(Dell·HP 전문, Ford 부분)으로 복구를 확인하고 그 줄을 지워 Grok으로 되돌렸다(사용자 지시). 직접 수집은 유료벽 앞 두세 문단에서 잘린다. 다시 Grok이 멈추면 같은 한 줄을 넣는다.
+- 2026-10-20~11-25 Grok Bot 장애로 진입점 `~/.hermes/scripts/sa_publish.sh`에 `export SA_SOURCE_MODE=site`를 넣어 직접 수집했다. 11-25 시험 3건(Dell·HP 전문, Ford 부분)으로 복구를 확인하고 그 줄을 지워 Grok으로 되돌렸다(사용자 지시). 직접 수집은 유료벽 앞 두세 문단에서 잘린다. 다시 Grok이 멈추면 같은 한 줄을 넣는다. 대시보드 서버는 자기 환경의 `SA_SOURCE_MODE`(기본 grok)로 대기 줄을 정하므로, 직접 수집으로 바꿀 때는 launchd `com.user.sa-dashboard` plist에도 같은 값을 넣어야 대기 줄이 사라진다.
 - **curl_cffi 지문은 버전을 고정하지 않는다**(2026-11-18): `sa_article_parser.CFFI_IMPERSONATE`(기본 `chrome`, env `SA_CFFI_IMPERSONATE`) — 설치된 curl_cffi의 최신 별칭. 순번은 `chrome → safari → firefox`, User-Agent는 지문과 맞게 curl_cffi가 채운다. 옛 고정값 `safari17_2`는 curl_cffi 0.15에서 지원이 빠져 매번 오류였고, wm은 Akamai가 `chrome131`을 막아 IR 49곳이 동시에 0건이 됐다(2026-11-17).
 - **SA 로그인 수집은 기본 끔**(`SA_USE_LOGIN=0`): 로그인 쿠키를 붙인 자동 수집이 봇으로 판정돼 유료 계정 정지 위험이 있다. 비로그인 경로만 쓰고 품질 기준은 미리보기용(`DEGRADED_MIN_CHARS` 200자)이다. 로그인 경로 테스트는 `USE_LOGIN_SESSION=True`로 명시한다.
 - **SA 원문은 영문으로 고정**한다: `load_sa_cookies`가 `user_locale=en`, Playwright `locale="en-US"`, API `Accept-Language: en-US`.
@@ -108,7 +108,7 @@ Seeking Alpha 속보 메일을 수집해 한국어로 요약하고 대시보드(
 
 - **공용 파일은 다른 저장소와 글자 단위로 같게 유지한다**: `hermes-theme.{js,css}`(sa·td·wm; xw는 둘 다, 지식증류 8768은 js만 — 2026-11-20), `model-selector.{js,css}`.
 - 색상 모드: 선택값은 localStorage `hermes-theme`, 실제 색은 `<html data-theme>`로만 건다. 다크 보정은 `:root[data-theme="dark"]` 절에 둔다. 스크립트는 `<head>`에서 defer 없이 불러 깜빡임을 막는다.
-- **상단은 2줄**: 1줄 = 타이틀 + [설정][색상 모드][휴지통], 2줄 = 검색어 + 검색·정렬 방향·초기화·미읽음(눈 아이콘 안에 건수). 정렬 기준은 이메일 시간 고정이다. 결과 건수 줄은 숨긴다(`#stats` hidden). 티커 선택 버튼·모달은 없다(검색어로 찾는다). 모바일(≤680px)은 아이콘만.
+- **상단은 2줄**: 1줄 = 타이틀 + [설정][색상 모드][휴지통], 2줄 = 검색어 + 검색·정렬 방향·초기화·미읽음(눈 아이콘 안에 건수). 정렬 기준은 이메일 시간 고정이다. 결과 건수 줄은 숨긴다(`#stats` hidden). **Grok 원문 대기 줄**(2026-11-25 사용자 지시): Grok Bot 모드면 검색줄과 카드 사이에 `Grok 원문 대기 N건 · 가장 오래된 요청 MM-DD HH:MM`을 한 줄로 보인다(`#grok-wait`). N = pending 중 요청을 올렸고(`grok_requested_at`) 아직 원문이 안 들어온(`source_method`가 grok·grok_partial 아님) 기사 — 원문이 들어와 요약 차례인 것은 뺀다. 목록 응답 `queue.grok`(`db.query_articles`)에서 오며 목록을 다시 받을 때 갱신된다. 휴지통 보기에서는 숨긴다. 티커 선택 버튼·모달은 없다(검색어로 찾는다). 모바일(≤680px)은 아이콘만.
 - 상단은 스크롤해도 고정된다(`.hermes-gnb`). 조상에 `overflow-x: hidden`을 두면 sticky가 깨지므로 `clip`을 쓴다. z-index(40)는 모달보다 낮게 둔다.
 - 요약 글꼴·글자 크기는 설정 창 안에 있다. 글꼴 목록은 공용 `hermes-reader-fonts/fonts.js`가 정본이다. 글자 크기는 12~17(기본 13), localStorage `saReaderSize` → body `--reader-scale`, 요약 본문만 바뀐다.
 - **안읽음 표시는 제목 앞 작은 점**이다(wm·sa·td 통일). 좌측 세로줄·캡슐 바·inset 줄 강조를 다시 넣지 않는다.

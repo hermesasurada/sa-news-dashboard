@@ -105,6 +105,21 @@ class DatabaseWorkflowTests(unittest.TestCase):
         self.assertEqual(result["queue"]["failed"], 0)
         self.assertEqual(result["queue"]["unread"], 1)
 
+    def test_queue_counts_grok_waiting_only_in_grok_mode(self):
+        from unittest import mock
+        import settings
+        waiting, ready, untouched = self._pending("9101"), self._pending("9102"), self._pending("9103")
+        with db.get_conn() as conn:
+            conn.execute("UPDATE articles SET grok_requested_at = ? WHERE id = ?", ("2026-11-25T09:05:00+09:00", waiting))
+            conn.execute("UPDATE articles SET grok_requested_at = ? WHERE id = ?", ("2026-11-25T08:00:00+09:00", ready))
+        db.save_source(ready, text="원문", method="grok", locked=False)      # 원문이 들어와 요약 차례 — 대기 아님
+        self.assertIsNotNone(untouched)
+        with mock.patch.object(settings, "SOURCE_MODE", "grok"):
+            self.assertEqual(db.query_articles()["queue"]["grok"],
+                             {"waiting": 1, "oldest": "2026-11-25T09:05:00+09:00"})
+        with mock.patch.object(settings, "SOURCE_MODE", "site"):
+            self.assertNotIn("grok", db.query_articles()["queue"])
+
     def test_article_list_can_skip_metadata_and_projects_card_fields(self):
         article_id = self._pending()
         self._publish(article_id)

@@ -220,7 +220,13 @@ def query_articles(
                 SELECT
                     SUM(CASE WHEN pub_status = 'pending' THEN 1 ELSE 0 END) AS pending,
                     SUM(CASE WHEN pub_status = 'failed' THEN 1 ELSE 0 END) AS failed,
-                    SUM(CASE WHEN pub_status = 'published' AND is_read = 0 THEN 1 ELSE 0 END) AS unread
+                    SUM(CASE WHEN pub_status = 'published' AND is_read = 0 THEN 1 ELSE 0 END) AS unread,
+                    SUM(CASE WHEN pub_status = 'pending' AND grok_requested_at IS NOT NULL
+                             AND COALESCE(source_method, '') NOT IN ('grok', 'grok_partial')
+                             THEN 1 ELSE 0 END) AS grok_waiting,
+                    MIN(CASE WHEN pub_status = 'pending' AND grok_requested_at IS NOT NULL
+                             AND COALESCE(source_method, '') NOT IN ('grok', 'grok_partial')
+                             THEN grok_requested_at END) AS grok_oldest
                 FROM articles
                 """
             ).fetchone()
@@ -238,6 +244,10 @@ def query_articles(
             "failed": queue_row["failed"] or 0,
             "unread": queue_row["unread"] or 0,
         }
+        # Grok Bot 모드일 때만: 요청을 올리고 원문을 기다리는 기사(원문이 들어와 요약 차례인 것은 빼고) — 2026-11-25
+        if settings.SOURCE_MODE == "grok":
+            result["queue"]["grok"] = {"waiting": queue_row["grok_waiting"] or 0,
+                                       "oldest": queue_row["grok_oldest"]}
     return result
 
 
