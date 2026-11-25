@@ -100,7 +100,6 @@ Seeking Alpha 속보 메일을 수집해 한국어로 요약하고 대시보드(
 - **SA 원문은 영문으로 고정**한다: `load_sa_cookies`가 `user_locale=en`, Playwright `locale="en-US"`, API `Accept-Language: en-US`.
 - SA 봇 차단(PerimeterX)은 우회하지 않는다. 풀릴 때까지 기다리거나 사용자가 `scripts/sa_refresh_login.py`로 직접 통과한다. 차단 감지 쿨다운 장치는 넣지 않는다(넣었다가 사용자 지시로 되돌렸다). 기사 간격은 25초.
 - **Grok 통로**(`grok_bridge.py`): 구글 드라이브 `SA Grok` 폴더에 `requests/req_<시각>.json`을 올리고 `results/sa_<news_id>.json`을 읽는다. 토큰 `~/.hermes/gdrive_token.json`, 폴더 id는 `.grok_bridge_state.json`.
-- Grok Bot은 사용자 브라우저(로그인된 SA 계정)에서 기사 화면을 읽고, 끊긴 기사는 다음 실행(약 2시간 간격)에 다시 읽는다. Claude 세션이 이 일을 대신하지 않는다 — Press & Hold 봇 확인 통과는 금지이고 세션은 상시 실행이 아니다(2026-11-25 사용자 확인, 현재 구성 유지).
 - Grok은 저작권·약관 때문에 전문을 복제하지 않고 자기 문장으로 자세히 옮긴다. sa는 title·subtitle·body를 원문 자리(`source_text`, method `grok`/`grok_partial`)에 넣고 기존 요약 파이프라인이 헤드라인·요약·티커를 만든다.
 - **판정**: 결과에 `final`이 있으면 그것만 본다 — true면 partial도 읽은 만큼 요약하고 failed는 실패 처리, false면 기다린다(`_is_final`). `final`이 없는 옛 형식은 3회차 규칙. 요청 후 `GROK_TIMEOUT_HOURS`(48) 무응답이면 failed. 같은 이름이 둘이면 최신 modifiedTime.
 - 결과 JSON 원본은 `articles.grok_result_json`에 남긴다(Grok이 5일 뒤 드라이브에서 지운다). 요청 파일은 7일 뒤 sa가 지운다. 수동 `--id` 재처리도 grok 모드에서는 저장 원문만 쓴다.
