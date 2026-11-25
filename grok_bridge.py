@@ -204,15 +204,20 @@ def _result_files(fold: dict) -> dict:
 
 
 _END_RE = re.compile(r"[.!?…\"'”’)\]]$")
+_BODY_STOP_RE = re.compile(r"^(?:## Recommended For You|\*\s+Share)\s*$", re.M)
 
 
 def jina_cut(text: str | None) -> bool:
-    """Jina 원문이 유료벽에서 문장 중간에 끊겼는가 — 본문('## Recommended For You' 앞) 마지막 줄이
-    문장부호로 끝나지 않으면 끊긴 것으로 본다(2026-11-17~25 Jina 750건 중 171건, sa 12666 '…(quadriplegia), the')."""
-    body = (text or "").split("## Recommended For You")[0].rstrip()
-    if not body:
-        return True
-    return not _END_RE.search(body.splitlines()[-1].strip())
+    """Jina 원문이 유료벽에서 문장 중간에 끊겼는가 — 본문 마지막 줄이 문장부호로 끝나지 않으면 끊긴 것으로 본다
+    (sa 12666 '…(quadriplegia), the', 12667 '*   The'). 본문 끝은 공유 버튼('*   Share')이나 '## Recommended For You'
+    앞이고, 그 바로 앞의 뉴스레터 홍보 블록(머리글·설명·'Subscribe to …'·'Sign Up')은 뺀다. 2026-11-17~25 Jina
+    753건 중 537건(71%)이 끊긴 것으로 나온다 — 대부분의 SA 뉴스는 비로그인에 첫 불릿 한두 개만 보인다."""
+    m = _BODY_STOP_RE.search(text or "")
+    seg = (text or "")[:m.start()] if m else (text or "")
+    lines = [ln.strip() for ln in seg.splitlines() if ln.strip()]
+    if len(lines) >= 4 and lines[-1] == "Sign Up" and lines[-2].startswith("Subscribe"):
+        lines = lines[:-4]
+    return not lines or not _END_RE.search(lines[-1])
 
 
 def _grok_worth(row) -> bool:

@@ -1063,6 +1063,11 @@ class HybridGrokTests(GrokDriveCase):
         self.assertTrue(self.gb.jina_cut(self.JINA_CUT))
         self.assertTrue(self.gb.jina_cut('“I would do it. These\n\n## Recommended For You'))
         self.assertTrue(self.gb.jina_cut(""))
+        promo = ("# T\n\n*   RTX secured a $2.53B contract.  \n*   The  \n\nFresh Stock Ideas, Every Day\n\n"
+                 "Explore diverse investing perspectives.\n\nSubscribe to Stock Ideas\n\nSign Up\n\n*   Share\n*   Print\n"
+                 "*   [Comments](https://x)\n\n## Recommended For You")        # sa 12667 — 홍보 블록 앞에서 끊김
+        self.assertTrue(self.gb.jina_cut(promo))
+        self.assertFalse(self.gb.jina_cut(promo.replace("*   The  \n", "")))
 
     def test_adopts_only_where_jina_fell_short(self):
         full = self._published("111", self.JINA_FULL)
