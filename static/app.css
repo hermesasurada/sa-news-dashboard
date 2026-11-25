@@ -290,7 +290,7 @@ body {
 .grok-wait[hidden] { display: none; }
 .grok-wait {
   max-width: 1400px;
-  margin: 2px auto 14px;
+  margin: -10px auto 8px;
   font-size: 12px;
   color: var(--muted);
 }
