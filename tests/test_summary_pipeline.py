@@ -996,6 +996,8 @@ class GrokBridgeTests(unittest.TestCase):
         self.assertEqual((st["ready"], st["failed"]), (1, 1))
         self.assertEqual(self._status(a)["pub_status"], "failed")
         self.assertEqual(self._status(a)["source_method"], "grok_partial")     # 원문은 남긴다
+        with db.get_conn() as conn:
+            self.assertIn("유료 기사 앞부분만", conn.execute("SELECT fail_reason FROM articles WHERE id=?", (a,)).fetchone()[0])
         self.assertEqual([r["id"] for r in self.gb.ready_rows(10)], [b])
 
     def test_grok_batch_never_touches_sa_site(self):
