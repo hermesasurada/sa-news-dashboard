@@ -37,7 +37,7 @@ REFRESH_SECONDS = 30.0
 
 # 칩에서 본국 상장으로 바꿔 보일 심볼(옛 app.js FOREIGN_LISTINGS의 키 — 시세가 없는 미국 OTC·ADR)
 FOREIGN_KEYS = (
-    "SSNLF", "HXSCL", "LGEIY", "NHNCF",                                            # 한국
+    "SSNLF", "HXSCL", "LGEIY", "NHNCF", "HYMLF", "HYMTF",                          # 한국(현대차 2026-11-25)
     "EADSY", "EADSF", "ADDYY", "BMWKY", "VWAGY", "SIEGY", "SMEGF", "SMNEY", "DLAKF", "DLAKY", "DHER",
     "SAFRF", "SAFRY", "HESAY", "HESAF", "DUAVF", "ENI", "NTOIY", "IBDRY", "IBDSF", "CAMRF", "SAABF", "SAABY",
     "RYCEY", "RYCEF", "BAESY", "HEINY", "RNMBF", "RNMBY", "RHHBY", "RHHBF",        # 유럽(로슈 → RO.SW, 2026-11-18)

@@ -36,6 +36,7 @@ TICKER_ALIASES = {
     "000660": "HXSCL", "000660.KS": "HXSCL",   # SK하이닉스
     "066570": "LGEIY", "066570.KS": "LGEIY",   # LG전자
     "035420": "NHNCF", "035420.KS": "NHNCF",   # 네이버
+    "005380": "HYMLF", "005380.KS": "HYMLF", "HYMTF": "HYMLF",   # 현대차(2026-11-25)
 }
 
 
