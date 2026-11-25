@@ -116,7 +116,7 @@ class DatabaseWorkflowTests(unittest.TestCase):
         self.assertIsNotNone(untouched)
         with mock.patch.object(settings, "SOURCE_MODE", "grok"):
             self.assertEqual(db.query_articles()["queue"]["grok"],
-                             {"waiting": 1, "oldest": "2026-11-25T09:05:00+09:00", "summarizing": 1})
+                             {"waiting": 1, "latest": "2026-11-25T09:05:00+09:00", "summarizing": 1})
         with mock.patch.object(settings, "SOURCE_MODE", "site"):
             self.assertNotIn("grok", db.query_articles()["queue"])
 

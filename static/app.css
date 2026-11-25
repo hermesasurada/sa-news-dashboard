@@ -294,6 +294,7 @@ body {
   font-size: 12px;
   color: var(--muted);
 }
+.grok-wait .ticker-badge { vertical-align: middle; margin: 0 2px; }
 /* 미읽음만 버튼 안 안읽음 건수(2026-10-01) */
 .btn-unread .unread-count { font-family: var(--mono); font-size: 12px; font-weight: 700; margin-left: 2px; }
 

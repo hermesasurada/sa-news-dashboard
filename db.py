@@ -222,9 +222,9 @@ def query_articles(
                     SUM(CASE WHEN pub_status = 'pending' AND grok_requested_at IS NOT NULL
                              AND COALESCE(source_method, '') NOT IN ('grok', 'grok_partial')
                              THEN 1 ELSE 0 END) AS grok_waiting,
-                    MIN(CASE WHEN pub_status = 'pending' AND grok_requested_at IS NOT NULL
+                    MAX(CASE WHEN pub_status = 'pending' AND grok_requested_at IS NOT NULL
                              AND COALESCE(source_method, '') NOT IN ('grok', 'grok_partial')
-                             THEN grok_requested_at END) AS grok_oldest,
+                             THEN grok_requested_at END) AS grok_latest,
                     SUM(CASE WHEN pub_status = 'pending' AND source_method IN ('grok', 'grok_partial')
                              AND COALESCE(source_text, '') <> '' AND retry_count < ?
                              THEN 1 ELSE 0 END) AS grok_summarizing
@@ -242,11 +242,11 @@ def query_articles(
         result["total"] = total
     if queue_row is not None:
         result["queue"] = {"unread": queue_row["unread"] or 0}
-        # Grok Bot 모드일 때만(2026-11-25): 원문을 요청하고 기다리는 기사(waiting·oldest)와
+        # Grok Bot 모드일 때만(2026-11-25): 원문을 요청하고 기다리는 기사(waiting·마지막 요청 시각 latest)와
         # 원문이 들어와 요약을 기다리는 기사(summarizing — grok_bridge.ready_rows와 같은 조건)
         if settings.SOURCE_MODE == "grok":
             result["queue"]["grok"] = {"waiting": queue_row["grok_waiting"] or 0,
-                                       "oldest": queue_row["grok_oldest"],
+                                       "latest": queue_row["grok_latest"],
                                        "summarizing": queue_row["grok_summarizing"] or 0}
     return result
 

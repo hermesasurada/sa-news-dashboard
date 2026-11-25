@@ -142,9 +142,10 @@ function renderQueue(qData) {
   if (gw) {
     const g = qData && qData.grok;
     gw.hidden = trashView || !g;
-    if (g) {
-      const oldest = g.waiting > 0 && g.oldest ? `(가장 오래된 요청 ${String(g.oldest).slice(5, 16).replace('T', ' ')})` : '';
-      gw.textContent = `Grok 원문 대기 ${g.waiting}건${oldest} · 요약 대기 ${g.summarizing}건`;
+    if (g) {   // '원문 대기 3건 (마지막 11-25 19:40) · 요약 대기 0건' — 건수는 티커 칩 모양
+      const n = (v) => `<span class="ticker-badge">${Number(v) || 0}</span>`;
+      const last = g.waiting > 0 && g.latest ? ` (마지막 ${escapeHTML(String(g.latest).slice(5, 16).replace('T', ' '))})` : '';
+      gw.innerHTML = `원문 대기 ${n(g.waiting)}건${last} · 요약 대기 ${n(g.summarizing)}건`;
     }
   }
 }
