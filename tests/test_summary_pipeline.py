@@ -979,6 +979,25 @@ class GrokBridgeTests(unittest.TestCase):
         self.assertIsNone(self._status(b)["source_method"])
         self.assertEqual(self._status(c)["pub_status"], "failed")
 
+    def test_short_final_source_fails_at_collect(self):
+        """2026-11-25 sa 12601: 유료 기사라 앞부분만 온 partial(final)이 요약 기준 미달이면 받을 때 바로 실패 —
+        요약 단계가 같은 원문으로 5번 재시도하지 않게. 짧아도 full(배당 선언 등)은 요약 차례로 간다."""
+        a, b = self._pending("511"), self._pending("522")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.gb.send_requests(self.fold)
+        self.results = {
+            "sa_511.json": ("t1", {"status": "partial", "attempt": 1, "final": True, "reason": "premium_only",
+                                   "title": "Nvidia slides", "body": "가" * 90}),
+            "sa_522.json": ("t1", {"status": "full", "attempt": 1, "final": True,
+                                   "title": "KO declares $0.53 dividend", "body": "나" * 90}),
+        }
+        with contextlib.redirect_stdout(io.StringIO()):
+            st = self.gb.collect_results(self.fold)
+        self.assertEqual((st["ready"], st["failed"]), (1, 1))
+        self.assertEqual(self._status(a)["pub_status"], "failed")
+        self.assertEqual(self._status(a)["source_method"], "grok_partial")     # 원문은 남긴다
+        self.assertEqual([r["id"] for r in self.gb.ready_rows(10)], [b])
+
     def test_grok_batch_never_touches_sa_site(self):
         a = self._pending("111")
         with contextlib.redirect_stdout(io.StringIO()):

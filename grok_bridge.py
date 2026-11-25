@@ -166,11 +166,16 @@ def collect_results(fold: dict) -> dict:
                          "grok_result_json = ? WHERE id = ?",
                          (status or "unknown", attempt, f.get("modifiedTime"),
                           json.dumps(res, ensure_ascii=False), r["id"]))
-        if status == "full" and text:
-            db.save_source(r["id"], text=text, method="grok", locked=False)
-            stats["ready"] += 1
-        elif status == "partial" and text and final:
-            db.save_source(r["id"], text=text, method="grok_partial", locked=False)
+        method = "grok" if status == "full" and text else ("grok_partial" if status == "partial" and text and final else None)
+        if method and not db.source_quality_ok(len(text), False, method):
+            # 요약 단계가 같은 원문을 길이 미달로 거절하며 5번 재시도하던 것을 받을 때 바로 끝낸다(2026-11-25, sa 12601 —
+            # 유료 기사라 Grok이 앞부분 164자만 주고 final=true). 원문은 남겨 둔다.
+            db.save_source(r["id"], text=text, method=method, locked=False)
+            label = "유료 기사 앞부분만" if method == "grok_partial" else "원문이 너무 짧음"
+            _fail(r["id"], f"Grok {label}({len(text)}자, 요약 기준 미달)", now)
+            stats["failed"] += 1
+        elif method:
+            db.save_source(r["id"], text=text, method=method, locked=False)
             stats["ready"] += 1
         elif final:
             why = " · ".join(str(x) for x in (res.get("reason"), res.get("note") or status) if x)
