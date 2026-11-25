@@ -82,7 +82,7 @@ def get_articles(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     include_total: bool = Query(True, description="정확한 검색 결과 건수 포함"),
-    include_queue: bool = Query(True, description="대기·실패·미읽음 통계 포함"),
+    include_queue: bool = Query(True, description="미읽음·Grok 대기 건수 포함"),
 ):
     return db.query_articles(
         q=q, ticker=ticker,

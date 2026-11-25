@@ -17,7 +17,7 @@ const currentSort = 'email_time_et';
 let currentOrder = 'desc';   // desc=최신순 / asc=과거순
 let trashView = false;
 let currentListTotal = null;
-let currentQueue = { pending: 0, failed: 0, unread: 0 };
+let currentQueue = { unread: 0 };
 
 /* ── SVG Icons ── */
 const SVG_EYE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;

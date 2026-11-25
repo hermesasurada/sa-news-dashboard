@@ -34,8 +34,6 @@ async function loadMoreArticles() {
     }
     const now = cardsEl.querySelectorAll('.card').length;
     if (now >= currentListTotal) _feed.done = true;
-    document.getElementById('stats').innerHTML =
-      statsLine(currentListTotal, currentOffset, now, queueBadges(currentQueue));
   } catch (e) {
     console.error('다음 기사 불러오기 실패', e);
   } finally {
@@ -129,31 +127,26 @@ function startNotificationPolling() {
 }
 
 /* ── Search ── */
-// 상단 통계줄 구성 — search()와 refillGrid()가 공유
-// 안읽음 건수는 통계줄 대신 눈 아이콘(미읽음만) 버튼 안에 표시하고, 대기 건수는 표시하지 않는다
-// (2026-10-01 사용자 지시). 통계줄 뒤에 붙던 배지 자리는 빈 문자열로 남긴다.
-function queueBadges(qData) {
+// 큐 표시 — 안읽음 건수는 눈 아이콘(미읽음만) 버튼 안(2026-10-01), Grok 대기 줄은 검색줄 아래(2026-11-25).
+// 결과 건수 줄·대기·실패 건수는 2026-11-25 사용자 지시로 삭제했다.
+function renderQueue(qData) {
   const el = document.getElementById('unread-count');
   if (el) {
     const n = (qData && qData.unread) || 0;
     el.textContent = n;
     el.hidden = trashView || n <= 0;
   }
-  // Grok Bot 모드일 때만 서버가 queue.grok을 준다 — 요청을 올리고 원문을 기다리는 건수(2026-11-25 사용자 지시)
+  // Grok Bot 모드일 때만 서버가 queue.grok을 준다 — 원문을 요청하고 기다리는 건수와,
+  // 원문이 들어와 요약을 기다리는 건수(2026-11-25 사용자 지시)
   const gw = document.getElementById('grok-wait');
   if (gw) {
     const g = qData && qData.grok;
     gw.hidden = trashView || !g;
     if (g) {
-      const oldest = g.waiting > 0 && g.oldest ? ` · 가장 오래된 요청 ${String(g.oldest).slice(5, 16).replace('T', ' ')}` : '';
-      gw.textContent = `Grok 원문 대기 ${g.waiting}건${oldest}`;
+      const oldest = g.waiting > 0 && g.oldest ? `(가장 오래된 요청 ${String(g.oldest).slice(5, 16).replace('T', ' ')})` : '';
+      gw.textContent = `Grok 원문 대기 ${g.waiting}건${oldest} · 요약 대기 ${g.summarizing}건`;
     }
   }
-  return '';
-}
-function statsLine(total, offset, shown, badges) {
-  const trashLabel = trashView ? '🗑 휴지통 · ' : '';
-  return trashLabel + `${total}건 (${offset + 1}~${Math.min(offset + shown, total)}번째)` + badges;
 }
 
 function adjustCurrentListMeta(totalDelta = 0, unreadDelta = 0) {
@@ -168,9 +161,7 @@ function adjustCurrentListMeta(totalDelta = 0, unreadDelta = 0) {
 
 function renderCurrentListMeta() {
   if (currentListTotal === null) return;
-  const shown = document.getElementById('cards').querySelectorAll('.card').length;
-  document.getElementById('stats').innerHTML =
-    statsLine(currentListTotal, currentOffset, shown, queueBadges(currentQueue));
+  renderQueue(currentQueue);
   renderPagination(currentListTotal, currentOffset);
 }
 
@@ -187,9 +178,6 @@ async function refillGrid() {
   params.set('include_queue', 'false');
   try {
     const data = await fetchJSON('/api/articles?' + params.toString());
-    const filled = shown + data.items.length;
-    document.getElementById('stats').innerHTML =
-      statsLine(currentListTotal, currentOffset, filled, queueBadges(currentQueue));
     renderPagination(currentListTotal, currentOffset);
     if (!data.items.length) return;   // 마지막 페이지 — 보충할 기사 없음
     cardsEl.insertAdjacentHTML('beforeend', renderCard(data.items[0]));
@@ -213,7 +201,6 @@ async function search(offset = 0, refreshMeta = true) {
   }
 
   const cardsEl = document.getElementById('cards');
-  const statsEl = document.getElementById('stats');
   cardsEl.innerHTML = '<div class="empty-state">불러오는 중...</div>';
 
   try {
@@ -221,7 +208,7 @@ async function search(offset = 0, refreshMeta = true) {
     if (typeof data.total === 'number') currentListTotal = data.total;
     if (data.queue) currentQueue = data.queue;
 
-    const badges = queueBadges(currentQueue);
+    renderQueue(currentQueue);
 
     if (data.items.length === 0) {
       const hasFilter = !!(document.getElementById('q').value.trim()
@@ -232,11 +219,9 @@ async function search(offset = 0, refreshMeta = true) {
       else                 { icon = '📭'; msg = '표시할 기사가 없습니다.'; }
       cardsEl.innerHTML = `<div class="empty-state"><span class="empty-icon">${icon}</span>${msg}</div>`;
       document.getElementById('pagination').innerHTML = '';
-      statsEl.innerHTML = badges;
       return;
     }
 
-    statsEl.innerHTML = statsLine(currentListTotal, offset, data.items.length, badges);
     cardsEl.innerHTML = data.items.map(renderCard).join('');
     attachSwipeHandlers();
     attachTickerQuoteHandlers();

@@ -89,7 +89,6 @@ button, input, select { font-family: inherit; }
   padding: 18px 24px 48px;
 }
 .app-sa > .header,
-.app-sa > .stats,
 .app-sa > .grok-wait,
 .app-sa > .container,
 .app-sa > .pagination {
@@ -518,7 +517,6 @@ button, input, select { font-family: inherit; }
   .app-td .page,
   .app-wm > .container { padding: 12px 12px 36px; }
   .app-sa > .header,
-  .app-sa > .stats,
   .app-sa > .grok-wait,
   .app-sa > .container,
   .app-sa > .pagination { width: calc(100% - 24px); }

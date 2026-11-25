@@ -101,8 +101,8 @@ class DatabaseWorkflowTests(unittest.TestCase):
 
         result = db.query_articles()
 
-        self.assertEqual(result["queue"]["pending"], 0)
-        self.assertEqual(result["queue"]["failed"], 0)
+        self.assertNotIn("pending", result["queue"])     # 대기·실패 건수는 2026-11-25 삭제
+        self.assertNotIn("failed", result["queue"])
         self.assertEqual(result["queue"]["unread"], 1)
 
     def test_queue_counts_grok_waiting_only_in_grok_mode(self):
@@ -116,7 +116,7 @@ class DatabaseWorkflowTests(unittest.TestCase):
         self.assertIsNotNone(untouched)
         with mock.patch.object(settings, "SOURCE_MODE", "grok"):
             self.assertEqual(db.query_articles()["queue"]["grok"],
-                             {"waiting": 1, "oldest": "2026-11-25T09:05:00+09:00"})
+                             {"waiting": 1, "oldest": "2026-11-25T09:05:00+09:00", "summarizing": 1})
         with mock.patch.object(settings, "SOURCE_MODE", "site"):
             self.assertNotIn("grok", db.query_articles()["queue"])
 
