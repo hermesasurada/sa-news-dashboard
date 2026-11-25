@@ -1109,6 +1109,7 @@ class HybridGrokTests(GrokDriveCase):
         self.results = {"sa_222.json": ("t1", {"status": "failed", "attempt": 3, "final": True})}
         self.gb.collect_updates(self.fold)
         self.assertEqual((self._status(a)["pub_status"], self._status(b)["pub_status"]), ("pending", "pending"))
+        self.assertEqual(self._parse_method(b)["grok_status"], "failed")      # final이면 대기 시간 전이라도 종결
 
     def test_hybrid_batch_updates_then_fetches_rest(self):
         cut = self._published("111", self.JINA_CUT)

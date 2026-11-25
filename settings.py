@@ -56,9 +56,9 @@ ARTICLE_GAP_SECONDS = _env_int("SA_ARTICLE_GAP_SECONDS", 25, minimum=0)
 SOURCE_MODE = os.environ.get("SA_SOURCE_MODE", "hybrid").strip().lower()
 # Grok에 요청한 뒤 이 시간이 지나도 결과가 없으면 실패 처리
 GROK_TIMEOUT_HOURS = _env_int("SA_GROK_TIMEOUT_HOURS", 48, minimum=1)
-# 병행 모드(hybrid)에서 Grok 결과를 기다리는 최대 시간. 평소 결과는 요청 뒤 1시간 안팎에 오고, 그보다 늦으면
-# 이미 읽은 요약을 바꾸게 되므로 6시간 뒤에는 Jina 판을 그대로 둔다(2026-11-26).
-GROK_HYBRID_WAIT_HOURS = _env_int("SA_GROK_HYBRID_WAIT_HOURS", 6, minimum=1)
+# 병행 모드(hybrid)에서 Grok 결과를 기다리는 최대 시간(2026-11-26 사용자 지시 12시간). 그 안에 final 결과
+# (full이거나 final=true)가 오면 바로 종결하고, 지나면 Jina 판을 그대로 둔다.
+GROK_HYBRID_WAIT_HOURS = _env_int("SA_GROK_HYBRID_WAIT_HOURS", 12, minimum=1)
 # Grok full 원문(끝까지 확인)의 최소 길이 — 짧은 SA 기사(배당 선언·실적 속보)는 받되 제목만 온 결과는 거른다
 GROK_FULL_MIN_CHARS = _env_int("SA_GROK_FULL_MIN_CHARS", 100)
 SOURCE_MIN_CHARS = _env_int("SA_SOURCE_MIN_CHARS", 700)
