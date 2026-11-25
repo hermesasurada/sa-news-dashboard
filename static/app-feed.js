@@ -158,6 +158,7 @@ function adjustCurrentListMeta(totalDelta = 0, unreadDelta = 0) {
     ...currentQueue,
     unread: Math.max(0, currentQueue.unread + unreadDelta),
   };
+  renderQueue(currentQueue);   // 안읽음 건수는 바로 다시 그린다(읽음·삭제 즉시 반영)
 }
 
 function renderCurrentListMeta() {

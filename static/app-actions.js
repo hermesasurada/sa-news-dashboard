@@ -119,6 +119,7 @@ async function toggleRead(id, btn) {
   // 낙관적 갱신 — 서버 왕복을 기다리지 않고 먼저 반영한다.
   // (기존에는 응답 후에야 아이콘이 바뀌어, 모바일/Tailscale의 RTT가 그대로 체감 지연이 됐다)
   applyReadState(card, btn, newRead);
+  adjustCurrentListMeta(removeFromUnread ? -1 : 0, newRead ? -1 : 1);   // 안읽음 건수도 응답 전에 반영
   if (removeFromUnread) {
     removalDone = new Promise(resolve => {
       finishRemoval = resolve;
@@ -144,6 +145,7 @@ async function toggleRead(id, btn) {
   }
 
   if (!ok) {
+    adjustCurrentListMeta(removeFromUnread ? 1 : 0, newRead ? 1 : -1);   // 건수 원복
     if (removalFrame !== null) cancelAnimationFrame(removalFrame);
     if (removalTimer !== null) clearTimeout(removalTimer);
     if (finishRemoval) finishRemoval();
@@ -157,8 +159,6 @@ async function toggleRead(id, btn) {
     showToast('읽음 상태 변경 실패', null, null);
     return;
   }
-
-  adjustCurrentListMeta(removeFromUnread ? -1 : 0, newRead ? -1 : 1);
 
   // 페이드는 요청과 동시에 진행했으므로 성공 응답 뒤 추가 대기가 없다.
   if (removeFromUnread) {

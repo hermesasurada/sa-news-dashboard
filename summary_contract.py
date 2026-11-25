@@ -31,6 +31,9 @@ _PROMPT_TMPL = """\
      (예: Broadcom 수주 기사에 "경쟁사로는 Nvidia가 있다" 식 언급만 있으면 NVDA 제외)
   또한 제외: 티커를 확신할 수 없는 경우, 비상장 기업(OpenAI 등),
      상장사 아닌 기관(연준·ECB·규제당국 등), 본문에 등장하지 않는 종목.
+  또한 제외: 인물 소개로만 나오는 회사 — 'Tesla (TSLA) CEO Elon Musk가 이끄는 Neuralink'처럼 기사 당사자가 다른 회사이고
+     상장사가 경영자의 직함으로만 등장하면 그 티커는 넣지 않는다(Neuralink·The Boring Company 기사의 TSLA 등).
+     당사자가 비상장사뿐이면 ticker는 "". 두 회사가 거래·계약으로 직접 얽힌 이벤트일 때만 함께 넣는다.
   ⚠️ 미국 밖 상장사도 빠뜨리지 않는다. 미국 ADR·OTC 심볼이 있으면 그걸 쓰고(TSMC=TSM,
      삼성전자=SSNLF, SK하이닉스=SKHY), 없으면 거래소 접미사 형식을 쓴다
      (MediaTek=2454.TW, 무라타=6981.T, 도쿄일렉트론=8035.T, Wistron=3231.TW).
