@@ -205,3 +205,16 @@ class DatabaseWorkflowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SourceQualityTests(unittest.TestCase):
+    """Grok이 끝까지 확인한 짧은 원문(배당 선언·실적 속보)은 길이 기준 면제(2026-11-25, sa 12603)."""
+
+    def test_grok_full_short_source_passes(self):
+        self.assertTrue(db.source_quality_ok(177, False, "grok"))
+        self.assertFalse(db.source_quality_ok(60, False, "grok"))          # 제목만 온 결과
+
+    def test_partial_and_site_keep_length_gate(self):
+        self.assertFalse(db.source_quality_ok(164, False, "grok_partial"))
+        self.assertFalse(db.source_quality_ok(164, False, "sa_api"))
+        self.assertFalse(db.source_quality_ok(164, False))

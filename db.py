@@ -379,12 +379,19 @@ def insert_pending_article(
             return None
 
 
-def source_quality_ok(chars: int | None, locked: int | bool | None) -> bool:
+def source_quality_ok(chars: int | None, locked: int | bool | None, method: str | None = None) -> bool:
     """미리보기·잠금 본문은 요약/발행에 쓰지 않는다.
 
     단 로그인 세션을 쓰지 않는(익명) 모드나 세션 무효로 폴백 중일 때는 SA가
     애초에 프리뷰만 주므로, 잠금 여부를 따지면 아무것도 발행할 수 없다.
-    이때는 완화된 길이 기준만 본다(sa_login_state)."""
+    이때는 완화된 길이 기준만 본다(sa_login_state).
+
+    Grok이 끝까지 읽었다고 확인한 원문(method 'grok' = status full)은 길이 기준을 적용하지 않는다 —
+    배당 선언·실적 속보처럼 SA 기사 자체가 두세 줄이라 200자를 못 넘는다(2026-11-25, sa 12603 Deere
+    177자가 '품질 미달'로 계속 실패, 10월 배당 선언 등 9건은 5회 실패로 끝났다). 제목만 온 결과는 거르도록
+    GROK_FULL_MIN_CHARS만 본다. 앞부분만 받은 grok_partial은 기존 길이 기준 그대로."""
+    if method == "grok":
+        return int(chars or 0) >= settings.GROK_FULL_MIN_CHARS
     if locked and sa_login_state.enforce_locked_gate():
         return False
     return int(chars or 0) >= int(sa_login_state.effective_min_chars())

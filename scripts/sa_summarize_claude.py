@@ -24,6 +24,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 
 import db  # noqa: E402
+import sa_login_state  # noqa: E402
 import settings  # noqa: E402
 from sa_llm import call_claude, call_codex, call_gemini, call_grok  # noqa: E402
 import summary_config  # noqa: E402
@@ -77,7 +78,7 @@ def parse_article(
     성공: (content, method, [{symbol,name}...], None) / 실패: (None, None, [], reason)."""
     if reuse_source:
         src = db.get_source(article_id)
-        if src and db.source_quality_ok(src["chars"], src["locked"]):
+        if src and db.source_quality_ok(src["chars"], src["locked"], src["method"]):
             return src["text"], src["method"], [], None
         return None, None, [], "저장된 본문 없음 또는 품질 미달"
     try:
@@ -155,8 +156,8 @@ def attempt_article(row: dict, *, reuse_source: bool = False) -> AttemptSuccess 
         reason = parse_err or "PARSE_FAIL"
         print(f"     파싱 실패: {reason}", file=sys.stderr)
         return AttemptFailure(reason[:200])
-    if not db.source_quality_ok(len(content), False):
-        reason = f"본문 품질 미달 ({len(content)}자, 최소 {settings.SOURCE_MIN_CHARS})"
+    if not db.source_quality_ok(len(content), False, parse_method):
+        reason = f"본문 품질 미달 ({len(content)}자, 최소 {sa_login_state.effective_min_chars()})"
         print(f"     {reason}", file=sys.stderr)
         return AttemptFailure(reason[:200])
 
