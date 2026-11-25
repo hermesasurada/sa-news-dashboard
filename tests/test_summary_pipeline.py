@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -812,6 +813,7 @@ class ParseUsesSiteTests(unittest.TestCase):
         self.assertIn("품질 미달", err)
 
 
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -883,8 +885,8 @@ class ForeignTickerBackfillTests(unittest.TestCase):
             self.assertTrue(aliases, symbol)
 
 
-class GrokBridgeTests(unittest.TestCase):
-    """Grok Bot 원문 연동(2026-10-11) — 드라이브는 가짜로 바꿔 끼운다."""
+class GrokDriveCase(unittest.TestCase):
+    """Grok 연동 시험 공통 — 임시 DB, 드라이브는 가짜로 바꿔 끼운다."""
 
     def setUp(self):
         import grok_bridge
@@ -922,6 +924,11 @@ class GrokBridgeTests(unittest.TestCase):
         with db.get_conn() as conn:
             return dict(conn.execute("SELECT pub_status, source_method, source_text, grok_requested_at "
                                      "FROM articles WHERE id=?", (aid,)).fetchone())
+
+
+
+class GrokBridgeTests(GrokDriveCase):
+    """Grok Bot 원문 연동(2026-10-11, grok 모드)."""
 
     def test_requests_once_and_bad_url_fails(self):
         a = self._pending("111")
@@ -1032,3 +1039,94 @@ class GrokBridgeTests(unittest.TestCase):
             self.gb.collect_results(self.fold)
         self.assertEqual(self._status(a)["source_method"], "grok")
 
+
+class HybridGrokTests(GrokDriveCase):
+    """병행 모드(2026-11-26): Jina로 게시하고, 대기 시간 안에 온 Grok 결과로 Jina가 못 준 기사만 갱신한다."""
+
+    JINA_FULL = "# T\n\nApple raised its dividend to $0.27.\n\n## Recommended For You\n\nx"
+    JINA_CUT = "# T\n\n*   The trial, known as LINK, is intended for people with tetraplegia, the\n\n## Recommended For You"
+
+    def _published(self, nid: str, source: str, method: str = "jina_reader") -> int:
+        aid = self._pending(nid)
+        db.save_source(aid, text=source, method=method, locked=False)
+        db.publish_article(aid, ticker="AAPL", company_name="Apple", headline="h", summary_details=["a", "b"],
+                           parse_method=method)
+        return aid
+
+    def _parse_method(self, aid):
+        with db.get_conn() as conn:
+            return dict(conn.execute("SELECT parse_method, grok_status, retry_count FROM articles WHERE id=?",
+                                     (aid,)).fetchone())
+
+    def test_jina_cut(self):
+        self.assertFalse(self.gb.jina_cut(self.JINA_FULL))
+        self.assertTrue(self.gb.jina_cut(self.JINA_CUT))
+        self.assertTrue(self.gb.jina_cut('“I would do it. These\n\n## Recommended For You'))
+        self.assertTrue(self.gb.jina_cut(""))
+
+    def test_adopts_only_where_jina_fell_short(self):
+        full = self._published("111", self.JINA_FULL)
+        cut = self._published("222", self.JINA_CUT)
+        preview = self._published("333", "A" * 300, method="sa_api")
+        pending = self._pending("444")                     # Jina가 아직 못 받았다
+        for aid in (full, cut, preview, pending):
+            with db.get_conn() as conn:
+                conn.execute("UPDATE articles SET grok_requested_at=?, grok_status='requested' WHERE id=?",
+                             (self.gb._now(), aid))
+        good = {"status": "full", "attempt": 1, "title": "T", "key_facts": ["가" * 300]}
+        self.results = {f"sa_{n}.json": ("t1", good) for n in ("111", "222", "333", "444")}
+        st = self.gb.collect_updates(self.fold)
+        self.assertEqual((st["adopted"], st["kept"]), (3, 1))
+        self.assertEqual(self._status(full)["source_method"], "jina_reader")
+        self.assertEqual(self._parse_method(full)["grok_status"], "full")      # 다시 보지 않는다
+        self.assertEqual({r["id"] for r in self.gb.update_rows(10)}, {cut, preview, pending})
+        self.assertEqual(self.gb.collect_updates(self.fold)["adopted"], 0)
+
+    def test_wait_limit_and_retry_wait(self):
+        old = self._published("111", self.JINA_CUT)
+        new = self._published("222", self.JINA_CUT)
+        stale = (datetime.now(self.gb.KST) - timedelta(hours=settings.GROK_HYBRID_WAIT_HOURS + 1)).isoformat()
+        with db.get_conn() as conn:
+            conn.execute("UPDATE articles SET grok_requested_at=?, grok_status='requested' WHERE id=?", (stale, old))
+            conn.execute("UPDATE articles SET grok_requested_at=?, grok_status='requested' WHERE id=?",
+                         (self.gb._now(), new))
+        self.results = {
+            "sa_111.json": ("t1", {"status": "full", "attempt": 1, "title": "T", "key_facts": ["가" * 300]}),
+            "sa_222.json": ("t1", {"status": "partial", "attempt": 1, "final": False, "body": "P" * 300}),
+        }
+        st = self.gb.collect_updates(self.fold)
+        self.assertEqual((st["timeout"], st["waiting"], st["adopted"]), (1, 1, 0))
+        self.assertEqual(self._parse_method(old)["grok_status"], "timeout")   # 늦은 결과로 요약을 바꾸지 않는다
+        self.assertEqual(self._parse_method(new)["grok_status"], "waiting")
+        self.results["sa_222.json"] = ("t2", {"status": "partial", "attempt": 2, "final": True, "body": "P" * 300})
+        self.assertEqual(self.gb.collect_updates(self.fold)["adopted"], 1)
+
+    def test_grok_failure_never_fails_article(self):
+        a = self._pending("111", url="NO_MAIN_ARTICLE (found 0 related links)")
+        b = self._pending("222")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.gb.send_requests(self.fold, fail_bad=False)
+        self.results = {"sa_222.json": ("t1", {"status": "failed", "attempt": 3, "final": True})}
+        self.gb.collect_updates(self.fold)
+        self.assertEqual((self._status(a)["pub_status"], self._status(b)["pub_status"]), ("pending", "pending"))
+
+    def test_hybrid_batch_updates_then_fetches_rest(self):
+        cut = self._published("111", self.JINA_CUT)
+        fresh = self._pending("222")
+        with db.get_conn() as conn:
+            conn.execute("UPDATE articles SET grok_requested_at=?, grok_status='requested' WHERE id=?",
+                         (self.gb._now(), cut))
+        self.results = {"sa_111.json": ("t1", {"status": "full", "attempt": 1, "title": "T",
+                                               "key_facts": ["가" * 300]})}
+        calls = []
+        with (
+            patch.object(settings, "SOURCE_MODE", "hybrid"),
+            patch.object(self.gb, "folders", return_value=self.fold),
+            patch.object(self.gb, "cleanup_requests", return_value=0),
+            patch.object(sa_summarize_claude, "process_article",
+                         side_effect=lambda row, reuse_source=False: calls.append((row["id"], reuse_source)) or True),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            sa_summarize_claude.run_batch(10)
+        self.assertEqual(calls, [(cut, True), (fresh, False)])          # Grok 갱신은 저장 원문, 새 기사는 Jina
+        self.assertEqual([i["news_id"] for i in self.uploads[0][1]["items"]], ["222"])   # 새 기사도 Grok에 요청

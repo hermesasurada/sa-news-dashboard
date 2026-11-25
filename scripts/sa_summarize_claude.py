@@ -278,10 +278,42 @@ def run_grok_batch(batch_size: int) -> BatchResult:
     return BatchResult(attempted=len(rows), succeeded=ok, failed=fail)
 
 
+def run_hybrid_batch(batch_size: int) -> BatchResult:
+    """병행 모드(2026-11-26 사용자 지시): Grok에 요청을 올리고 들어온 결과로 Jina가 못 준 기사를 다시 요약한 뒤,
+    새 기사는 지금처럼 직접 수집(Jina)으로 요약·게시한다. 드라이브 장애는 직접 수집을 막지 않는다."""
+    import grok_bridge
+    try:
+        stats = grok_bridge.sync(hybrid=True)
+        print(f"Grok 병행: 요청 {stats.get('sent', 0)}건 · 갱신 대상 {stats.get('adopted', 0)}건 · "
+              f"Jina 유지 {stats.get('kept', 0)}건 · 대기 {stats.get('waiting', 0)}건 · "
+              f"실패 {stats.get('failed', 0)}건 · 시간 초과 {stats.get('timeout', 0)}건")
+    except Exception as exc:
+        print(f"Grok 연동 오류(다음 주기에 다시): {type(exc).__name__}: {exc}", file=sys.stderr)
+    grok_rows = grok_bridge.update_rows(1000)
+    ok = fail = 0
+    for row in grok_rows[:batch_size]:
+        print("  (Grok 원문으로 갱신)")
+        if process_article(row, reuse_source=True):
+            ok += 1
+        else:
+            fail += 1
+    skip = {r["id"] for r in grok_rows}            # Grok 원문을 받은 기사는 Jina로 다시 받지 않는다
+    rows = [r for r in db.get_pending_due(batch_size=batch_size + len(skip)) if r["id"] not in skip][:batch_size]
+    site = _run_site_rows(rows)
+    return BatchResult(attempted=min(len(grok_rows), batch_size) + site.attempted,
+                       succeeded=ok + site.succeeded, failed=fail + site.failed)
+
+
 def run_batch(batch_size: int) -> BatchResult:
     if settings.SOURCE_MODE == "grok":
         return run_grok_batch(batch_size)
-    rows = db.get_pending_due(batch_size=batch_size)
+    if settings.SOURCE_MODE == "hybrid":
+        return run_hybrid_batch(batch_size)
+    return _run_site_rows(db.get_pending_due(batch_size=batch_size))
+
+
+def _run_site_rows(rows: list[dict]) -> BatchResult:
+    """직접 수집(SA 페이지 → Jina 등)으로 요약·게시."""
     if not rows:
         print("SA summarize (claude): pending 없음")
         return BatchResult(attempted=0, succeeded=0, failed=0)
