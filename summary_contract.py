@@ -102,8 +102,8 @@ def validate(d: dict, original_title: str = "") -> dict:
         ticker_text, d["company_name"] = foreign_tickers.supplement_pairs(
             original_title, ", ".join(valid_tickers), d["company_name"])
         valid_tickers = [t.strip() for t in ticker_text.split(",") if t.strip()]
-    # 암호화폐 칩은 원제와 모델 헤드라인을 함께 본다(foreign_tickers._CRYPTO, 2026-11-24)
-    ticker_text, d["company_name"] = foreign_tickers.supplement_crypto(
+    # 자산 칩(BTC·ETH·GLD)은 원제와 모델 헤드라인을 함께 본다(foreign_tickers._ASSET_CHIPS, 2026-11-24·25)
+    ticker_text, d["company_name"] = foreign_tickers.supplement_asset_chips(
         (original_title, _plain_text(d.get("headline"))), ", ".join(valid_tickers), d["company_name"])
     valid_tickers = [t.strip() for t in ticker_text.split(",") if t.strip()]
     d["ticker"] = ", ".join(valid_tickers)

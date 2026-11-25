@@ -166,29 +166,54 @@ def missing_from_title(title: str, tickers: list[str]) -> list[tuple[str, str]]:
     return out
 
 
-# 암호화폐 칩(2026-11-24 사용자 지시, sa 12490 'CFTC, Bitcoin·Ether 등 암호화폐 준비금 인정'): 비트코인·이더리움이
-# 제목에 나오면 BTC·ETH 칩을 보탠다. 심볼은 포트폴리오 종목(category crypto)이라 시세 팝오버(전광판)가 그대로 열린다.
-# 회사가 아니라서 위 회사 별칭 표(portfolio_companies는 crypto 제외)와 따로 둔다. 원제가 'COIN: … crypto …'처럼
-# 코인 이름을 안 쓰는 일이 많아 **모델 헤드라인도 본다**(본문은 보지 않는다). 영문은 대소문자 구분 — 소문자
-# 'ether'(화합물)·'Ethernet'은 걸리지 않는다. 한글은 '비트코인'·'이더리움'만 — 맨 '이더'는 '트레이더'·'레이더'에 걸린다
-# (31일 소급 시험에서 sa 12068·10814 오탐). 칩이 'NONE'(주체 없음 표시)뿐이면 그 자리를 BTC·ETH로 바꾼다.
-_CRYPTO: list[tuple[str, str, re.Pattern]] = [
-    ("BTC", "Bitcoin", re.compile(r"(?<![A-Za-z0-9])(?:Bitcoin|bitcoin|BTC)(?![A-Za-z0-9])|비트코인")),
-    ("ETH", "Ethereum", re.compile(r"(?<![A-Za-z0-9])(?:Ethereum|ethereum|Ether|ETH)(?![A-Za-z0-9])|이더리움")),
+# 자산 칩 — 회사가 아닌 자산을 제목에서 찾아 포트폴리오 종목 칩을 보탠다. 회사 별칭 표(portfolio_companies는 crypto
+# 제외)와 따로 둔다. 원제가 'COIN: … crypto …'처럼 자산 이름을 안 쓰는 일이 많아 **모델 헤드라인도 본다**(본문은 보지
+# 않는다). 칩이 'NONE'(주체 없음 표시)뿐이면 그 자리를 바꾼다.
+# - 암호화폐(2026-11-24 사용자 지시, sa 12490 'CFTC, Bitcoin·Ether 등 암호화폐 준비금 인정'): BTC·ETH(포트폴리오
+#   category crypto — 시세 팝오버가 원화 시세로 열린다). 영문은 대소문자 구분 — 소문자 'ether'(화합물)·'Ethernet'은
+#   걸리지 않는다. 한글은 '비트코인'·'이더리움'만 — 맨 '이더'는 '트레이더'·'레이더'에 걸린다(31일 소급 시험 sa 12068·10814).
+# - 금(2026-11-25 사용자 지시, sa 12595 'GLD: Gold gets a rude reminder…'): 포트폴리오에 금 현물이 없어 GLD(SPDR Gold
+#   Shares) 칩을 붙인다. 영문 Gold·gold는 낱말 경계 + 회사 이름 가드('Maple Gold'·'Barrick Gold'처럼 대문자 낱말 뒤,
+#   'Gold Fields'·'Gold Corp'처럼 회사 접미사 앞은 뺀다 — Goldman·Golden은 낱말 경계로 빠진다). 한글 '금'은 앞이 한글·영숫자가
+#   아니고 뒤가 끝·공백·문장부호·조사(이·은·을·의·과·와·도·에)·값·가격·ETF·선물·현물·시세일 때만 — '금리'·'금융'·'자금'·
+#   '현금'·'금요일'은 걸리지 않는다(90일 5,913건 시험: 오탐은 Maple Gold 1건 → 가드로 해결).
+_CRYPTO_BTC = re.compile(r"(?<![A-Za-z0-9])(?:Bitcoin|bitcoin|BTC)(?![A-Za-z0-9])|비트코인")
+_CRYPTO_ETH = re.compile(r"(?<![A-Za-z0-9])(?:Ethereum|ethereum|Ether|ETH)(?![A-Za-z0-9])|이더리움")
+_GOLD_EN = re.compile(r"(?<![A-Za-z0-9])(?:Gold|gold)(?![A-Za-z0-9])")
+_GOLD_COMPANY_BEFORE = re.compile(r"[A-Z][A-Za-z&.'-]*\s$")
+_GOLD_COMPANY_AFTER = re.compile(r"\s(?:Fields|Corp|Corporation|Resources|Mining|Mines|Inc|Ltd|Royalty|Standard)\b")
+_GOLD_KO = re.compile(r"(?<![가-힣A-Za-z0-9])금(?=$|[\s,.·:;!?)\]'\"’”/~-]|값|가격|이|은|을|의|과|와|도|에|ETF|선물|현물|시세)")
+
+
+def _gold_hit(text: str) -> bool:
+    if _GOLD_KO.search(text):
+        return True
+    for m in _GOLD_EN.finditer(text):
+        if m.group(0) == "Gold" and (_GOLD_COMPANY_BEFORE.search(text[:m.start()])
+                                     or _GOLD_COMPANY_AFTER.match(text, m.end())):
+            continue
+        return True
+    return False
+
+
+_ASSET_CHIPS: list[tuple[str, str, object]] = [
+    ("BTC", "Bitcoin", lambda t: bool(_CRYPTO_BTC.search(t))),
+    ("ETH", "Ethereum", lambda t: bool(_CRYPTO_ETH.search(t))),
+    ("GLD", "SPDR Gold Shares", _gold_hit),
 ]
 
 
-def crypto_from_titles(titles, tickers: list[str]) -> list[tuple[str, str]]:
-    """제목들(원제·헤드라인)에 나왔는데 칩에 없는 (BTC|ETH, 이름)."""
+def asset_chips_from_titles(titles, tickers: list[str]) -> list[tuple[str, str]]:
+    """제목들(원제·헤드라인)에 나왔는데 칩에 없는 (심볼, 이름) — BTC·ETH·GLD."""
     have = {t.strip().upper() for t in tickers if t.strip()}
-    text = "\n".join(t for t in titles if t)
-    return [(symbol, name) for symbol, name, pattern in _CRYPTO if symbol not in have and pattern.search(text)]
+    return [(symbol, name) for symbol, name, hit in _ASSET_CHIPS
+            if symbol not in have and any(hit(t) for t in titles if t)]
 
 
-def supplement_crypto(titles, ticker_text: str, company_text: str) -> tuple[str, str]:
-    """supplement_pairs와 같은 짝 규칙으로 BTC·ETH를 뒤에 붙인다."""
+def supplement_asset_chips(titles, ticker_text: str, company_text: str) -> tuple[str, str]:
+    """supplement_pairs와 같은 짝 규칙으로 자산 칩(BTC·ETH·GLD)을 뒤에 붙인다."""
     symbols = [t.strip() for t in (ticker_text or "").split(",") if t.strip()]
-    added = crypto_from_titles(titles, symbols)
+    added = asset_chips_from_titles(titles, symbols)
     names = [n.strip() for n in (company_text or "").split("·")]
     if added and [t.upper() for t in symbols] == ["NONE"]:
         symbols, names = [], []
