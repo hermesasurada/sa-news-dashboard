@@ -70,6 +70,7 @@ function ensureTickerPopover() {
   el.innerHTML = `
     <div class="tqp-head">
       <a class="tqp-name" target="_blank" rel="noopener noreferrer"></a>
+      <span class="tqp-ticker"></span>
     </div>
     <div class="tqp-body">
       <span class="tqp-price">…</span>
@@ -142,16 +143,11 @@ async function fetchPortfolioQuote(quoteTicker) {
   }
 }
 
-// 종목명 오른쪽에 원래 티커(3711.TW 등 — 칩 심볼이 아니라 시세 응답의 ticker)를 작고 옅게(2026-11-21 사용자 지시, 포트폴리오 세션 전달). 이름이 티커와 같으면 한 번만
+// 머리줄(2026-11-26 사용자 지시): 기업명만 포트폴리오 종목 페이지 링크, 원래 티커(3711.TW 등 — 시세 응답의 ticker)는 링크 없이 오른쪽 끝. 이름이 티커와 같으면 한 번만
 function setQuoteName(el, name, ticker) {
-  const a = el.querySelector('.tqp-name');
-  a.textContent = name || ticker || '';
-  if (ticker && String(ticker).toUpperCase() !== String(name || '').toUpperCase()) {
-    const s = document.createElement('span');
-    s.className = 'tqp-ticker';
-    s.textContent = ticker;
-    a.appendChild(s);
-  }
+  el.querySelector('.tqp-name').textContent = name || ticker || '';
+  const same = !ticker || String(ticker).toUpperCase() === String(name || '').toUpperCase();
+  el.querySelector('.tqp-ticker').textContent = same ? '' : ticker;
 }
 function renderTickerPopoverContent(el, companyFallback, quoteTicker, packed) {
   const price = el.querySelector('.tqp-price');
@@ -207,7 +203,7 @@ async function showTickerQuote(badge) {
   const el = ensureTickerPopover();
   el.dataset.activeTicker = quoteTicker;
   // loading state
-  el.querySelector('.tqp-name').textContent = company || nameCache[quoteTicker] || quoteTicker;
+  setQuoteName(el, company || nameCache[quoteTicker] || quoteTicker, '');
   setTickerPopoverLink(el, '');
   el.querySelector('.tqp-price').textContent = '불러오는 중…';
   el.querySelector('.tqp-chg').textContent = '';
