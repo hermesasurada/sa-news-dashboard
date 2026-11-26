@@ -986,6 +986,26 @@ class GrokBridgeTests(GrokDriveCase):
         self.assertIsNone(self._status(b)["source_method"])
         self.assertEqual(self._status(c)["pub_status"], "failed")
 
+    def test_unfinished_result_stays_open_for_hybrid(self):
+        """2026-11-26 sa 12623·12624: grok 모드가 차단·끊김 1회차를 failed·partial로 적어 두면, 병행 모드로 바꾼 뒤
+        Grok이 다시 올린 전문을 collect_updates가 읽지 않았다. 끝나지 않은 결과는 waiting으로 남는다."""
+        a = self._pending("611")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.gb.send_requests(self.fold)
+        self.results = {"sa_611.json": ("t1", {"status": "failed", "attempt": 1, "final": False, "reason": "blocked"})}
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.gb.collect_results(self.fold)
+        with db.get_conn() as conn:
+            self.assertEqual(conn.execute("SELECT grok_status FROM articles WHERE id=?", (a,)).fetchone()[0], "waiting")
+            conn.execute("UPDATE articles SET grok_requested_at=? WHERE id=?",
+                         (datetime.now(self.gb.KST).isoformat(timespec="seconds"), a))
+        self.results = {"sa_611.json": ("t2", {"status": "full", "attempt": 2, "final": True,
+                                               "title": "T", "body": "전문 " * 200})}
+        with contextlib.redirect_stdout(io.StringIO()):
+            st = self.gb.collect_updates(self.fold)
+        self.assertEqual(st["adopted"], 1)
+        self.assertEqual(self._status(a)["source_method"], "grok")
+
     def test_short_final_source_fails_at_collect(self):
         """2026-11-25 sa 12601: 유료 기사라 앞부분만 온 partial(final)이 요약 기준 미달이면 받을 때 바로 실패 —
         요약 단계가 같은 원문으로 5번 재시도하지 않게. 짧아도 full(배당 선언 등)은 요약 차례로 간다."""

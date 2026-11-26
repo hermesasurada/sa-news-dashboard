@@ -163,10 +163,13 @@ def collect_results(fold: dict) -> dict:
         attempt = int(res.get("attempt") or 1)
         text = _source_text(res)
         final = _is_final(res, attempt)
+        # 끝나지 않은 결과(끊김·차단 1~2회차)는 waiting으로 둔다 — failed·partial로 적으면 병행 모드로 바꾼 뒤
+        # collect_updates가 닫힌 기사로 보고 다시 읽지 않는다(2026-11-26 sa 12623·12624, 뒤에 온 전문을 놓침).
+        stored = (status or "unknown") if final or status == "full" else "waiting"
         with db.get_conn() as conn:
             conn.execute("UPDATE articles SET grok_status = ?, grok_attempt = ?, grok_result_mtime = ?, "
                          "grok_result_json = ? WHERE id = ?",
-                         (status or "unknown", attempt, f.get("modifiedTime"),
+                         (stored, attempt, f.get("modifiedTime"),
                           json.dumps(res, ensure_ascii=False), r["id"]))
         method = "grok" if status == "full" and text else ("grok_partial" if status == "partial" and text and final else None)
         if method and not db.source_quality_ok(len(text), False, method):
