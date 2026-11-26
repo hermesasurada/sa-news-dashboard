@@ -120,6 +120,22 @@ class DatabaseWorkflowTests(unittest.TestCase):
         with mock.patch.object(settings, "SOURCE_MODE", "site"):
             self.assertNotIn("grok", db.query_articles()["queue"])
 
+    def test_queue_counts_grok_waiting_in_hybrid_mode(self):
+        """병행 모드: 게시된 기사도 Grok 결과를 기다리면 원문 대기, Grok 원문을 받아 갱신 전이면 요약 대기."""
+        from unittest import mock
+        import settings
+        waiting, adopted, closed = self._pending("9201"), self._pending("9202"), self._pending("9203")
+        self._publish(waiting)
+        with db.get_conn() as conn:
+            for aid, st, at in ((waiting, "requested", "2026-11-26T09:10:00+09:00"),
+                                (adopted, "full", "2026-11-26T08:00:00+09:00"),
+                                (closed, "timeout", "2026-11-26T09:30:00+09:00")):
+                conn.execute("UPDATE articles SET grok_status = ?, grok_requested_at = ? WHERE id = ?", (st, at, aid))
+        db.save_source(adopted, text="가" * 300, method="grok", locked=False)
+        with mock.patch.object(settings, "SOURCE_MODE", "hybrid"):
+            self.assertEqual(db.query_articles()["queue"]["grok"],
+                             {"waiting": 1, "latest": "2026-11-26T09:10:00+09:00", "summarizing": 1})
+
     def test_article_list_can_skip_metadata_and_projects_card_fields(self):
         article_id = self._pending()
         self._publish(article_id)

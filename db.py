@@ -227,7 +227,13 @@ def query_articles(
                              THEN grok_requested_at END) AS grok_latest,
                     SUM(CASE WHEN pub_status = 'pending' AND source_method IN ('grok', 'grok_partial')
                              AND COALESCE(source_text, '') <> '' AND retry_count < ?
-                             THEN 1 ELSE 0 END) AS grok_summarizing
+                             THEN 1 ELSE 0 END) AS grok_summarizing,
+                    SUM(CASE WHEN grok_status IN ('requested', 'waiting')
+                             AND pub_status IN ('pending', 'published', 'failed')
+                             THEN 1 ELSE 0 END) AS hybrid_waiting,
+                    MAX(CASE WHEN grok_status IN ('requested', 'waiting')
+                             AND pub_status IN ('pending', 'published', 'failed')
+                             THEN grok_requested_at END) AS hybrid_latest
                 FROM articles
                 """,
                 (settings.MAX_RETRY,),
@@ -248,6 +254,13 @@ def query_articles(
             result["queue"]["grok"] = {"waiting": queue_row["grok_waiting"] or 0,
                                        "latest": queue_row["grok_latest"],
                                        "summarizing": queue_row["grok_summarizing"] or 0}
+        # 병행 모드(2026-11-26 사용자 지시로 같은 줄 다시 표시): Grok 결과를 기다리는 기사(게시 여부 무관)와
+        # Grok 원문을 받아 갱신 요약을 기다리는 기사(grok_bridge.update_rows — 요약 기준 미달 원문 제외)
+        elif settings.SOURCE_MODE == "hybrid":
+            import grok_bridge   # grok_bridge가 db를 불러 순환 — 여기서만 늦게 부른다
+            result["queue"]["grok"] = {"waiting": queue_row["hybrid_waiting"] or 0,
+                                       "latest": queue_row["hybrid_latest"],
+                                       "summarizing": len(grok_bridge.update_rows(1000))}
     return result
 
 
