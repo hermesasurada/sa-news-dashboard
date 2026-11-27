@@ -41,6 +41,8 @@ FOREIGN_KEYS = (
     "EADSY", "EADSF", "ADDYY", "BMWKY", "VWAGY", "SIEGY", "SMEGF", "SMNEY", "DLAKF", "DLAKY", "DHER",
     "SAFRF", "SAFRY", "HESAY", "HESAF", "DUAVF", "ENI", "NTOIY", "IBDRY", "IBDSF", "CAMRF", "SAABF", "SAABY",
     "RYCEY", "RYCEF", "BAESY", "HEINY", "RNMBF", "RNMBY", "RHHBY", "RHHBF",        # 유럽(로슈 → RO.SW, 2026-11-18)
+    "CFRUY", "CFRHF", "BCUCY", "BCUCF", "MONRY", "MONRF", "SWGAY", "SWGAF", "SWGNF", "PNDRY", "PNDZF",
+    "PPRUY", "PPRUF", "PMMAF", "PUMSY", "LVMUY", "LVMHF", "ADDDF",                # 유럽 명품·스포츠(2026-11-28, sa 12710)
     "SONY", "SNEJF", "NTDOY", "NTDOF", "SFTBY", "SFTBF", "NINOY", "HTHIY", "HTHIF",   # 일본(SONY ADR은 포트폴리오에 없다)
     "BYDDY", "BYDDF", "HNHPF", "FXCOF", "IVBIY", "IVBXF", "LNVGY",                 # 중국·대만·홍콩
     "QABSY", "SYAAF", "SRHYY", "DBSDY", "BDRBF", "BDRAF", "BOMBF", "KRKNF", "TAKOF",  # 기타
